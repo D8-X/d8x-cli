@@ -53,11 +53,18 @@ type selectionModel struct {
 	cursor       int
 	doneSelected bool
 
+	// Allows only 1 item to be selected
 	oneSelectedOnly bool
+
+	// Requires at least 1 item to be selected
+	requireSelection bool
 }
 
 func (m selectionModel) View() string {
 	b := strings.Builder{}
+
+	// Start with 1 margin-top
+	b.WriteByte('\n')
 
 	// Create: > [x] item line
 	for i := range m.selection {
@@ -73,13 +80,9 @@ func (m selectionModel) View() string {
 		fmt.Fprintf(&b, "%s [%s] %s\n", arrow, selected, m.selection[i])
 	}
 
-	okButton := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#fefefe")).
-		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1, 0, 1).
-		Margin(1)
+	okButton := styles.Button
 	if m.cursor == len(m.selection) {
-		okButton.Background(styles.D8XPurple)
+		okButton = styles.ButtonActive
 	}
 	fmt.Fprintf(&b, "%s\n", okButton.Render("OK"))
 
@@ -92,7 +95,6 @@ func (m selectionModel) Init() tea.Cmd {
 
 func (m selectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
@@ -102,7 +104,14 @@ func (m selectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "down", "j":
-			if m.cursor < len(m.selection) {
+			upTo := len(m.selection)
+
+			// Deny moving to "OK" when requireSelection is turned on
+			if m.requireSelection && !m.isSomethingSelected() {
+				upTo = len(m.selection) - 1
+			}
+
+			if m.cursor < upTo {
 				m.cursor++
 			}
 		case "enter", " ":
@@ -127,6 +136,15 @@ func (m selectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m selectionModel) isSomethingSelected() bool {
+	for i := range m.selected {
+		if m.selected[i] {
+			return true
+		}
+	}
+	return false
+}
+
 var _ SelectionOpts = (*selectionOptAllowOnlySingleItem)(nil)
 
 type selectionOptAllowOnlySingleItem struct{}
@@ -137,4 +155,16 @@ func (selectionOptAllowOnlySingleItem) Apply(s *selectionModel) {
 
 func SelectionOptAllowOnlySingleItem() SelectionOpts {
 	return selectionOptAllowOnlySingleItem{}
+}
+
+var _ SelectionOpts = (*selectionOptRequireSelection)(nil)
+
+type selectionOptRequireSelection struct{}
+
+func (selectionOptRequireSelection) Apply(s *selectionModel) {
+	s.requireSelection = true
+}
+
+func SelectionOptRequireSelection() SelectionOpts {
+	return selectionOptRequireSelection{}
 }

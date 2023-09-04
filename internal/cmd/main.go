@@ -38,6 +38,17 @@ manually install them or let the cli attempt to perform the installation of
 these dependencies.
 `
 
+const SetupDescription = `Command setup performs complete D8X cluster setup.
+
+In essence setup calls the following subcommands in sequence:
+	- provision
+	- configure
+	- deploy
+
+See individual command's help for information how each step operates.
+
+`
+
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
 	ac := &actions.Container{}
@@ -53,13 +64,20 @@ func RunD8XCli() {
 			{
 				Name:   "init",
 				Action: ac.Init,
-				Usage:  "Initialize dependencies and configuration directory",
+				Usage:  "Initialize configuration directory and install dependencies",
 			},
 			{
 				Name:        "setup",
-				Description: "Full D8X backend cluster setup",
+				Usage:       "Full setup of d8x backend cluster",
+				Description: SetupDescription,
 				Action:      ac.Setup,
-				Usage:       "Spin up  your clusters and services",
+				Subcommands: []*cli.Command{
+					{
+						Name:   "provision",
+						Usage:  "Provision server resources with terraform",
+						Action: ac.Provision,
+					},
+				},
 			},
 		},
 		// Global flags accesible to all subcommands
@@ -67,14 +85,22 @@ func RunD8XCli() {
 			&cli.StringFlag{
 				Name: "config-directory",
 				// Set the defaul path to configuration directory on user's home dir
-				Value:       "~/.config/d8x",
+				Value:       "./.config/d8x",
 				Destination: &ac.ConfigDir,
+				Usage:       "configs and secrets directory",
+			},
+			&cli.StringFlag{
+				Name: "ssh-key-path",
+				// Set the defaul path to configuration directory on user's home dir
+				Value:       "./id_ed25519",
+				Destination: &ac.SshKeyPath,
+				Usage:       "default ssh key path used to access servers",
 			},
 		},
 		Action:  ac.Init,
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
-			fmt.Println(styles.PurpleBgText.Padding(0, 2, 0, 2).Border(lipgloss.NormalBorder()).Render(D8XASCII))
+			fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2, 0, 2).Border(lipgloss.NormalBorder()).Render(D8XASCII))
 			return nil
 		},
 	}

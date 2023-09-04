@@ -1,0 +1,141 @@
+version: "3.8"
+services:
+  redis:
+    image: redis
+    command: redis-server --bind 0.0.0.0 --requirepass ${REDIS_PASSWORD}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1k"
+        max-file: "10"
+    networks:
+      - d8x_backend
+    deploy:
+      replicas: 1
+      # placement:
+        # constraints:
+          # Always run redis on the same node
+          # - "node.hostname==worker-1"
+  api:
+    image: ghcr.io/d8-x/d8x-trader-main:dev
+    ports:
+      # REST API
+      - ${MAIN_API_PORT_HTTP:-3001}:${MAIN_API_PORT_HTTP:-3001}
+      # Websockets port
+      - ${MAIN_API_PORT_WEBSOCKET:-3002}:${MAIN_API_PORT_WEBSOCKET:-3002}
+    environment:
+      - BROKER_KEY=${BROKER_KEY}
+      - BROKER_FEE_TBPS=${BROKER_FEE_TBPS}
+      - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
+      - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
+      - CHAIN_ID=${CHAIN_ID:-80001}
+      - SDK_CONFIG_NAME=${SDK_CONFIG_NAME:-testnet}
+      - CORS_ON=${CORS_ON:-FALSE}
+      - MAIN_API_PORT_HTTP=${MAIN_API_PORT_HTTP:-3002}
+      - MAIN_API_PORT_WEBSOCKET=${MAIN_API_PORT_WEBSOCKET:-3002}
+      - CONFIG_PATH_RPC=/cfg_rpc
+      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+      - CONFIG_PATH_WSCFG=/cfg_wscfg
+    networks:
+      - d8x_backend
+    deploy:
+      replicas: 2
+    configs:  
+      - cfg_rpc
+      - cfg_referral
+      - cfg_wscfg
+  history:
+    image: ghcr.io/d8-x/d8x-trader-history:dev
+    environment:
+      - DATABASE_DSN_HISTORY=${DATABASE_DSN_HISTORY}
+      - HISTORY_API_PORT_HTTP=${HISTORY_API_PORT_HTTP:-3003}
+      - SDK_CONFIG_NAME=${SDK_CONFIG_NAME}
+      - CHAIN_ID=${CHAIN_ID}
+      - CORS_ON=${CORS_ON:-FALSE}
+      - CONFIG_PATH_RPC=/cfg_rpc
+      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+      - CONFIG_PATH_WSCFG=/cfg_wscfg
+    ports:
+      - "${HISTORY_API_PORT_HTTP:-3003}:${HISTORY_API_PORT_HTTP:-3003}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5000k"
+        max-file: "10"
+    deploy:
+      replicas: 1
+    configs:
+      - cfg_rpc
+      - cfg_referral
+      - cfg_wscfg
+    networks:
+      - d8x_backend
+  referral:
+    image: ghcr.io/d8-x/d8x-trader-referral:dev
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
+      - DATABASE_DSN_REFERRAL=${DATABASE_DSN_REFERRAL}
+      - REFERRAL_API_PORT_HTTP=${REFERRAL_API_PORT_HTTP:-3004}
+      - BROKER_KEY=${BROKER_KEY}
+      - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
+      - CHAIN_ID=${CHAIN_ID}
+      - CORS_ON=${CORS_ON:-FALSE}
+      - HISTORY_API_ENDPOINT="http://history:${HISTORY_API_PORT_HTTP:-3003}"
+      - CONFIG_PATH_RPC=/cfg_rpc
+      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+      - CONFIG_PATH_WSCFG=/cfg_wscfg
+    ports:
+      - "${REFERRAL_API_PORT_HTTP:-3004}:${REFERRAL_API_PORT_HTTP:-3004}"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5000k"
+        max-file: "10"
+    configs:
+      - cfg_rpc
+      - cfg_referral
+      - cfg_wscfg
+      - source: pg_ca
+        target: /pg.crt
+    networks:
+      - d8x_backend
+  pyth_connection:
+    image: ghcr.io/d8-x/d8x-trader-pxws-client:dev
+    ports:
+      - "${PXWS_API_PORT_HTTP:-3005}:${PXWS_API_PORT_HTTP:-3005}"
+      - "${PXWS_API_PORT_WEBSOCKET:-3006}:${PXWS_API_PORT_WEBSOCKET:-3006}"
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
+      - PORT_REST=${PXWS_API_PORT_HTTP:-3005}
+      - PORT_WEBSOCKET=${PXWS_API_PORT_WEBSOCKET:-3006}
+      - CHAIN_ID=${CHAIN_ID}
+      - CONFIG_PATH_RPC=/cfg_rpc
+      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+      - CONFIG_PATH_WSCFG=/cfg_wscfg
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1k"
+        max-file: "10"
+    configs:
+      - cfg_rpc
+      - cfg_referral
+      - cfg_wscfg
+      - source: pg_ca
+        target: /pg.crt
+    networks:
+      - d8x_backend
+      
+networks:
+  d8x_backend:
+    driver: overlay
+    name: d8x_backend
+configs:
+  cfg_rpc:
+    external: true
+  cfg_referral:
+    external: true
+  cfg_wscfg:
+    external: true
+  pg_ca:
+    external: true

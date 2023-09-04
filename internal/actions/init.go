@@ -109,7 +109,7 @@ yum -y install terraform
 	}
 
 	// Make temp script file
-	f, err := os.CreateTemp("", "d8x-installacion-XXXX.sh")
+	f, err := os.CreateTemp("", "d8x-installation-XXXX.sh")
 	if err != nil {
 		return fmt.Errorf("creating temporary file for terraform script: %w", err)
 	}
@@ -128,6 +128,7 @@ yum -y install terraform
 	cmd := exec.Command("sudo", "bash", f.Name())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// Connect stdin for sudo pass
 	cmd.Stdin = os.Stdin
 
 	return cmd.Run()

@@ -29,3 +29,17 @@ var (
 	ItalicText = lipgloss.NewStyle().
 			Italic(true)
 )
+
+var (
+	Button = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#fefefe")).
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 3, 0, 3)
+
+	ButtonActive = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#fefefe")).
+			Border(lipgloss.RoundedBorder()).
+			Background(D8XPurple).
+			Underline(true).
+			Padding(0, 3, 0, 3)
+)

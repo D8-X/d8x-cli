@@ -1,4 +1,4 @@
-package contstants
+package constants
 
 const (
 	// Version of terraform to install when configuring dependencies

@@ -1,0 +1,16 @@
+[
+  {
+    "chainId": 80001,
+    "HTTP": [
+      "https://polygon-testnet-rpc.allthatnode.com:8545",
+      "https://matic-mumbai.chainstacklabs.com",
+      "https://rpc-mumbai.maticvigil.com"
+    ],
+    "WS": []
+  },
+  {
+    "chainId": 1442,
+    "HTTP": ["https://rpc.public.zkevm-test.net"],
+    "WS": []
+  }
+]

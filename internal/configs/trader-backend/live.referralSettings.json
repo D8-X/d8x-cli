@@ -1,0 +1,35 @@
+{
+  "referralSystemEnabled": false,
+  "agencyCutPercent": 80,
+  "permissionedAgencies": [
+    "0x21B864083eedF1a4279dA1a9A7B1321E6102fD39",
+    "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
+    "0x0ABB0bdeC62f3c2811BE39773C73D14556A1Ac85",
+    "0x2efB6ccd42017918E8E889bB4830eCbcDeFD0Dd4",
+    "0x863AD9Ce46acF07fD9390147B619893461036194"
+  ],
+  "referrerCutPercentForTokenXHolding": [
+    [0.2, 0],
+    [1.5, 100],
+    [2.5, 1000],
+    [3.5, 10000]
+  ],
+  "tokenX": {
+    "address": "0xE05b86C761C70BEaB72fBFE919e5260e956cAB99",
+    "decimals": 18
+  },
+  "paymentScheduleMinHourDayofmonthWeekday": "0-15-*-0",
+  "paymentMaxLookBackDays": 14,
+  "minBrokerFeeCCForRebatePerPool": [
+    [100, 1],
+    [100, 2],
+    [0.01, 3]
+  ],
+  "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
+  "defaultReferralCode": {
+    "referrerAddr": "",
+    "agencyAddr": "0x863AD9Ce46acF07fD9390147B619893461036194",
+    "traderReferrerAgencyPerc": [0, 0, 45]
+  },
+  "multiPayContractAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5"
+}
