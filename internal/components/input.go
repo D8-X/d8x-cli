@@ -90,7 +90,7 @@ type textInputOptValue struct {
 }
 
 func (t textInputOptValue) Apply(s *inputModel) {
-	s.textInput.Placeholder = t.val
+	s.textInput.SetValue(t.val)
 }
 
 func TextInputOptValue(val string) TextInputOpt {

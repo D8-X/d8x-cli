@@ -3,6 +3,7 @@ package actions
 import (
 	"fmt"
 	"os/exec"
+	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -66,6 +67,9 @@ func (c *Container) Provision(ctx *cli.Context) error {
 			return err
 		}
 	}
+
+	// Set the provisioning time
+	c.provisioningTime = time.Now()
 
 	return nil
 }

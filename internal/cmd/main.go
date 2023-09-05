@@ -30,12 +30,13 @@ const MainDescription = `D8X Perpetual Exchange broker backend setup and managem
 <More description entered here>
 
 Running d8x without any subcommands or init command will perform initalization
-of ~/.config/d8x directory, as well as prompt you to install any missing
-dependencies.
+of ./.d8x-config directory (--config-directory), as well as prompt you to
+install any missing dependencies.
 
 D8X CLI relies on the following external tools: terraform, ansible. You can
 manually install them or let the cli attempt to perform the installation of
-these dependencies.
+these dependencies automatically. Note that for automatic installation you will
+need to have python3 and pip installed on your system
 `
 
 const SetupDescription = `Command setup performs complete D8X cluster setup.
@@ -51,7 +52,7 @@ See individual command's help for information how each step operates.
 
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
-	ac := &actions.Container{}
+	container := actions.NewDefaultContainer()
 
 	// Initialize cli application and its subcommands and bind default values
 	// for ac (via flags.Destination)
@@ -63,19 +64,24 @@ func RunD8XCli() {
 		Commands: []*cli.Command{
 			{
 				Name:   "init",
-				Action: ac.Init,
+				Action: container.Init,
 				Usage:  "Initialize configuration directory and install dependencies",
 			},
 			{
 				Name:        "setup",
 				Usage:       "Full setup of d8x backend cluster",
 				Description: SetupDescription,
-				Action:      ac.Setup,
+				Action:      container.Setup,
 				Subcommands: []*cli.Command{
 					{
 						Name:   "provision",
 						Usage:  "Provision server resources with terraform",
-						Action: ac.Provision,
+						Action: container.Provision,
+					},
+					{
+						Name:   "configure",
+						Usage:  "Configure servers with ansible",
+						Action: container.Configure,
 					},
 				},
 			},
@@ -85,21 +91,42 @@ func RunD8XCli() {
 			&cli.StringFlag{
 				Name: "config-directory",
 				// Set the defaul path to configuration directory on user's home dir
-				Value:       "./.config/d8x",
-				Destination: &ac.ConfigDir,
-				Usage:       "configs and secrets directory",
+				Value:       "./.d8x-config",
+				Destination: &container.ConfigDir,
+				Usage:       "Configs and secrets directory",
 			},
 			&cli.StringFlag{
-				Name: "ssh-key-path",
-				// Set the defaul path to configuration directory on user's home dir
+				Name:        "ssh-key-path",
 				Value:       "./id_ed25519",
-				Destination: &ac.SshKeyPath,
-				Usage:       "default ssh key path used to access servers",
+				Destination: &container.SshKeyPath,
+				Usage:       "Default ssh key path used to access servers",
+			},
+			&cli.StringFlag{
+				Name:        "user",
+				Value:       "d8xtrader",
+				Destination: &container.DefaultClusterUserName,
+				Usage:       "User which will be created on each server during provisioning and configuration. Also used ssh'ing into servers.",
+			},
+			&cli.StringFlag{
+				Name:        "password",
+				Destination: &container.UserPassword,
+				Usage:       "User's password used for tasks requiring elevated permissions",
+			},
+			&cli.StringFlag{
+				Name:  "chdir",
+				Usage: "Change directory to provided one before executing anything",
 			},
 		},
-		Action:  ac.Init,
+		Action:  container.Init,
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
+			if ch := ctx.String("chdir"); ch != "" {
+				err := os.Chdir(ch)
+				if err != nil {
+					return fmt.Errorf("changing directory: %w", err)
+				}
+			}
+
 			fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2, 0, 2).Border(lipgloss.NormalBorder()).Render(D8XASCII))
 			return nil
 		},

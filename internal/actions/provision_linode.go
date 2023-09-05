@@ -37,9 +37,15 @@ var linodeRegions = []components.ListItem{
 var _ ServerProviderConfigurer = (*linodeConfigurer)(nil)
 
 type linodeConfigurer struct {
-	linodeToken  string
-	linodeDbId   string
-	linodeRegion string
+	linodeToken            string
+	linodeDbId             string
+	linodeRegion           string
+	linodeNodesLabelPrefix string
+
+	// public key that will be used as authorized_keys param
+	authorizedKey string
+
+	createBroker bool
 }
 
 // copyEmbedFilesToDest copies embedFiles from embedFS into dest in the order that embedFS are provided
@@ -64,81 +70,31 @@ func copyEmbedFilesToDest(dest *os.File, embedFS embed.FS, embedFiles ...string)
 // servers for default user and does some other neccessary configuration.
 func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	// Copy terraform files to cwd/linode.tf
-	outFile, err := os.OpenFile("./linode.tf", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
-	if err != nil {
-		return nil, err
-	}
-	// must be in this order: main.tf output.tf vars.tf
-	err = copyEmbedFilesToDest(
-		outFile,
+	if err := c.EmbedCopier.Copy(
 		configs.TraderBackendConfigs,
+		// Dest
+		"./linode.tf",
+		// Embed paths must be in this order: main.tf output.tf vars.tf
 		"trader-backend/tf-linode/main.tf",
 		"trader-backend/tf-linode/output.tf",
 		"trader-backend/tf-linode/vars.tf",
-	)
-	if err != nil {
-		return nil, fmt.Errorf("generating linode.tf file: %w", err)
+	); err != nil {
+		return nil, fmt.Errorf("generating lindode.tf file: %w", err)
 	}
-
-	// Copy inventory.tpl
-
-	createBrokerServer, err := components.NewPrompt("Do you want to provision a broker-server server?", true)
-	if err != nil {
-		return nil, err
-	}
-
-	// Generate ssh-key
-	createKey := false
-	_, err = os.Stat(c.SshKeyPath)
-	if err != nil {
-		fmt.Printf("SSH key %s was not found, creating new one...\n", c.SshKeyPath)
-		createKey = true
-	} else {
-		ok, err := components.NewPrompt(
-			fmt.Sprintf("SSH key %s was found, do you want to overwrite it with a new one?", c.SshKeyPath),
-			true,
-		)
-		if err != nil {
-			return nil, err
-		}
-
-		if ok {
-			createKey = true
-		}
-	}
-
-	if createKey {
-		fmt.Println(
-			"Executing:",
-			styles.ItalicText.Render(
-				fmt.Sprintf("ssh-keygen -t ed25519 -f %s", c.SshKeyPath),
-			),
-		)
-		cmd := exec.Command("ssh-keygen", "-N", "", "-t", "ed25519", "-f", c.SshKeyPath, "-C", "")
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			return nil, err
-		}
-	}
-
-	// Get the public key contents
-	pubkeyfile := fmt.Sprintf("%s.pub", c.SshKeyPath)
-	pub, err := os.ReadFile(pubkeyfile)
-	if err != nil {
-		return nil, fmt.Errorf("reading public key %s: %w", pubkeyfile, err)
+	// Cp inventory.tpl for hosts.cfg
+	if err := c.EmbedCopier.Copy(
+		configs.TraderBackendConfigs,
+		"./inventory.tpl",
+		"trader-backend/tf-linode/inventory.tpl",
+	); err != nil {
+		return nil, fmt.Errorf("generating inventory.tpl file: %w", err)
 	}
 
 	// Build the terraform apply command
-	args := []string{
-		"apply", "-auto-approve",
-		"-var", fmt.Sprintf(`authorized_keys=["%s"]`, strings.TrimSpace(string(pub))),
-		"-var", fmt.Sprintf(`linode_db_cluster_id=%s`, l.linodeDbId),
-		"-var", fmt.Sprintf(`region=%s`, l.linodeRegion),
-		"-var", fmt.Sprintf(`create_broker_server=%t`, createBrokerServer),
-	}
+	args := l.generateArgs()
 	command := exec.Command("terraform", args...)
+	// for $HOME
+	command.Env = os.Environ()
 	// Add linode tokens
 	command.Env = append(command.Env,
 		fmt.Sprintf("LINODE_TOKEN=%s", l.linodeToken),
@@ -147,9 +103,23 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	return command, nil
 }
 
+func (l linodeConfigurer) generateArgs() []string {
+	return []string{
+		"apply", "-auto-approve",
+		"-var", fmt.Sprintf(`authorized_keys=["%s"]`, strings.TrimSpace(l.authorizedKey)),
+		"-var", fmt.Sprintf(`linode_db_cluster_id=%s`, l.linodeDbId),
+		"-var", fmt.Sprintf(`region=%s`, l.linodeRegion),
+		"-var", fmt.Sprintf(`server_label_prefix=%s`, l.linodeNodesLabelPrefix),
+		"-var", fmt.Sprintf(`create_broker_server=%t`, l.createBroker),
+	}
+}
+
+// linodeServerConfigurer collects information for the linode cluster
+// provisioning and creates linode ServerProviderConfigurer
 func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l := linodeConfigurer{}
 
+	// Token
 	fmt.Println("Enter your Linode API token")
 	token, err := components.NewInput(
 		components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
@@ -159,6 +129,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	}
 	l.linodeToken = token
 
+	// DB
 	fmt.Println("Enter your Linode database cluster ID")
 	dbId, err := components.NewInput(
 		components.TextInputOptPlaceholder("12345678"),
@@ -168,6 +139,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	}
 	l.linodeDbId = dbId
 
+	// Region
 	selected, err := components.NewList(linodeRegions, "Choose the Linode cluster region")
 	if err != nil {
 		return nil, err
@@ -182,6 +154,34 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 			),
 		),
 	)
+
+	// Label prefix
+	fmt.Println("Enter your Linode nodes label prefix")
+	label, err := components.NewInput(
+		components.TextInputOptPlaceholder("my-d8x-cluster"),
+		components.TextInputOptValue("d8x-cluster"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	l.linodeNodesLabelPrefix = label
+
+	// Broker-server
+	createBrokerServer, err := components.NewPrompt("Do you want to provision a broker-server server?", true)
+	if err != nil {
+		return nil, err
+	}
+	l.createBroker = createBrokerServer
+
+	// SSH key check
+	if err := c.ensureSSHKeyPresent(); err != nil {
+		return nil, err
+	}
+	pub, err := c.getPublicKey()
+	if err != nil {
+		return nil, err
+	}
+	l.authorizedKey = pub
 
 	return l, nil
 }

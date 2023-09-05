@@ -1,0 +1,161 @@
+- hosts: all
+  name: Setup swarm cluster
+  become: true
+  vars:
+    # Private ip address of the main manager node
+    manager_ip: "{{ hostvars[groups['managers'][0]]['manager_private_ip'] }}"
+    manager_hostname: "{{ hostvars[groups['managers'][0]]['hostname'] }}"
+    # Default user name and password for d8x user on cluster. Passed via --extra-vars
+    default_user: "{{ default_user_name }}"
+    default_user_pwd: "{{ default_user_password }}"
+
+  handlers:
+    - name: Restart SSHD
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+  tasks:
+    # Essentials, hostnames, users setup, ssh keys
+    - name: Set hostname
+      ansible.builtin.hostname:
+        name: "{{ hostvars[inventory_hostname]['hostname'] }}"
+      when: "'hostname' in hostvars[inventory_hostname]"
+    - name: Create default user
+      ansible.builtin.user:
+        name: "{{ default_user }}"
+        groups:
+          - sudo
+          - adm
+        shell: /bin/bash
+        password: "{{ default_user_pwd | password_hash('sha512') }}"
+    - name: "Set authorized key for default user"
+      ansible.posix.authorized_key:
+        # user_public_key must be passed via --extra-vars
+        key: "{{ user_public_key }}"
+        user: "{{ default_user }}"
+
+    - name: Setup sshd_config
+      ansible.builtin.lineinfile:
+        path: "/etc/ssh/sshd_config"
+        regex: "^(#)?{{ item.key }}"
+        line: "{{ item.key }} {{ item.value }}"
+        state: present
+      loop:
+        - { key: "PermitRootLogin", value: "no" }
+        - { key: "PasswordAuthentication", value: "no" }
+      notify:
+        - Restart SSHD
+
+    # UFW configuration
+    - name: Allow port 22 ufw
+      community.general.ufw:
+        rule: allow
+        port: 22
+    # Docker swarm ports
+    - name: Allow port 2377 ufw
+      community.general.ufw:
+        rule: allow
+        port: 2377
+    - name: Allow port 7946 ufw
+      community.general.ufw:
+        rule: allow
+        port: 7946
+    - name: Allow port 4789 ufw
+      community.general.ufw:
+        rule: allow
+        port: 4789
+    - name: Enable ufw
+      community.general.ufw:
+        state: enabled
+
+    # Installation of docker
+    - name: Install essential packages
+      ansible.builtin.apt:
+        pkg:
+          - ca-certificates
+          - curl
+          - gnupg
+          - python3
+          - python3-pip
+          - git
+          - certbot
+        state: latest
+        update_cache: true
+    - name: Get Docker apt repo key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /etc/apt/keyrings/docker.gpg_armored
+    - name: Dearmor Docker apt repo key/
+      ansible.builtin.shell:
+        cmd: "gpg --dearmor < /etc/apt/keyrings/docker.gpg_armored > /etc/apt/keyrings/docker.gpg"
+        creates: /etc/apt/keyrings/docker.gpg
+    - name: Add Docker apt repo
+      ansible.builtin.apt_repository:
+        repo: deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_facts['lsb']['codename'] }} stable
+        state: present
+    - name: Install Docker
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        update_cache: true
+    - name: Install docker pip module
+      ansible.builtin.pip:
+        name:
+          - docker
+
+    # Docker swarm setup
+    - name: Init a new swarm on manager with private ip address
+      when: inventory_hostname in groups["managers"]
+      community.docker.docker_swarm:
+        state: present
+        advertise_addr: "{{ manager_ip }}"
+      register: swarm_result
+      # Only one manager should run this, otherwsie register results in when condition output
+      run_once: true
+
+    - name: Set manager availability to DRAIN
+      when: inventory_hostname in groups["managers"]
+      community.docker.docker_node:
+        hostname: "{{ manager_hostname }}"
+        availability: "drain"
+
+    - name: Join swarm as worker
+      when: inventory_hostname in groups["workers"]
+      community.docker.docker_swarm:
+        state: join
+        join_token: "{{ swarm_result.swarm_facts.JoinTokens.Worker }}"
+        remote_addrs: ["{{ manager_ip }}"]
+
+## Manager specific setup
+- hosts:
+    - managers
+    - broker
+  name: Configure manager
+  tasks:
+    - name: Install nginx on manager
+      ansible.builtin.apt:
+        pkg:
+          - nginx
+        state: present
+    - name: Enable and start nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        enabled: true
+        state: started
+
+    # HTTP(s) ports should be exposed only on manager
+    - name: Allow port 80 ufw
+      community.general.ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+    - name: Allow port 443 ufw
+      community.general.ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+        state: reloaded
