@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
+	"github.com/urfave/cli/v2"
 )
 
 // ensureSSHKeyPresent prompts user to create or override new ssh key pair in
@@ -58,4 +60,31 @@ func (c *Container) getPublicKey() (string, error) {
 		return "", fmt.Errorf("reading public key %s: %w", pubkeyfile, err)
 	}
 	return strings.TrimSpace(string(pub)), nil
+}
+
+func (c *Container) DisplayPasswordAlert() {
+	if len(c.UserPassword) == 0 {
+		return
+	}
+
+	fmt.Println(styles.AlertImportant.Render(`Make sure to securely store default user password! This password will be
+	created for default user on each provisioned server.`))
+	fmt.Printf("User: %s\n", c.DefaultClusterUserName)
+	fmt.Printf("Password: %s\n", c.UserPassword)
+
+	components.NewConfirmation("Please confirm that you have stored the password!")
+}
+
+// Get password gets the password with the following precedence:
+// 1. --password flag
+// 2. ./password.txt file in cwd
+func (c *Container) getPassword(ctx *cli.Context) (string, error) {
+	if pwd := ctx.String(flags.Password); pwd != "" {
+		return pwd, nil
+	}
+	if pwd, err := os.ReadFile("./password.txt"); err != nil {
+		return "", err
+	} else {
+		return string(pwd), nil
+	}
 }

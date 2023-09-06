@@ -18,10 +18,7 @@ const (
 )
 
 func (c *Container) Provision(ctx *cli.Context) error {
-	fmt.Printf(
-		"%s\n\n",
-		styles.ItalicText.Render("Starting provisioning..."),
-	)
+	styles.PrintCommandTitle("Starting provisioning...")
 
 	fmt.Println("Select your server provider")
 

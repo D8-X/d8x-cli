@@ -4,10 +4,13 @@ import (
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
 
 func (ac *Container) Setup(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Running full setup...")
+
 	if err := ac.Provision(ctx); err != nil {
 		return err
 	}
@@ -20,6 +23,10 @@ func (ac *Container) Setup(ctx *cli.Context) error {
 	}
 
 	if err := ac.Configure(ctx); err != nil {
+		return err
+	}
+
+	if err := ac.BrokerServerDeployment(ctx); err != nil {
 		return err
 	}
 

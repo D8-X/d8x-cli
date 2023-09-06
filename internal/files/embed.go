@@ -1,4 +1,4 @@
-package configs
+package files
 
 import (
 	"embed"
@@ -6,6 +6,14 @@ import (
 	"os"
 	"path/filepath"
 )
+
+// EmbedMultiFileToDestCopier appends contents of all embedPaths (in the
+// provided order) to dest. Filepaths embedPaths are searched in given fs. If
+// file in destPath does not exist, it is created and truncated. If destPath
+// contains a nested dir which is not available - it will be created too.
+type EmbedMultiFileToDestCopier interface {
+	Copy(fs embed.FS, destPath string, embedPaths ...string) error
+}
 
 func NewEmbedFileCopier() EmbedMultiFileToDestCopier {
 	return &embedFileCopier{}
@@ -39,6 +47,7 @@ func (e *embedFileCopier) Copy(efs embed.FS, destPath string, embedPaths ...stri
 // copyEmbedFilesToDest copies embedFiles from embedFS into dest in the order
 // that embedFS are provided
 func copyEmbedFilesToDest(dest *os.File, embedFS embed.FS, embedFiles ...string) error {
+	defer dest.Close()
 	for _, embedFile := range embedFiles {
 		f, err := embedFS.Open(embedFile)
 		if err != nil {

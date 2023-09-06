@@ -1,6 +1,10 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"fmt"
+
+	"github.com/charmbracelet/lipgloss"
+)
 
 // Colors
 var (
@@ -28,6 +32,8 @@ var (
 
 	ItalicText = lipgloss.NewStyle().
 			Italic(true)
+
+	CommandTitleText = ItalicText.Copy().Bold(true)
 )
 
 var (
@@ -43,3 +49,21 @@ var (
 			Underline(true).
 			Padding(0, 3, 0, 3)
 )
+
+// Alerts, etc
+var (
+	// For warnings, passwords displays, etc
+	AlertImportant = lipgloss.NewStyle().
+		Bold(true).
+		Background(lipgloss.Color("#d90429")).
+		Foreground(lipgloss.Color("#fefefe")).
+		Padding(1, 3, 1, 3)
+)
+
+// PrintCommandTitle is a helper to print (sub)command titles
+func PrintCommandTitle(title string) {
+	fmt.Printf(
+		"%s\n\n",
+		CommandTitleText.Render(title),
+	)
+}

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 )
 
 // Container is the cli container which provides all the command and subcommand
@@ -23,20 +23,28 @@ type Container struct {
 	// have ssh key provided via SshKeyPath added to authorized_keys
 	DefaultClusterUserName string
 	// Password of DefaultClusterUserName. If not provided, attempt to read
-	// password from ./password.txt will be made. For configuraton
+	// password from ./password.txt will be made. If Configuration action was
+	// executed, the password value will be set.
 	UserPassword string
 
-	EmbedCopier configs.EmbedMultiFileToDestCopier
+	EmbedCopier files.EmbedMultiFileToDestCopier
+
+	FS files.FSInteractor
 
 	// Time when provisioning was done. Used ot calculate cooldown for ansible
 	// configuration. If provisioning was not done in current cli session, this
 	// will not be set.
 	provisioningTime time.Time
+
+	// Whether broker server should be provisioned and d8x-broker-server
+	// deployed.
+	CreateBrokerServer bool
 }
 
 func NewDefaultContainer() *Container {
 	return &Container{
-		EmbedCopier: configs.NewEmbedFileCopier(),
+		EmbedCopier: files.NewEmbedFileCopier(),
+		FS:          files.NewFileSystemInteractor(),
 	}
 }
 

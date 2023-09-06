@@ -172,6 +172,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 		return nil, err
 	}
 	l.createBroker = createBrokerServer
+	c.CreateBrokerServer = createBrokerServer
 
 	// SSH key check
 	if err := c.ensureSSHKeyPresent(); err != nil {

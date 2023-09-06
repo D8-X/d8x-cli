@@ -5,14 +5,16 @@ import (
 	"fmt"
 	"math/big"
 	"os/exec"
-	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
 
 // Configure performs initials hosts setup and configuration with ansible
 func (c *Container) Configure(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Performing servers setup configuration with ansible...")
+
 	// Copy the playbooks file
 	c.EmbedCopier.Copy(
 		configs.AnsiblePlaybooks,
@@ -26,25 +28,37 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	}
 	privKeyPath := c.SshKeyPath
 
-	password, err := c.generatePassword(16)
-	if err != nil {
-		return err
+	// Generate password when not provided
+	if c.UserPassword == "" {
+		password, err := c.generatePassword(16)
+		if err != nil {
+			return err
+		}
+		c.UserPassword = password
 	}
 
-	// ansible-playbook -i ./hosts.cfg -u root \
+	// Prompt to save password
+	c.DisplayPasswordAlert()
+	// Legacy functionality to store password in txt
+	if err := c.FS.WriteFile("./password.txt", []byte(c.UserPassword)); err != nil {
+		return fmt.Errorf("storing password in ./password.txt file: %w", err)
+	}
+	fmt.Println(
+		styles.SuccessText.Render("Password was stored in ./password.txt file"),
+	)
+
+	// Generate ansible-playbook args
 	args := []string{
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, privKeyPath),
 		"--extra-vars", "ansible_host_key_checking=false",
 		"--extra-vars", fmt.Sprintf(`user_public_key='%s'`, pubKey),
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
-		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, password),
+		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, c.UserPassword),
 		"-i", "./hosts.cfg",
 		"-u", "root",
-		"-v",
 		"./playbooks/setup.ansible.yaml",
 	}
 
-	fmt.Println("running: ", strings.Join(args, " "))
 	cmd := exec.Command("ansible-playbook", args...)
 	connectCMDToCurrentTerm(cmd)
 

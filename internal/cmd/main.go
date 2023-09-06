@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/D8-X/d8x-cli/internal/actions"
+	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/D8-X/d8x-cli/internal/version"
 	"github.com/charmbracelet/lipgloss"
@@ -83,34 +84,40 @@ func RunD8XCli() {
 						Usage:  "Configure servers with ansible",
 						Action: container.Configure,
 					},
+					{
+						Name:   "deploy-broker",
+						Usage:  "Deploy and configure broker-server deployment",
+						Action: container.BrokerServerDeployment,
+					},
 				},
 			},
 		},
 		// Global flags accesible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name: "config-directory",
-				// Set the defaul path to configuration directory on user's home dir
+				Name: flags.ConfigDir,
+				// Set the defaul path to configuration directory on user's home
+				// dir
 				Value:       "./.d8x-config",
 				Destination: &container.ConfigDir,
 				Usage:       "Configs and secrets directory",
 			},
 			&cli.StringFlag{
-				Name:        "ssh-key-path",
+				Name:        flags.PrivateKeyPath,
 				Value:       "./id_ed25519",
 				Destination: &container.SshKeyPath,
 				Usage:       "Default ssh key path used to access servers",
 			},
 			&cli.StringFlag{
-				Name:        "user",
+				Name:        flags.User,
 				Value:       "d8xtrader",
 				Destination: &container.DefaultClusterUserName,
 				Usage:       "User which will be created on each server during provisioning and configuration. Also used ssh'ing into servers.",
 			},
 			&cli.StringFlag{
-				Name:        "password",
+				Name:        flags.Password,
 				Destination: &container.UserPassword,
-				Usage:       "User's password used for tasks requiring elevated permissions",
+				Usage:       "User's password used for tasks requiring elevated permissions, if not provided, default password file will be read.",
 			},
 			&cli.StringFlag{
 				Name:  "chdir",
