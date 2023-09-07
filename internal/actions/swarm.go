@@ -73,7 +73,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if _, err := os.Stat(c.PgCrtPath); err == nil {
 		dockerConfigsCMD = append(
 			dockerConfigsCMD,
-			"docker config create pg_ca ./deployment/pg.crt >/dev/null 2>&1",
+			"docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1",
 		)
 		copyList = append(copyList,
 			conn.SftpCopySrcDest{Src: c.PgCrtPath, Dst: "./trader-backend/pg.crt"},
@@ -94,6 +94,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 
 	// Create configs
+	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err := conn.SSHExecCommand(client,
 		fmt.Sprintf(`echo '%s' | sudo -S bash -c "%s"`, pwd, strings.Join(dockerConfigsCMD, ";")),
 	)
