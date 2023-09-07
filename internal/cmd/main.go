@@ -45,7 +45,10 @@ const SetupDescription = `Command setup performs complete D8X cluster setup.
 In essence setup calls the following subcommands in sequence:
 	- provision
 	- configure
-	- deploy
+	- broker-deploy
+	- broker-nginx
+	- swarm-deploy
+	- swarm-nginx
 
 See individual command's help for information how each step operates.
 
@@ -85,9 +88,24 @@ func RunD8XCli() {
 						Action: container.Configure,
 					},
 					{
-						Name:   "deploy-broker",
+						Name:   "broker-deploy",
 						Usage:  "Deploy and configure broker-server deployment",
 						Action: container.BrokerServerDeployment,
+					},
+					{
+						Name:   "broker-nginx",
+						Usage:  "Configure and setup nginx + certbot for broker server deployment",
+						Action: container.BrokerServerNginxCertbotSetup,
+					},
+					{
+						Name:   "swarm-deploy",
+						Usage:  "Deploy and configure d8x-trader-backend swarm cluster",
+						Action: container.SwarmDeploy,
+					},
+					{
+						Name:   "swarm-nginx",
+						Usage:  "Configure and setup nginx + certbot for d8x-trader swarm deployment",
+						Action: container.SwarmNginx,
 					},
 				},
 			},
@@ -122,6 +140,12 @@ func RunD8XCli() {
 			&cli.StringFlag{
 				Name:  "chdir",
 				Usage: "Change directory to provided one before executing anything",
+			},
+			&cli.StringFlag{
+				Name:        flags.PgCertPath,
+				Destination: &container.PgCrtPath,
+				Value:       "./pg.crt",
+				Usage:       "pg.crt certificate path",
 			},
 		},
 		Action:  container.Init,

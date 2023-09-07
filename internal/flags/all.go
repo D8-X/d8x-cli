@@ -7,4 +7,5 @@ const (
 	User           = "user"
 	ConfigDir      = "config-directory"
 	PrivateKeyPath = "ssh-key-path"
+	PgCertPath     = "pg-cert"
 )

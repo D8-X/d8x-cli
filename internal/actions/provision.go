@@ -68,6 +68,14 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Set the provisioning time
 	c.provisioningTime = time.Now()
 
+	// Pull the pgcert
+	switch i := providerConfigurer.(type) {
+	case linodeConfigurer:
+		if err := i.pullPgCert(c.HttpClient, c.PgCrtPath); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

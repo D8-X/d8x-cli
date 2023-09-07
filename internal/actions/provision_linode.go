@@ -2,8 +2,11 @@ package actions
 
 import (
 	"embed"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -112,6 +115,52 @@ func (l linodeConfigurer) generateArgs() []string {
 		"-var", fmt.Sprintf(`server_label_prefix=%s`, l.linodeNodesLabelPrefix),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, l.createBroker),
 	}
+}
+
+// pullPgCert downloads the database cluster ca certificate. Certifi
+func (l linodeConfigurer) pullPgCert(c *http.Client, outFile string) error {
+	if l.linodeDbId == "" {
+		return fmt.Errorf("linodeDbId was not provided")
+	}
+	req, err := http.NewRequest(
+		http.MethodGet,
+		fmt.Sprintf("https://api.linode.com/v4/databases/postgresql/instances/%s/ssl", l.linodeDbId),
+		nil,
+	)
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", l.linodeToken))
+	if err != nil {
+		return err
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	jsonData := map[string]string{}
+	if err := json.Unmarshal(data, &jsonData); err != nil {
+		return err
+	}
+
+	base64cert, ok := jsonData["ca_certificate"]
+	if !ok {
+		return fmt.Errorf("ca_certificate was not found in response")
+	}
+
+	pgCrtContent, err := base64.StdEncoding.DecodeString(base64cert)
+	if err != nil {
+		return err
+	}
+
+	// Write to file
+	if err := os.WriteFile(outFile, pgCrtContent, 0666); err != nil {
+		return fmt.Errorf("could not store %s: %w", outFile, err)
+	}
+
+	return nil
 }
 
 // linodeServerConfigurer collects information for the linode cluster

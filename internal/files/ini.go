@@ -7,7 +7,12 @@ import (
 	"strings"
 )
 
-func LoadHostsFile(file string) (*HostsFile, error) {
+// HostsFileLoader attempts to load and parse give file as HostsFile (hosts.cfg)
+type HostsFileLoader func(file string) (*HostsFile, error)
+
+var _ (HostsFileLoader) = (LoadHostsFileFromFS)
+
+func LoadHostsFileFromFS(file string) (*HostsFile, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
@@ -36,8 +41,17 @@ type HostsFile struct {
 // GetBrokerPublicIp gets the first broker server entry from hosts.cfg and
 // returns its public ip address
 func (h *HostsFile) GetBrokerPublicIp() (string, error) {
+	return h.FindFirstIp("[broker]")
+}
+
+func (h *HostsFile) GetMangerPublicIp() (string, error) {
+	return h.FindFirstIp("[managers]")
+}
+
+// FindFirstIp returns the first item in the next line matching of
+func (h *HostsFile) FindFirstIp(of string) (string, error) {
 	for i, l := range h.lines {
-		if strings.Contains(l, "[broker]") {
+		if strings.Contains(l, of) {
 			if i+1 < h.numLines {
 				// Ip address is the first entry
 				return strings.Split(h.lines[i+1], " ")[0], nil

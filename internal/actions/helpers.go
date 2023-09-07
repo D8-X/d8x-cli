@@ -83,7 +83,7 @@ func (c *Container) getPassword(ctx *cli.Context) (string, error) {
 		return pwd, nil
 	}
 	if pwd, err := os.ReadFile("./password.txt"); err != nil {
-		return "", err
+		return "", fmt.Errorf("could not retrieve the password: %w", err)
 	} else {
 		return string(pwd), nil
 	}

@@ -30,5 +30,17 @@ func (ac *Container) Setup(ctx *cli.Context) error {
 		return err
 	}
 
+	if err := ac.BrokerServerNginxCertbotSetup(ctx); err != nil {
+		return err
+	}
+
+	if err := ac.SwarmDeploy(ctx); err != nil {
+		return err
+	}
+
+	if err := ac.SwarmNginx(ctx); err != nil {
+		return err
+	}
+
 	return nil
 }

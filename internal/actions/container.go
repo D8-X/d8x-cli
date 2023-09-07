@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -39,12 +40,24 @@ type Container struct {
 	// Whether broker server should be provisioned and d8x-broker-server
 	// deployed.
 	CreateBrokerServer bool
+
+	LoadHostsFile files.HostsFileLoader
+
+	// pg.crt path, defaults to ./pg.crt
+	PgCrtPath string
+
+	// Default http client use for http interactions
+	HttpClient *http.Client
 }
 
 func NewDefaultContainer() *Container {
+
+	httpClient := http.DefaultClient
 	return &Container{
-		EmbedCopier: files.NewEmbedFileCopier(),
-		FS:          files.NewFileSystemInteractor(),
+		EmbedCopier:   files.NewEmbedFileCopier(),
+		FS:            files.NewFileSystemInteractor(),
+		LoadHostsFile: files.LoadHostsFileFromFS,
+		HttpClient:    httpClient,
 	}
 }
 

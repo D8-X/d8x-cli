@@ -18,7 +18,6 @@ type SftpCopySrcDest struct {
 // CopyFilesOverSftp copies the list of srcDst to remote conn.
 func CopyFilesOverSftp(
 	conn *ssh.Client,
-
 	srcDst ...SftpCopySrcDest,
 ) error {
 	s, err := sftp.NewClient(conn)
