@@ -152,6 +152,12 @@ func (c *Container) swarmCopyEmbedConfigs() error {
 }
 
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
+	// Load config which we will later use to write details about services.
+	d8xCfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
 	// Copy required configs
 	if err := c.EmbedCopier.Copy(
 		configs.NginxConfigs,
@@ -205,9 +211,21 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	)
 	components.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
 
-	hostnames, err := c.swarmNginxCollectData()
+	services, err := c.swarmNginxCollectData()
 	if err != nil {
 		return err
+	}
+	// Hostnames - domains list provided for certbot
+	hostnames := make([]string, len(services))
+	for i, svc := range services {
+		hostnames[i] = svc.server
+
+		// Store services in d8x config
+		d8xCfg.Services[svc.serviceName] = configs.D8XService{
+			Name:      svc.serviceName,
+			UsesHTTPS: setupCertbot,
+			HostName:  svc.server,
+		}
 	}
 
 	// Run ansible-playbook for nginx setup on broker server
@@ -249,54 +267,65 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		}
 	}
 
+	if err := c.ConfigRWriter.Write(d8xCfg); err != nil {
+		return fmt.Errorf("could not update config: %w", err)
+	}
+
 	return nil
+}
+
+// hostnames tuple for brevity (collecting data, prompts, replacements for
+// nginx.conf)
+type hostnameTuple struct {
+	// server value is entered by user
+	server      string
+	prompt      string
+	placeholder string
+	// string pattern which will be replaced by server value
+	find        string
+	serviceName configs.D8XServiceName
 }
 
 // swarmNginxCollectData collects hostnames information and prepares
 // nginx.configured.conf file. Returns list of hostnames provided by user
-func (c *Container) swarmNginxCollectData() ([]string, error) {
-
-	// hostnames tuple for brevity (collecting data, prompts, replacements for
-	// nginx.conf)
-	type hostnameTuple struct {
-		// server value is entered by user
-		server      string
-		prompt      string
-		placeholder string
-		// string pattern which will be replaced by server value
-		find string
-	}
+func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 
 	hostsTpl := []hostnameTuple{
 		{
 			prompt:      "Enter Main HTTP (sub)domain (e.g. main.d8x.xyz): ",
 			placeholder: "main.d8x.xyz",
 			find:        "%main%",
+			serviceName: configs.D8XServiceMainHTTP,
 		},
 		{
 			prompt:      "Enter Main Websockets (sub)domain (e.g. ws.d8x.xyz): ",
 			placeholder: "ws.d8x.xyz",
 			find:        "%main_ws%",
+			serviceName: configs.D8XServiceMainWS,
 		},
 		{
 			prompt:      "Enter History HTTP (sub)domain (e.g. history.d8x.xyz): ",
 			placeholder: "history.d8x.xyz",
 			find:        "%history%",
+			serviceName: configs.D8XServiceHistory,
 		},
 		{
 			prompt:      "Enter Referral HTTP (sub)domain (e.g. referral.d8x.xyz): ",
 			placeholder: "referral.d8x.xyz",
 			find:        "%referral%",
+			serviceName: configs.D8XServiceReferral,
 		},
 		{
 			prompt:      "Enter PXWS HTTP (sub)domain (e.g. pxws-rest.d8x.xyz): ",
 			placeholder: "rest.d8x.xyz",
 			find:        "%pxws%",
+			serviceName: configs.D8XServicePXWSHTTP,
 		},
 		{
 			prompt:      "Enter PXWS Websockets (sub)domain (e.g. pxws-ws.d8x.xyz): ",
 			placeholder: "ws.d8x.xyz",
 			find:        "%pxws_ws%",
+			serviceName: configs.D8XServicePXWS_WS,
 		},
 	}
 
@@ -346,5 +375,5 @@ func (c *Container) swarmNginxCollectData() ([]string, error) {
 		return nil, err
 	}
 
-	return hosts, nil
+	return hostsTpl, nil
 }

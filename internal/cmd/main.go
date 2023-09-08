@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/D8-X/d8x-cli/internal/actions"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/D8-X/d8x-cli/internal/version"
@@ -109,6 +111,11 @@ func RunD8XCli() {
 					},
 				},
 			},
+			{
+				Name:   "health",
+				Usage:  "Perform health checks of deployed services",
+				Action: container.HealthCheck,
+			},
 		},
 		// Global flags accesible to all subcommands
 		Flags: []cli.Flag{
@@ -128,7 +135,7 @@ func RunD8XCli() {
 			},
 			&cli.StringFlag{
 				Name:        flags.User,
-				Value:       "d8xtrader",
+				Value:       configs.DEFAULT_USER_NAME,
 				Destination: &container.DefaultClusterUserName,
 				Usage:       "User which will be created on each server during provisioning and configuration. Also used ssh'ing into servers.",
 			},
@@ -151,6 +158,13 @@ func RunD8XCli() {
 		Action:  container.Init,
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
+			// Create d8x.conf config read writer. We can only do this here,
+			// because config directory is not know when initializing containter
+			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
+				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
+			)
+
+			// Chdir functionality
 			if ch := ctx.String("chdir"); ch != "" {
 				err := os.Chdir(ch)
 				if err != nil {
@@ -158,7 +172,20 @@ func RunD8XCli() {
 				}
 			}
 
-			fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2, 0, 2).Border(lipgloss.NormalBorder()).Render(D8XASCII))
+			// Welcome msg
+			fmt.Println(
+				styles.PurpleBgText.
+					Copy().
+					Padding(0, 2, 0, 2).
+					Border(lipgloss.NormalBorder()).
+					Render(D8XASCII),
+			)
+
+			// Create config directory if it does not exist already
+			if err := container.MakeConfigDir(); err != nil {
+				return fmt.Errorf("could not create config directory: %w", err)
+			}
+
 			return nil
 		},
 	}

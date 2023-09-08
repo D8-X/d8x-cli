@@ -15,6 +15,9 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// BrokerServerDeployment collects information related to broker-server
+// deploymend, copies the configurations files to remote broker host and deploys
+// the docker-compose d8x-broker-server setup.
 func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment and nginx configuration...")
 
@@ -129,6 +132,13 @@ func (c *Container) getBrokerServerIp() (string, error) {
 func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Performing nginx and certbot setup for broker server...")
 
+	// Load config which we will later use to write details about broker sever
+	// service.
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
 	nginxConfigNameTPL := "./nginx-broker.tpl.conf"
 	nginxConfigName := "./nginx-broker.configured.conf"
 	if err := c.EmbedCopier.Copy(
@@ -156,8 +166,10 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
+	// Print alert about configs
 	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
 	fmt.Println("Broker server IP address: ", brokerIpAddr)
+
 	setupNginx, err := components.NewPrompt("Do you want to setup nginx for broker-server?", true)
 	if err != nil {
 		return err
@@ -217,6 +229,12 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render("Broker server nginx setup done!"))
+
+			// Add config entry for the service
+			cfg.Services[configs.D8XServiceBrokerServer] = configs.D8XService{
+				Name:     configs.D8XServiceBrokerServer,
+				HostName: brokerServerName,
+			}
 		}
 	}
 
@@ -236,7 +254,18 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render("Broker server certificates setup done!"))
+
+			// Update config
+			if val, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				val.UsesHTTPS = true
+				cfg.Services[configs.D8XServiceBrokerServer] = val
+			}
+
 		}
+	}
+
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return fmt.Errorf("could not update config: %w", err)
 	}
 
 	return nil

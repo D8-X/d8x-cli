@@ -7,13 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/files"
 )
 
 // Container is the cli container which provides all the command and subcommand
 // actions
 type Container struct {
-	// ConfigDir is the configuration directory path, defaults to ~/.config/d8x
+	// ConfigDir is the configuration directory path
 	ConfigDir string
 
 	// Default ssh key pathname. Defaults to ./id_ed25519 for private key. For
@@ -48,6 +49,8 @@ type Container struct {
 
 	// Default http client use for http interactions
 	HttpClient *http.Client
+
+	ConfigRWriter configs.D8XConfigReadWriter
 }
 
 func NewDefaultContainer() *Container {

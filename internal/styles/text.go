@@ -20,15 +20,11 @@ var (
 
 	ErrorText = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#9a031e")).
-			PaddingLeft(1).
-			PaddingRight(1)
+			Foreground(lipgloss.Color("#9a031e"))
 
 	SuccessText = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#09814a")).
-			PaddingLeft(1).
-			PaddingRight(1)
+			Foreground(lipgloss.Color("#09814a"))
 
 	ItalicText = lipgloss.NewStyle().
 			Italic(true)
