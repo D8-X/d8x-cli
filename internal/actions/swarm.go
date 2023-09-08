@@ -162,8 +162,8 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	}
 	if err := c.EmbedCopier.Copy(
 		configs.AnsiblePlaybooks,
-		"./playbooks/nginx.ansible.yml",
-		"playbooks/nginx.ansible.yml",
+		"./playbooks/nginx.ansible.yaml",
+		"playbooks/nginx.ansible.yaml",
 	); err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	if err := cmd.Run(); err != nil {
 		return err
 	} else {
-		fmt.Println(styles.SuccessText.Render("Broker server nginx setup done!"))
+		fmt.Println(styles.SuccessText.Render("Manager node nginx setup done!"))
 	}
 
 	if setupCertbot {
@@ -303,6 +303,7 @@ func (c *Container) swarmNginxCollectData() ([]string, error) {
 	hosts := make([]string, len(hostsTpl))
 	replacements := make([]files.ReplacementTuple, len(hostsTpl))
 	for i, h := range hostsTpl {
+		fmt.Println(h.prompt)
 		input, err := components.NewInput(
 			components.TextInputOptPlaceholder(h.placeholder),
 		)
@@ -326,7 +327,7 @@ func (c *Container) swarmNginxCollectData() ([]string, error) {
 			h.server,
 		)
 	}
-	correct, err := components.NewPrompt("Are these value correct?", true)
+	correct, err := components.NewPrompt("Are these values correct?", true)
 	if err != nil {
 		return nil, err
 	}
@@ -338,8 +339,8 @@ func (c *Container) swarmNginxCollectData() ([]string, error) {
 	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))
 	// Replace server_name's in nginx.conf
 	if err := c.FS.ReplaceAndCopy(
-		"./nginx.configured.conf",
 		"./trader-backend/nginx-swarm.tpl.conf",
+		"./nginx.configured.conf",
 		replacements,
 	); err != nil {
 		return nil, err
