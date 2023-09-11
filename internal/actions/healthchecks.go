@@ -171,11 +171,7 @@ func (m healthCheckModel) allDone() bool {
 			numDone++
 		}
 	}
-	if numDone == len(m.services) {
-		return true
-	}
-
-	return false
+	return numDone == len(m.services)
 }
 
 func (h healthCheckModel) View() string {

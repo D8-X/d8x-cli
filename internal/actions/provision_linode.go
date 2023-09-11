@@ -163,15 +163,49 @@ func (l linodeConfigurer) pullPgCert(c *http.Client, outFile string) error {
 	return nil
 }
 
+func getRegionItemByRegionId(regionId string) components.ListItem {
+	for _, item := range linodeRegions {
+		if item.ItemTitle == regionId {
+			return item
+		}
+	}
+	return components.ListItem{}
+}
+
 // linodeServerConfigurer collects information for the linode cluster
 // provisioning and creates linode ServerProviderConfigurer
 func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l := linodeConfigurer{}
 
+	// Attempt to load defaults from config
+	var (
+		defaultToken              = ""
+		defaultClusterLabelPrefix = "d8x-cluster"
+		defaultDbId               = ""
+		defaultRegion             = ""
+	)
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return nil, err
+	}
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if cfg.LinodeConfig != nil {
+			defaultToken = cfg.LinodeConfig.Token
+			defaultDbId = cfg.LinodeConfig.DbId
+			defaultRegion = cfg.LinodeConfig.Region
+			defaultClusterLabelPrefix = cfg.LinodeConfig.LabelPrefix
+		}
+	}
+	var defaultRegionItem components.ListItem
+	if len(defaultRegion) > 0 {
+		defaultRegionItem = getRegionItemByRegionId(defaultRegion)
+	}
+
 	// Token
 	fmt.Println("Enter your Linode API token")
 	token, err := components.NewInput(
 		components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
+		components.TextInputOptValue(defaultToken),
 	)
 	if err != nil {
 		return nil, err
@@ -182,6 +216,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	fmt.Println("Enter your Linode database cluster ID")
 	dbId, err := components.NewInput(
 		components.TextInputOptPlaceholder("12345678"),
+		components.TextInputOptValue(defaultDbId),
 	)
 	if err != nil {
 		return nil, err
@@ -189,7 +224,11 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l.linodeDbId = dbId
 
 	// Region
-	selected, err := components.NewList(linodeRegions, "Choose the Linode cluster region")
+	selected, err := components.NewList(
+		linodeRegions,
+		"Choose the Linode cluster region",
+		components.ListOptSelectedItem(defaultRegionItem),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +247,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	fmt.Println("Enter your Linode nodes label prefix")
 	label, err := components.NewInput(
 		components.TextInputOptPlaceholder("my-d8x-cluster"),
-		components.TextInputOptValue("d8x-cluster"),
+		components.TextInputOptValue(defaultClusterLabelPrefix),
 	)
 	if err != nil {
 		return nil, err

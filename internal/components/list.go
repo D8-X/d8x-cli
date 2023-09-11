@@ -46,7 +46,7 @@ func (m listModel) View() string {
 	return docStyle.Render(m.list.View())
 }
 
-func NewList(listItems []ListItem, listTitle string) (ListItem, error) {
+func NewList(listItems []ListItem, listTitle string, opts ...ListOpt) (ListItem, error) {
 	items := make([]list.Item, len(listItems))
 
 	for i, itm := range listItems {
@@ -57,6 +57,11 @@ func NewList(listItems []ListItem, listTitle string) (ListItem, error) {
 	m.list.Title = listTitle
 	m.list.Styles.Title = styles.PurpleBgText.Copy().Padding(0, 1, 0, 1)
 
+	// Apply opts after list is initialized
+	for _, opt := range opts {
+		opt(&m)
+	}
+
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	mdl, err := p.Run()
@@ -64,4 +69,17 @@ func NewList(listItems []ListItem, listTitle string) (ListItem, error) {
 		return ListItem{}, err
 	}
 	return mdl.(listModel).list.SelectedItem().(ListItem), nil
+}
+
+type ListOpt func(*listModel)
+
+// Set the default selected item
+func ListOptSelectedItem(item ListItem) ListOpt {
+	return func(model *listModel) {
+		for i, itm := range model.list.Items() {
+			if itm == item {
+				model.list.Select(i)
+			}
+		}
+	}
 }

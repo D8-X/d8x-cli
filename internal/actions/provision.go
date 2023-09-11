@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -19,6 +20,12 @@ const (
 
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
+
+	// Load config for storing server provider details
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
 
 	fmt.Println("Select your server provider")
 
@@ -36,7 +43,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	}
 
 	if len(selected) <= 0 {
-		return fmt.Errorf("At least one server provider must be selected")
+		return fmt.Errorf("at least one server provider must be selected")
 	}
 
 	providerConfigurer, err := c.configureServerProviderForTF(SupportedServerProvider(selected[0]))
@@ -68,12 +75,26 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Set the provisioning time
 	c.provisioningTime = time.Now()
 
-	// Pull the pgcert
+	// Perform providerd dependent actions
 	switch i := providerConfigurer.(type) {
 	case linodeConfigurer:
+		// Pull the cert
 		if err := i.pullPgCert(c.HttpClient, c.PgCrtPath); err != nil {
 			return err
 		}
+
+		// Write linode config to cfg
+		cfg.ServerProvider = configs.D8XServerProviderLinode
+		cfg.LinodeConfig = &configs.D8XLinodeConfig{
+			Token:       i.linodeToken,
+			DbId:        i.linodeDbId,
+			Region:      i.linodeRegion,
+			LabelPrefix: i.linodeNodesLabelPrefix,
+		}
+	}
+
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
 	}
 
 	return nil

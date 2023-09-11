@@ -78,7 +78,7 @@ func (c *Container) DisplayPasswordAlert() {
 // Get password gets the password with the following precedence:
 // 1. --password flag
 // 2. ./password.txt file in cwd
-func (c *Container) getPassword(ctx *cli.Context) (string, error) {
+func (c *Container) GetPassword(ctx *cli.Context) (string, error) {
 	if pwd := ctx.String(flags.Password); pwd != "" {
 		return pwd, nil
 	}

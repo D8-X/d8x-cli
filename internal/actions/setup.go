@@ -4,12 +4,23 @@ import (
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
 
 func (ac *Container) Setup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Running full setup...")
+
+	// Clean up the config
+	if ok, err := components.NewPrompt("Do you want to start clean and flush all configs (recommended for first time setup)?", true); ok {
+		if err != nil {
+			return err
+		}
+		if err := ac.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
+			return err
+		}
+	}
 
 	if err := ac.Provision(ctx); err != nil {
 		return err

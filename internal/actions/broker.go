@@ -77,7 +77,7 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 		return err
 	}
 	bsd.brokerFeeTBPS = tbps
-	password, err := c.getPassword(ctx)
+	password, err := c.GetPassword(ctx)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
-	password, err := c.getPassword(ctx)
+	password, err := c.GetPassword(ctx)
 	if err != nil {
 		return err
 	}

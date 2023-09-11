@@ -39,7 +39,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("finding manager ip address: %w", err)
 	}
 
-	pwd, err := c.getPassword(ctx)
+	pwd, err := c.GetPassword(ctx)
 	if err != nil {
 		return err
 	}
@@ -176,7 +176,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	password, err := c.getPassword(ctx)
+	password, err := c.GetPassword(ctx)
 	if err != nil {
 		return err
 	}

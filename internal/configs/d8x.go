@@ -25,7 +25,24 @@ const (
 )
 
 type D8XConfig struct {
-	Services map[D8XServiceName]D8XService `json:"services"`
+	Services       map[D8XServiceName]D8XService `json:"services"`
+	ServerProvider D8XServerProvider             `json:"server_provider"`
+
+	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
+}
+
+type D8XServerProvider string
+
+const (
+	D8XServerProviderLinode D8XServerProvider = "linode"
+	D8XServerProviderAWS    D8XServerProvider = "aws"
+)
+
+type D8XLinodeConfig struct {
+	Token       string `json:"linode_token"`
+	DbId        string `json:"db_id"`
+	Region      string `json:"region"`
+	LabelPrefix string `json:"label_prefix"`
 }
 
 type D8XService struct {
@@ -77,6 +94,12 @@ func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
 			return nil, err
 		}
 	}
+
+	// Make sure we initialize nil-able fields
+	if cfg.Services == nil {
+		cfg.Services = make(map[D8XServiceName]D8XService)
+	}
+
 	return cfg, nil
 }
 

@@ -25,8 +25,8 @@ type Container struct {
 	// have ssh key provided via SshKeyPath added to authorized_keys
 	DefaultClusterUserName string
 	// Password of DefaultClusterUserName. If not provided, attempt to read
-	// password from ./password.txt will be made. If Configuration action was
-	// executed, the password value will be set.
+	// password from ./password.txt will be made in Before action. If
+	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
 	EmbedCopier files.EmbedMultiFileToDestCopier

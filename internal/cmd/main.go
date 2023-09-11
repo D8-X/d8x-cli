@@ -44,6 +44,11 @@ need to have python3 and pip installed on your system
 
 const SetupDescription = `Command setup performs complete D8X cluster setup.
 
+Setup should be performed only once! Once cluster is provisioned and deployed,
+you should use one of the individual setup subcommands. Calling setup on
+provisioned cluster might result in data corruption: password.txt overwrites,
+ssh key overwrites, misconfiguration of servers, etc.
+
 In essence setup calls the following subcommands in sequence:
 	- provision
 	- configure
@@ -184,6 +189,15 @@ func RunD8XCli() {
 			// Create config directory if it does not exist already
 			if err := container.MakeConfigDir(); err != nil {
 				return fmt.Errorf("could not create config directory: %w", err)
+			}
+
+			// Retrieve the user password whenever possible
+			if container.UserPassword == "" {
+				pwd, err := container.GetPassword(ctx)
+				if err == nil && len(pwd) > 0 {
+					container.UserPassword = pwd
+					fmt.Printf("User password retrieved from %s\n", configs.DEFAULT_PASSWORD_FILE)
+				}
 			}
 
 			return nil
