@@ -26,7 +26,7 @@ func CopyFilesOverSftp(
 	}
 
 	for _, cp := range srcDst {
-		// Endure dir exists on remote
+		// Ensure dir exists on remote
 		dir := path.Dir(cp.Dst)
 		if err := s.MkdirAll(dir); err != nil {
 			return err

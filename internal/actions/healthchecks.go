@@ -60,9 +60,12 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 			}
 		}(ch, shs)
 	}
-	if _, err := tea.NewProgram(initHealthCheckModel(svcsForModel)).Run(); err != nil {
+	mdl, err := tea.NewProgram(initHealthCheckModel(svcsForModel)).Run()
+	if err != nil {
 		return err
 	}
+
+	mdl.(healthCheckModel).allDone()
 
 	return nil
 

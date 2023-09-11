@@ -29,7 +29,7 @@ type Container struct {
 	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
-	EmbedCopier files.EmbedMultiFileToDestCopier
+	EmbedCopier files.EmbedFileCopier
 
 	FS files.FSInteractor
 

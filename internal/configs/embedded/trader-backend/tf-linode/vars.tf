@@ -1,7 +1,7 @@
 variable "num_workers" {
   type        = number
   description = "Number of worker nodes to create"
-  default     = 3
+  default     = 4
 }
 
 variable "region" {

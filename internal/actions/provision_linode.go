@@ -73,22 +73,22 @@ func copyEmbedFilesToDest(dest *os.File, embedFS embed.FS, embedFiles ...string)
 // servers for default user and does some other neccessary configuration.
 func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	// Copy terraform files to cwd/linode.tf
-	if err := c.EmbedCopier.Copy(
-		configs.TraderBackendConfigs,
+	if err := c.EmbedCopier.CopyMultiToDest(
+		configs.EmbededConfigs,
 		// Dest
 		"./linode.tf",
 		// Embed paths must be in this order: main.tf output.tf vars.tf
-		"trader-backend/tf-linode/main.tf",
-		"trader-backend/tf-linode/output.tf",
-		"trader-backend/tf-linode/vars.tf",
+		"embedded/trader-backend/tf-linode/main.tf",
+		"embedded/trader-backend/tf-linode/output.tf",
+		"embedded/trader-backend/tf-linode/vars.tf",
 	); err != nil {
 		return nil, fmt.Errorf("generating lindode.tf file: %w", err)
 	}
 	// Cp inventory.tpl for hosts.cfg
-	if err := c.EmbedCopier.Copy(
-		configs.TraderBackendConfigs,
+	if err := c.EmbedCopier.CopyMultiToDest(
+		configs.EmbededConfigs,
 		"./inventory.tpl",
-		"trader-backend/tf-linode/inventory.tpl",
+		"embedded/trader-backend/tf-linode/inventory.tpl",
 	); err != nil {
 		return nil, fmt.Errorf("generating inventory.tpl file: %w", err)
 	}

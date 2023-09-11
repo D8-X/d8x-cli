@@ -41,11 +41,20 @@ type HostsFile struct {
 // GetBrokerPublicIp gets the first broker server entry from hosts.cfg and
 // returns its public ip address
 func (h *HostsFile) GetBrokerPublicIp() (string, error) {
-	return h.FindFirstIp("[broker]")
+	ip, err := h.FindFirstIp("[broker]")
+	if err != nil {
+		return "", fmt.Errorf("broker ip was not found in hosts file: %w", err)
+	}
+	return ip, nil
+
 }
 
 func (h *HostsFile) GetMangerPublicIp() (string, error) {
-	return h.FindFirstIp("[managers]")
+	ip, err := h.FindFirstIp("[managers]")
+	if err != nil {
+		return "", fmt.Errorf("manager ip was not found in hosts file: %w", err)
+	}
+	return ip, nil
 }
 
 // FindFirstIp returns the first item in the next line matching of

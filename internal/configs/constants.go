@@ -12,4 +12,7 @@ const (
 
 	// File where password for DEFAULT_USER_NAME will be stored
 	DEFAULT_PASSWORD_FILE = "./password.txt"
+
+	// Default ansible hosts.cfg (ini format) file path
+	DEFAULT_HOSTS_FILE = "./hosts.cfg"
 )

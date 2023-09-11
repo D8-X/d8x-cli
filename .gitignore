@@ -4,3 +4,5 @@
 d8x
 
 build/
+
+.d8x-config/

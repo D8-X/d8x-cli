@@ -30,8 +30,6 @@ const CmdUsage = "D8X Backend management CLI tool"
 // MainDescription is the description text for d8x cli tool
 const MainDescription = `D8X Perpetual Exchange broker backend setup and management CLI tool 
 
-<More description entered here>
-
 Running d8x without any subcommands or init command will perform initalization
 of ./.d8x-config directory (--config-directory), as well as prompt you to
 install any missing dependencies.
@@ -40,6 +38,9 @@ D8X CLI relies on the following external tools: terraform, ansible. You can
 manually install them or let the cli attempt to perform the installation of
 these dependencies automatically. Note that for automatic installation you will
 need to have python3 and pip installed on your system
+
+For cluster provisioning and configuration, see the setup command and its 
+subcommands.
 `
 
 const SetupDescription = `Command setup performs complete D8X cluster setup.
@@ -83,6 +84,17 @@ func RunD8XCli() {
 				Usage:       "Full setup of d8x backend cluster",
 				Description: SetupDescription,
 				Action:      container.Setup,
+				Before: func(ctx *cli.Context) error {
+					// Retrieve the user password whenever possible
+					if container.UserPassword == "" {
+						pwd, err := container.GetPassword(ctx)
+						if err == nil && len(pwd) > 0 {
+							container.UserPassword = pwd
+							fmt.Printf("User password retrieved from %s\n", configs.DEFAULT_PASSWORD_FILE)
+						}
+					}
+					return nil
+				},
 				Subcommands: []*cli.Command{
 					{
 						Name:   "provision",
@@ -120,6 +132,12 @@ func RunD8XCli() {
 				Name:   "health",
 				Usage:  "Perform health checks of deployed services",
 				Action: container.HealthCheck,
+			},
+			{
+				Name:      "ip",
+				Usage:     "Retrieve node ip addresses",
+				ArgsUsage: "manager|broker",
+				Action:    container.Ips,
 			},
 		},
 		// Global flags accesible to all subcommands
@@ -189,15 +207,6 @@ func RunD8XCli() {
 			// Create config directory if it does not exist already
 			if err := container.MakeConfigDir(); err != nil {
 				return fmt.Errorf("could not create config directory: %w", err)
-			}
-
-			// Retrieve the user password whenever possible
-			if container.UserPassword == "" {
-				pwd, err := container.GetPassword(ctx)
-				if err == nil && len(pwd) > 0 {
-					container.UserPassword = pwd
-					fmt.Printf("User password retrieved from %s\n", configs.DEFAULT_PASSWORD_FILE)
-				}
 			}
 
 			return nil

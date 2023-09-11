@@ -18,15 +18,26 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
 	// Copy embed files before starting
-	if err := c.swarmCopyEmbedConfigs(); err != nil {
+	filesToCopy := []files.EmbedCopierOp{
+		// Trader backend configs
+		{Src: "embedded/trader-backend/.env.example", Dst: "./trader-backend/.env", Overwrite: false},
+		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
+		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
+		{Src: "embedded/trader-backend/live.wsConfig.json", Dst: "./trader-backend/live.wsConfig.json", Overwrite: false},
+		// Candles configs
+		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
+		// Docker swarm file
+		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
+	}
+	err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...)
+	if err != nil {
 		return err
 	}
 	fmt.Println(styles.AlertImportant.Render("Please make sure you edit your .env and configuration files!"))
 	fmt.Println("The following configuration files will be copied to manager node for d8x-trader-backend swarm deploymend:")
-	fmt.Println("./trader-backend/.env")
-	fmt.Println("./trader-backend/live.referralSettings.json")
-	fmt.Println("./trader-backend/live.rpc.json")
-	fmt.Println("./trader-backend/live.wsConfig.json")
+	for _, f := range filesToCopy {
+		fmt.Println(f.Dst)
+	}
 	components.NewConfirmation("Confirm that your configs and .env are updated according your needs...")
 
 	hosts, err := c.LoadHostsFile("./hosts.cfg")
@@ -56,10 +67,11 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
-		"docker config rm cfg_rpc cfg_referral cfg_wscfg pg_ca",
+		"docker config rm cfg_rpc cfg_referral cfg_wscfg pg_ca cfg_candles",
 		"docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1",
 		"docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1",
 		"docker config create cfg_wscfg ./trader-backend/live.wsConfig.json >/dev/null 2>&1",
+		"docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1",
 	}
 
 	// List of files to transfer to manager
@@ -68,9 +80,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
 		{Src: "./trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json"},
 		{Src: "./trader-backend/live.wsConfig.json", Dst: "./trader-backend/live.wsConfig.json"},
-		{Src: "./trader-backend/docker-stack.yml", Dst: "./trader-backend/docker-stack.yml"},
+		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
+		// Note we are renaming to docker-stack.yml on remote!
+		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
-
 	// Include pg.cert
 	if _, err := os.Stat(c.PgCrtPath); err == nil {
 		dockerConfigsCMD = append(
@@ -83,7 +96,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	} else {
 		return fmt.Errorf(c.PgCrtPath + " was not found!")
 	}
-
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
 	if err := conn.CopyFilesOverSftp(
@@ -109,7 +121,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
 	swarmDeployCMD := fmt.Sprintf(
-		`cd ./trader-backend && echo '%s' | sudo -S bash -c ". .env && docker compose -f ./docker-stack.yml config | sed -E 's/published: \"([0-9]+)\"/published: \1/g' | sed -E 's/^name: .*$/ /'|  docker stack deploy -c - stack"`,
+		`echo '%s' | sudo -S bash -c ". ./trader-backend/.env && docker compose -f ./docker-stack.yml config | sed -E 's/published: \"([0-9]+)\"/published: \1/g' | sed -E 's/^name: .*$/ /'|  docker stack deploy -c - stack"`,
 		pwd,
 	)
 	out, err = conn.SSHExecCommand(client, swarmDeployCMD)
@@ -122,37 +134,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	return nil
 }
 
-// swarmCopyEmbedConfigs copies all configs required for trader-backend setup
-// into ./trader-backend/ directory. Any existing configs are not overwritten.
-func (c *Container) swarmCopyEmbedConfigs() error {
-
-	dir := "./trader-backend/"
-	// local destination - embed.FS source for copying
-	localDestEmbedSrc := [][]string{
-		{dir + ".env", "trader-backend/.env.example"},
-		{dir + "live.referralSettings.json", "trader-backend/live.referralSettings.json"},
-		{dir + "live.rpc.json", "trader-backend/live.rpc.json"},
-		{dir + "live.wsConfig.json", "trader-backend/live.wsConfig.json"},
-		{dir + "docker-stack.yml", "trader-backend/docker-stack.yml"},
-	}
-
-	for _, tuple := range localDestEmbedSrc {
-		// Only copy if file does not exist
-		if _, err := os.Stat(tuple[0]); err != nil {
-			if err := c.EmbedCopier.Copy(
-				configs.TraderBackendConfigs,
-				tuple[0],
-				tuple[1],
-			); err != nil {
-				return err
-			}
-
-			fmt.Printf("File created: %s\n", tuple[0])
-		}
-	}
-	return nil
-}
-
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	// Load config which we will later use to write details about services.
 	d8xCfg, err := c.ConfigRWriter.Read()
@@ -160,18 +141,11 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	// Copy required configs
+	// Copy nginx config and ansible playbook for swarm nginx setup
 	if err := c.EmbedCopier.Copy(
-		configs.NginxConfigs,
-		"./trader-backend/nginx-swarm.tpl.conf",
-		"nginx/nginx.conf",
-	); err != nil {
-		return err
-	}
-	if err := c.EmbedCopier.Copy(
-		configs.AnsiblePlaybooks,
-		"./playbooks/nginx.ansible.yaml",
-		"playbooks/nginx.ansible.yaml",
+		configs.EmbededConfigs,
+		files.EmbedCopierOp{Src: "embedded/nginx/nginx.conf", Dst: "./nginx/nginx.conf", Overwrite: true},
+		files.EmbedCopierOp{Src: "embedded/playbooks/nginx.ansible.yaml", Dst: "./playbooks/nginx.ansible.yaml", Overwrite: true},
 	); err != nil {
 		return err
 	}
@@ -235,7 +209,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, c.SshKeyPath),
 		"--extra-vars", "ansible_host_key_checking=false",
 		"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, password),
-		"-i", "./hosts.cfg",
+		"-i", configs.DEFAULT_HOSTS_FILE,
 		"-u", c.DefaultClusterUserName,
 		"./playbooks/nginx.ansible.yaml",
 	}
@@ -329,6 +303,12 @@ func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 			find:        "%pxws_ws%",
 			serviceName: configs.D8XServicePXWS_WS,
 		},
+		{
+			prompt:      "Enter Candlesticks Websockets (sub)domain (e.g. candles.d8x.xyz): ",
+			placeholder: "candles.d8x.xyz",
+			find:        "%candles_ws%",
+			serviceName: configs.D8XServiceCandlesWs,
+		},
 	}
 
 	hosts := make([]string, len(hostsTpl))
@@ -370,7 +350,7 @@ func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))
 	// Replace server_name's in nginx.conf
 	if err := c.FS.ReplaceAndCopy(
-		"./trader-backend/nginx-swarm.tpl.conf",
+		"./nginx/nginx.conf",
 		"./nginx.configured.conf",
 		replacements,
 	); err != nil {

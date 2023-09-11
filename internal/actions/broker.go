@@ -23,25 +23,17 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 
 	// Dest filenames, TODO - centralize this via flags
 	var (
-		chainConfig   = "./chainConfig.json"
-		dockerCompose = "./docker-compose-broker-server.yml"
+		chainConfig   = "./broker-server/chainConfig.json"
+		dockerCompose = "./broker-server/docker-compose.yml"
 	)
-	// Copy the config files and prompt user to edit it
+	// Copy the config files and nudge user to review them
 	if err := c.EmbedCopier.Copy(
-		configs.BrokerServerConfigs,
-		chainConfig,
-		"broker-server/chainConfig.json",
+		configs.EmbededConfigs,
+		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: chainConfig, Overwrite: false},
+		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: dockerCompose, Overwrite: true},
 	); err != nil {
 		return err
 	}
-	if err := c.EmbedCopier.Copy(
-		configs.BrokerServerConfigs,
-		dockerCompose,
-		"broker-server/docker-compose.yml",
-	); err != nil {
-		return err
-	}
-
 	absChainConfig, err := filepath.Abs(chainConfig)
 	if err != nil {
 		return err
@@ -141,17 +133,11 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 	nginxConfigNameTPL := "./nginx-broker.tpl.conf"
 	nginxConfigName := "./nginx-broker.configured.conf"
+
 	if err := c.EmbedCopier.Copy(
-		configs.NginxConfigs,
-		nginxConfigNameTPL,
-		"nginx/nginx-broker.conf",
-	); err != nil {
-		return err
-	}
-	if err := c.EmbedCopier.Copy(
-		configs.AnsiblePlaybooks,
-		"./playbooks/broker.ansible.yaml",
-		"playbooks/broker.ansible.yaml",
+		configs.EmbededConfigs,
+		files.EmbedCopierOp{Src: "embedded/nginx/nginx-broker.conf", Dst: nginxConfigNameTPL, Overwrite: true},
+		files.EmbedCopierOp{Src: "embedded/playbooks/broker.ansible.yaml", Dst: "./playbooks/broker.ansible.yaml", Overwrite: true},
 	); err != nil {
 		return err
 	}

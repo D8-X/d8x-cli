@@ -8,6 +8,8 @@ import (
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
+// D8XServiceName is the name of the service that is deployed by d8x-cli and
+// exposed to the public internet via subdomain.
 type D8XServiceName string
 
 const (
@@ -22,6 +24,8 @@ const (
 
 	D8XServicePXWSHTTP D8XServiceName = "pxws_http"
 	D8XServicePXWS_WS  D8XServiceName = "pxws_ws"
+
+	D8XServiceCandlesWs D8XServiceName = "candles_ws"
 )
 
 type D8XConfig struct {

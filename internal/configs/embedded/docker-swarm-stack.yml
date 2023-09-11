@@ -125,11 +125,58 @@ services:
         target: /pg.crt
     networks:
       - d8x_backend
-      
+
+  candles-pyth-client:
+      image: ghcr.io/d8-x/d8x-candles-pyth-client:main
+      environment:
+        - REDIS_PW=${REDIS_PASSWORD}
+        - REDIS_ADDR="redis:6379"
+        # Use different database tha
+        - REDIS_DB_NUM=1
+        - CONFIG_PATH=/cfg_candles
+      networks:
+        - candles
+      restart: on-failure
+      logging:
+        options:
+          max-size: "10m"
+          max-file: "10"
+      configs:  
+        - cfg_candles
+      deploy:
+        replicas: 1
+
+  # Candles websockets server
+  candles-ws-server:
+    image: ghcr.io/d8-x/d8x-candles-ws-server:main
+    ports:
+      - 3007:8080
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR="redis:6379"
+      # Use different database tha
+      - REDIS_DB_NUM=1
+      - CONFIG_PATH=/cfg_candles
+      - WS_ADDR="0.0.0.0:8080"
+    networks:
+      - candles
+    restart: on-failure
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
+    configs:  
+      - cfg_candles
+    deploy:
+      replicas: 1
+
+
 networks:
   d8x_backend:
     driver: overlay
     name: d8x_backend
+  candles:
+    driver: overlay
 configs:
   cfg_rpc:
     external: true
@@ -138,4 +185,6 @@ configs:
   cfg_wscfg:
     external: true
   pg_ca:
+    external: true
+  cfg_candles:
     external: true

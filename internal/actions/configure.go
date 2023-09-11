@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -16,11 +17,12 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Performing servers setup configuration with ansible...")
 
 	// Copy the playbooks file
-	c.EmbedCopier.Copy(
-		configs.AnsiblePlaybooks,
-		"./playbooks/setup.ansible.yaml",
-		"playbooks/setup.ansible.yaml",
-	)
+	if err := c.EmbedCopier.Copy(
+		configs.EmbededConfigs,
+		files.EmbedCopierOp{Src: "embedded/playbooks/setup.ansible.yaml", Dst: "./playbooks/setup.ansible.yaml", Overwrite: true},
+	); err != nil {
+		return err
+	}
 
 	pubKey, err := c.getPublicKey()
 	if err != nil {
