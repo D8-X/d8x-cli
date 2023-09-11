@@ -42,5 +42,11 @@ func (ac *Container) Setup(ctx *cli.Context) error {
 		return err
 	}
 
+	if ok, _ := components.NewPrompt("Do you want to perform services healthchecks?", true); ok {
+		if err := ac.HealthCheck(ctx); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

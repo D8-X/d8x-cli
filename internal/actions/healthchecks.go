@@ -50,6 +50,7 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 		go func(ch chan healthCheckMsg, s *serviceHostnameStatus) {
 			for info := range ch {
 				if info.done {
+					s.responseStatus = info.responseStatus
 					s.done = true
 					s.success = info.success
 					return
@@ -68,9 +69,10 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 }
 
 type healthCheckMsg struct {
-	done        bool
-	success     bool
-	nextTimeout time.Time
+	done           bool
+	success        bool
+	nextTimeout    time.Time
+	responseStatus int
 }
 
 func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D8XService, timeout time.Duration) error {
@@ -82,7 +84,8 @@ func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D
 		return nil
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	nextTimeout, _ := ctx.Deadline()
 	ch <- healthCheckMsg{nextTimeout: nextTimeout}
 	ctx.Deadline()
@@ -94,11 +97,12 @@ func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D
 	if err != nil {
 		return err
 	}
-	_, err = c.HttpClient.Do(req)
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return c.healthCheckWithBackoff(ch, svc, timeout*2)
 	} else {
-		ch <- healthCheckMsg{done: true, success: true}
+
+		ch <- healthCheckMsg{done: true, success: true, responseStatus: resp.StatusCode}
 	}
 
 	return nil
@@ -116,6 +120,7 @@ type serviceHostnameStatus struct {
 	currentCtxDeadline time.Time
 	done               bool
 	success            bool
+	responseStatus     int
 }
 
 var _ (tea.Model) = (*healthCheckModel)(nil)
@@ -152,19 +157,27 @@ func (m healthCheckModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 
 		// Check if all service checks are done
-		numDone := 0
-		for _, svc := range m.services {
-			if svc.done {
-				numDone++
-			}
-		}
-		if numDone == len(m.services) {
+		if m.allDone() {
 			return m, tea.Quit
 		}
 
 		return m, cmd
 	}
 }
+func (m healthCheckModel) allDone() bool {
+	numDone := 0
+	for _, svc := range m.services {
+		if svc.done {
+			numDone++
+		}
+	}
+	if numDone == len(m.services) {
+		return true
+	}
+
+	return false
+}
+
 func (h healthCheckModel) View() string {
 	b := strings.Builder{}
 
@@ -172,12 +185,26 @@ func (h healthCheckModel) View() string {
 		spinner := ""
 		sendingRequestTime := ""
 		retry := ""
+		responseStatus := ""
+		reachable := ""
 		if svc.done {
 			if svc.success {
 				spinner = ok
+				reachable = "service was reached"
 			} else {
 				spinner = notok
+				reachable = "service unreachable"
 			}
+
+			responseStatus = "HTTP Status (" + strconv.Itoa(svc.responseStatus) + ")"
+
+			if svc.responseStatus >= 200 && svc.responseStatus < 500 {
+				responseStatus = styles.SuccessText.Render(responseStatus)
+			}
+			if svc.responseStatus >= 500 {
+				responseStatus = styles.ErrorText.Render(responseStatus)
+			}
+
 		} else {
 			spinner = h.spinner.View()
 
@@ -192,17 +219,24 @@ func (h healthCheckModel) View() string {
 
 		b.WriteString(
 			fmt.Sprintf(
-				"%s %s %s %s %s",
+				"%s %s %s %s %s %s %s",
 				spinner,
 				svc.service,
 				svc.hostname,
 				retry,
 				sendingRequestTime,
+				reachable,
+				responseStatus,
 			),
 		)
 
 		b.WriteByte('\n')
 	}
 
-	return b.String()
+	title := "Performing health checks"
+	if h.allDone() {
+		title = "Health checks done"
+	}
+
+	return title + "\n\n" + b.String()
 }

@@ -15,6 +15,8 @@ import (
 )
 
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Starting swarm cluster deployment...")
+
 	// Copy embed files before starting
 	if err := c.swarmCopyEmbedConfigs(); err != nil {
 		return err
