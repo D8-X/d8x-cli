@@ -20,7 +20,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Copy embed files before starting
 	filesToCopy := []files.EmbedCopierOp{
 		// Trader backend configs
-		{Src: "embedded/trader-backend/.env.example", Dst: "./trader-backend/.env", Overwrite: false},
+		// Note that .env.example is not recognized in embed.FS
+		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
 		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
 		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
 		{Src: "embedded/trader-backend/live.wsConfig.json", Dst: "./trader-backend/live.wsConfig.json", Overwrite: false},
@@ -29,9 +30,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		// Docker swarm file
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 	}
-	err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...)
-	if err != nil {
-		return err
+	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
+		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
 	fmt.Println(styles.AlertImportant.Render("Please make sure you edit your .env and configuration files!"))
 	fmt.Println("The following configuration files will be copied to manager node for d8x-trader-backend swarm deploymend:")

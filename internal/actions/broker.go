@@ -185,7 +185,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	}
 
 	if setupNginx {
-		fmt.Println(styles.ItalicText.Render("Setting up nginx for manager node"))
+		fmt.Println(styles.ItalicText.Render("Setting up nginx for broker node"))
 
 		if err := c.FS.ReplaceAndCopy(
 			nginxConfigNameTPL,

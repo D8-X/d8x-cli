@@ -157,7 +157,7 @@ services:
       # Use different database tha
       - REDIS_DB_NUM=1
       - CONFIG_PATH=/cfg_candles
-      - WS_ADDR="0.0.0.0:8080"
+      - WS_ADDR=0.0.0.0:8080
     networks:
       - candles
       - d8x_backend
