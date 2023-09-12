@@ -17,5 +17,5 @@ sudo mv d8x /usr/bin/d8x
 Head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
 extract the d8x binary and place it in your `PATH`
 
-
+## Versions
 
