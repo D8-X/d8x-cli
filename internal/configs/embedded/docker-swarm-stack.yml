@@ -103,9 +103,6 @@ services:
       - d8x_backend
   pyth_connection:
     image: ghcr.io/d8-x/d8x-trader-pxws-client:dev
-    ports:
-      - "${PXWS_API_PORT_HTTP:-3005}:${PXWS_API_PORT_HTTP:-3005}"
-      - "${PXWS_API_PORT_WEBSOCKET:-3006}:${PXWS_API_PORT_WEBSOCKET:-3006}"
     environment:
       - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
       - PORT_REST=${PXWS_API_PORT_HTTP:-3005}
@@ -152,7 +149,7 @@ services:
   candles-ws-server:
     image: ghcr.io/d8-x/d8x-candles-ws-server:main
     ports:
-      - 3007:8080
+      - 3005:8080
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
