@@ -24,7 +24,7 @@ jobs:
           format: "YYYY-MM-DD HH-mm-ss"
       - name: Build D8X CLI
         run: |
-          GOOS=linux go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}"' -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go
+          GOOS=linux go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go
       - name: Tar d8x cli
         run: tar -czvf d8x.tar.gz d8x
       - uses: ncipollo/release-action@v1
