@@ -225,6 +225,8 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	}
 
 	if setupCertbot {
+		fmt.Println(styles.ItalicText.Render("Setting up certbot for broker server..."))
+
 		sshClient, err := conn.NewSSHClient(
 			brokerIpAddr,
 			c.DefaultClusterUserName,

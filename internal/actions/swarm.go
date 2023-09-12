@@ -27,7 +27,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		// Candles configs
 		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
 		// Docker swarm file
-		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
+		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 	}
 	err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...)
 	if err != nil {
@@ -62,6 +62,33 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	)
 	if err != nil {
 		return err
+	}
+
+	// Stack name that will be used when creating/destroying or managing swarm
+	// cluster deployment.
+	// TODO - store this in config and make this configurable via flags
+	dockerStackName := "stack"
+
+	// Stack might exist, prompt user to remove it
+	if _, err := conn.SSHExecCommand(
+		client,
+		"echo '"+pwd+"'| sudo -S docker stack ls | grep "+dockerStackName+" >/dev/null 2>&1",
+	); err == nil {
+		ok, err := components.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
+		if err != nil {
+			return err
+		}
+		if ok {
+			fmt.Println(styles.ItalicText.Render("Removing existing stack..."))
+			out, err := conn.SSHExecCommand(
+				client,
+				fmt.Sprintf(`echo "%s"| sudo -S docker stack rm %s`, pwd, dockerStackName),
+			)
+			fmt.Println(string(out))
+			if err != nil {
+				return fmt.Errorf("removing existing stack: %w", err)
+			}
+		}
 	}
 
 	// Lines of docker config commands which we will concat into single
@@ -121,8 +148,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
 	swarmDeployCMD := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c ". ./trader-backend/.env && docker compose -f ./docker-stack.yml config | sed -E 's/published: \"([0-9]+)\"/published: \1/g' | sed -E 's/^name: .*$/ /'|  docker stack deploy -c - stack"`,
+		`echo '%s' | sudo -S bash -c "docker compose --env-file ./trader-backend/.env -f ./docker-stack.yml config | sed -E 's/published: \"([0-9]+)\"/published: \1/g' | sed -E 's/^name: .*$/ /'|  docker stack deploy -c - %s"`,
 		pwd,
+		dockerStackName,
 	)
 	out, err = conn.SSHExecCommand(client, swarmDeployCMD)
 	fmt.Println(string(out))

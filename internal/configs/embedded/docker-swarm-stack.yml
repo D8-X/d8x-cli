@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   redis:
-    image: redis
+    image: redis/redis-stack-server:latest
     command: redis-server --bind 0.0.0.0 --requirepass ${REDIS_PASSWORD}
     logging:
       driver: "json-file"
@@ -130,13 +130,13 @@ services:
       image: ghcr.io/d8-x/d8x-candles-pyth-client:main
       environment:
         - REDIS_PW=${REDIS_PASSWORD}
-        - REDIS_ADDR="redis:6379"
+        - REDIS_ADDR=redis:6379
         # Use different database tha
         - REDIS_DB_NUM=1
         - CONFIG_PATH=/cfg_candles
       networks:
         - candles
-      restart: on-failure
+        - d8x_backend
       logging:
         options:
           max-size: "10m"
@@ -153,14 +153,14 @@ services:
       - 3007:8080
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
-      - REDIS_ADDR="redis:6379"
+      - REDIS_ADDR=redis:6379
       # Use different database tha
       - REDIS_DB_NUM=1
       - CONFIG_PATH=/cfg_candles
       - WS_ADDR="0.0.0.0:8080"
     networks:
       - candles
-    restart: on-failure
+      - d8x_backend
     logging:
       options:
         max-size: "10m"
