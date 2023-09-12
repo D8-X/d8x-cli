@@ -34,8 +34,12 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		components.NewTimer(waitFor, "Waiting for SSHDs to start on nodes")
 	}
 
+	// If configuration fails we might still want to proceed with other actions
+	// in case this is a retry
 	if err := c.Configure(ctx); err != nil {
-		return err
+		if ok, _ := components.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
+			return err
+		}
 	}
 
 	if err := c.BrokerServerDeployment(ctx); err != nil {
