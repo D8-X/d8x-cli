@@ -1,12 +1,11 @@
-name: Build images
+name: Build images on tag push
 on:
   push:
-    branches: ["main", "dev"]
     tags: "*"
 jobs:
   build:
     permissions:
-      contents: read
+      contents: write
       packages: write
     strategy:
       fail-fast: false
