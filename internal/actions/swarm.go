@@ -320,18 +320,6 @@ func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 			serviceName: configs.D8XServiceReferral,
 		},
 		{
-			prompt:      "Enter PXWS HTTP (sub)domain (e.g. pxws-rest.d8x.xyz): ",
-			placeholder: "rest.d8x.xyz",
-			find:        "%pxws%",
-			serviceName: configs.D8XServicePXWSHTTP,
-		},
-		{
-			prompt:      "Enter PXWS Websockets (sub)domain (e.g. pxws-ws.d8x.xyz): ",
-			placeholder: "ws.d8x.xyz",
-			find:        "%pxws_ws%",
-			serviceName: configs.D8XServicePXWS_WS,
-		},
-		{
 			prompt:      "Enter Candlesticks Websockets (sub)domain (e.g. candles.d8x.xyz): ",
 			placeholder: "candles.d8x.xyz",
 			find:        "%candles_ws%",

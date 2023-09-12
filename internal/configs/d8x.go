@@ -22,9 +22,6 @@ const (
 
 	D8XServiceReferral D8XServiceName = "referral"
 
-	D8XServicePXWSHTTP D8XServiceName = "pxws_http"
-	D8XServicePXWS_WS  D8XServiceName = "pxws_ws"
-
 	D8XServiceCandlesWs D8XServiceName = "candles_ws"
 )
 
