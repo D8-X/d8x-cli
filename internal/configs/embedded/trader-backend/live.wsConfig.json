@@ -3,8 +3,8 @@
     "chainId": 80001,
     "streamName": "crypto1",
     "type": "pyth",
-    "httpEndpoints": ["https://xc-testnet.pyth.network/api"],
-    "wsEndpoints": ["wss://xc-testnet.pyth.network/ws"],
+    "httpEndpoints": ["https://hermes-beta.pyth.network/api"],
+    "wsEndpoints": ["wss://hermes-beta.pyth.network/ws"],
     "tickers": [
       "BTC-USD",
       "ETH-USD",
