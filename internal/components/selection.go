@@ -17,7 +17,7 @@ type SelectionOpts interface {
 // NewSelection runs a selection component and returns selected elements on
 // success. If SelectionOptAllowOnlySingleItem option is passed, returned slice
 // will always contain up to 1 item.
-func NewSelection(selection []string, opts ...SelectionOpts) ([]string, error) {
+func newSelection(selection []string, opts ...SelectionOpts) ([]string, error) {
 	s := selectionModel{
 		selection: selection,
 		selected:  make([]bool, len(selection)),

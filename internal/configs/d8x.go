@@ -8,6 +8,8 @@ import (
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
+//go:generate mockgen -package mocks -destination ../mocks/configs.go . D8XConfigReadWriter
+
 // D8XServiceName is the name of the service that is deployed by d8x-cli and
 // exposed to the public internet via subdomain.
 type D8XServiceName string

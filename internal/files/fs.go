@@ -20,6 +20,8 @@ type FSInteractor interface {
 	// writes the result to outFile. outFile is created and truncated
 	// automatically.
 	ReplaceAndCopy(inFile, outFile string, replacements []ReplacementTuple) error
+
+	Stat(path string) (os.FileInfo, error)
 }
 
 func NewFileSystemInteractor() FSInteractor {
@@ -57,4 +59,8 @@ func (f *fsInteractor) ReplaceAndCopy(inFile, outFile string, replacements []Rep
 	_, err = io.Copy(fd, bytes.NewBuffer(inContent))
 
 	return err
+}
+
+func (fsInteractor) Stat(path string) (os.FileInfo, error) {
+	return os.Stat(path)
 }

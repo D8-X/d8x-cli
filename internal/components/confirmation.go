@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func NewConfirmation(text string) error {
+func newConfirmation(text string) error {
 	_, err := tea.NewProgram(confirmModel{
 		text: text,
 	}).Run()

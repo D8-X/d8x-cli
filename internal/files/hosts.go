@@ -7,6 +7,49 @@ import (
 	"strings"
 )
 
+// HostsFileInteractor interacts with hosts.cfg file
+type HostsFileInteractor interface {
+	GetBrokerPublicIp() (string, error)
+	GetMangerPublicIp() (string, error)
+}
+
+func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
+	return &fsHostFileInteractor{
+		filePath: filePath,
+	}
+}
+
+var _ (HostsFileInteractor) = (*fsHostFileInteractor)(nil)
+
+type fsHostFileInteractor struct {
+	filePath string
+	cached   *HostsFile
+}
+
+func (f *fsHostFileInteractor) ensureFileLoaded() error {
+	if f.cached == nil {
+		h, err := LoadHostsFileFromFS(f.filePath)
+		if err != nil {
+			return err
+		}
+		f.cached = h
+	}
+	return nil
+}
+
+func (f *fsHostFileInteractor) GetBrokerPublicIp() (string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return "", err
+	}
+	return f.cached.GetBrokerPublicIp()
+}
+func (f *fsHostFileInteractor) GetMangerPublicIp() (string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return "", err
+	}
+	return f.cached.GetMangerPublicIp()
+}
+
 // HostsFileLoader attempts to load and parse give file as HostsFile (hosts.cfg)
 type HostsFileLoader func(file string) (*HostsFile, error)
 

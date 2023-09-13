@@ -11,7 +11,7 @@ type TextInputOpt interface {
 	Apply(*inputModel)
 }
 
-func NewInput(opts ...TextInputOpt) (string, error) {
+func newInput(opts ...TextInputOpt) (string, error) {
 	ti := textinput.New()
 	ti.Focus()
 	mdl := inputModel{

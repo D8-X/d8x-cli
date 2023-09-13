@@ -46,7 +46,7 @@ func (m listModel) View() string {
 	return docStyle.Render(m.list.View())
 }
 
-func NewList(listItems []ListItem, listTitle string, opts ...ListOpt) (ListItem, error) {
+func newList(listItems []ListItem, listTitle string, opts ...ListOpt) (ListItem, error) {
 	items := make([]list.Item, len(listItems))
 
 	for i, itm := range listItems {

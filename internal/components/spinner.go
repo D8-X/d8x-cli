@@ -48,7 +48,7 @@ func (m model) View() string {
 	return m.spinner.View()
 }
 
-func NewSpinner() error {
+func newSpinner() error {
 	p := tea.NewProgram(initialModel())
 	_, err := p.Run()
 	return err

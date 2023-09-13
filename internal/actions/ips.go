@@ -3,25 +3,20 @@ package actions
 import (
 	"fmt"
 
-	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/urfave/cli/v2"
 )
 
 func (c *Container) Ips(ctx *cli.Context) error {
-	hostsCfg, err := c.LoadHostsFile(configs.DEFAULT_HOSTS_FILE)
-	if err != nil {
-		return err
-	}
 
 	switch ctx.Args().First() {
 	case "manager":
-		ip, err := hostsCfg.GetMangerPublicIp()
+		ip, err := c.HostsCfg.GetMangerPublicIp()
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Manager node public IP address: %s\n", ip)
 	case "broker":
-		ip, err := hostsCfg.GetBrokerPublicIp()
+		ip, err := c.HostsCfg.GetBrokerPublicIp()
 		if err != nil {
 			return err
 		}

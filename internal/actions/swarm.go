@@ -2,7 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 
@@ -38,14 +37,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	for _, f := range filesToCopy {
 		fmt.Println(f.Dst)
 	}
-	components.NewConfirmation("Confirm that your configs and .env are updated according your needs...")
+	c.TUI.NewConfirmation("Confirm that your configs and .env are updated according your needs...")
 
-	hosts, err := c.LoadHostsFile("./hosts.cfg")
-	if err != nil {
-		return err
-	}
-
-	managerIp, err := hosts.GetMangerPublicIp()
+	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return fmt.Errorf("finding manager ip address: %w", err)
 	}
@@ -55,7 +49,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	client, err := conn.NewSSHClient(
+	sshConn, err := c.CreateSSHConn(
 		managerIp,
 		c.DefaultClusterUserName,
 		c.SshKeyPath,
@@ -70,18 +64,16 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	dockerStackName := "stack"
 
 	// Stack might exist, prompt user to remove it
-	if _, err := conn.SSHExecCommand(
-		client,
-		"echo '"+pwd+"'| sudo -S docker stack ls | grep "+dockerStackName+" >/dev/null 2>&1",
+	if _, err := sshConn.ExecCommand(
+		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
 	); err == nil {
-		ok, err := components.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
+		ok, err := c.TUI.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
 		if err != nil {
 			return err
 		}
 		if ok {
 			fmt.Println(styles.ItalicText.Render("Removing existing stack..."))
-			out, err := conn.SSHExecCommand(
-				client,
+			out, err := sshConn.ExecCommand(
 				fmt.Sprintf(`echo "%s"| sudo -S docker stack rm %s`, pwd, dockerStackName),
 			)
 			fmt.Println(string(out))
@@ -112,7 +104,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
 	// Include pg.cert
-	if _, err := os.Stat(c.PgCrtPath); err == nil {
+	if _, err := c.FS.Stat(c.PgCrtPath); err == nil {
 		dockerConfigsCMD = append(
 			dockerConfigsCMD,
 			"docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1",
@@ -125,8 +117,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
-	if err := conn.CopyFilesOverSftp(
-		client,
+	if err := sshConn.CopyFilesOverSftp(
 		copyList...,
 	); err != nil {
 		return fmt.Errorf("copying configuration files to manager: %w", err)
@@ -136,12 +127,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	// Create configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
-	out, err := conn.SSHExecCommand(client,
+	out, err := sshConn.ExecCommand(
 		fmt.Sprintf(`echo '%s' | sudo -S bash -c "%s"`, pwd, strings.Join(dockerConfigsCMD, ";")),
 	)
 	fmt.Println(string(out))
 	if err != nil {
-		return err
+		return fmt.Errorf("creating docker configs: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("docker configs were created on manager node!"))
 
@@ -152,10 +143,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		pwd,
 		dockerStackName,
 	)
-	out, err = conn.SSHExecCommand(client, swarmDeployCMD)
+	out, err = sshConn.ExecCommand(swarmDeployCMD)
 	fmt.Println(string(out))
 	if err != nil {
-		return err
+		return fmt.Errorf("swarm deployment failed: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("D8X-trader-backend swarm was deployed"))
 
@@ -183,23 +174,19 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	cfg, err := c.LoadHostsFile("./hosts.cfg")
-	if err != nil {
-		return err
-	}
-	managerIp, err := cfg.GetMangerPublicIp()
+	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return err
 	}
 
-	setupCertbot, err := components.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
+	setupCertbot, err := c.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
 	if err != nil {
 		return err
 	}
 	emailForCertbot := ""
 	if setupCertbot {
 		fmt.Println("Enter your email address for certbot notifications: ")
-		email, err := components.NewInput(
+		email, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("email@domain.com"),
 		)
 		if err != nil {
@@ -213,7 +200,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 			fmt.Sprintf("Make sure you correctly setup DNS A records with your manager IP address (%s)", managerIp),
 		),
 	)
-	components.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
+	c.TUI.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
 
 	services, err := c.swarmNginxCollectData()
 	if err != nil {
@@ -243,7 +230,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	}
 	cmd := exec.Command("ansible-playbook", args...)
 	connectCMDToCurrentTerm(cmd)
-	if err := cmd.Run(); err != nil {
+	if err := c.RunCmd(cmd); err != nil {
 		return err
 	} else {
 		fmt.Println(styles.SuccessText.Render("Manager node nginx setup done!"))
@@ -251,13 +238,13 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 
 	if setupCertbot {
 		fmt.Println(styles.ItalicText.Render("Setting up ssl certificates with certbot..."))
-		sshClient, err := conn.NewSSHClient(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+		sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
 		if err != nil {
 			return err
 		}
 
 		out, err := c.certbotNginxSetup(
-			sshClient,
+			sshConn,
 			password,
 			emailForCertbot,
 			hostnames,
@@ -290,48 +277,49 @@ type hostnameTuple struct {
 	serviceName configs.D8XServiceName
 }
 
+// List of services which will be configured in nginx.conf
+var hostsTpl = []hostnameTuple{
+	{
+		prompt:      "Enter Main HTTP (sub)domain (e.g. main.d8x.xyz): ",
+		placeholder: "main.d8x.xyz",
+		find:        "%main%",
+		serviceName: configs.D8XServiceMainHTTP,
+	},
+	{
+		prompt:      "Enter Main Websockets (sub)domain (e.g. ws.d8x.xyz): ",
+		placeholder: "ws.d8x.xyz",
+		find:        "%main_ws%",
+		serviceName: configs.D8XServiceMainWS,
+	},
+	{
+		prompt:      "Enter History HTTP (sub)domain (e.g. history.d8x.xyz): ",
+		placeholder: "history.d8x.xyz",
+		find:        "%history%",
+		serviceName: configs.D8XServiceHistory,
+	},
+	{
+		prompt:      "Enter Referral HTTP (sub)domain (e.g. referral.d8x.xyz): ",
+		placeholder: "referral.d8x.xyz",
+		find:        "%referral%",
+		serviceName: configs.D8XServiceReferral,
+	},
+	{
+		prompt:      "Enter Candlesticks Websockets (sub)domain (e.g. candles.d8x.xyz): ",
+		placeholder: "candles.d8x.xyz",
+		find:        "%candles_ws%",
+		serviceName: configs.D8XServiceCandlesWs,
+	},
+}
+
 // swarmNginxCollectData collects hostnames information and prepares
 // nginx.configured.conf file. Returns list of hostnames provided by user
 func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
-
-	hostsTpl := []hostnameTuple{
-		{
-			prompt:      "Enter Main HTTP (sub)domain (e.g. main.d8x.xyz): ",
-			placeholder: "main.d8x.xyz",
-			find:        "%main%",
-			serviceName: configs.D8XServiceMainHTTP,
-		},
-		{
-			prompt:      "Enter Main Websockets (sub)domain (e.g. ws.d8x.xyz): ",
-			placeholder: "ws.d8x.xyz",
-			find:        "%main_ws%",
-			serviceName: configs.D8XServiceMainWS,
-		},
-		{
-			prompt:      "Enter History HTTP (sub)domain (e.g. history.d8x.xyz): ",
-			placeholder: "history.d8x.xyz",
-			find:        "%history%",
-			serviceName: configs.D8XServiceHistory,
-		},
-		{
-			prompt:      "Enter Referral HTTP (sub)domain (e.g. referral.d8x.xyz): ",
-			placeholder: "referral.d8x.xyz",
-			find:        "%referral%",
-			serviceName: configs.D8XServiceReferral,
-		},
-		{
-			prompt:      "Enter Candlesticks Websockets (sub)domain (e.g. candles.d8x.xyz): ",
-			placeholder: "candles.d8x.xyz",
-			find:        "%candles_ws%",
-			serviceName: configs.D8XServiceCandlesWs,
-		},
-	}
 
 	hosts := make([]string, len(hostsTpl))
 	replacements := make([]files.ReplacementTuple, len(hostsTpl))
 	for i, h := range hostsTpl {
 		fmt.Println(h.prompt)
-		input, err := components.NewInput(
+		input, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder(h.placeholder),
 		)
 		if err != nil {
@@ -354,7 +342,7 @@ func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 			h.server,
 		)
 	}
-	correct, err := components.NewPrompt("Are these values correct?", true)
+	correct, err := c.TUI.NewPrompt("Are these values correct?", true)
 	if err != nil {
 		return nil, err
 	}

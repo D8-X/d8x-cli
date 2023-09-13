@@ -3,7 +3,6 @@ package actions
 import (
 	"time"
 
-	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
@@ -13,7 +12,7 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Running full setup...")
 
 	// Clean up the config
-	if ok, err := components.NewPrompt("Do you want to start clean and flush all configs (recommended for first time setup)?", true); ok {
+	if ok, err := c.TUI.NewPrompt("Do you want to start clean and flush all configs (recommended for first time setup)?", true); ok {
 		if err != nil {
 			return err
 		}
@@ -31,13 +30,13 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	if time.Now().Before(t) {
 
 		waitFor := time.Until(t)
-		components.NewTimer(waitFor, "Waiting for SSHDs to start on nodes")
+		c.TUI.NewTimer(waitFor, "Waiting for SSHDs to start on nodes")
 	}
 
 	// If configuration fails we might still want to proceed with other actions
 	// in case this is a retry
 	if err := c.Configure(ctx); err != nil {
-		if ok, _ := components.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
+		if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
 			return err
 		}
 	}
@@ -58,7 +57,7 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		return err
 	}
 
-	if ok, _ := components.NewPrompt("Do you want to perform services healthchecks?", true); ok {
+	if ok, _ := c.TUI.NewPrompt("Do you want to perform services healthchecks?", true); ok {
 		if err := c.HealthCheck(ctx); err != nil {
 			return err
 		}

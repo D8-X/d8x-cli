@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
@@ -23,7 +23,7 @@ func (c *Container) ensureSSHKeyPresent() error {
 		fmt.Printf("SSH key %s was not found, creating new one...\n", c.SshKeyPath)
 		createKey = true
 	} else {
-		ok, err := components.NewPrompt(
+		ok, err := c.TUI.NewPrompt(
 			fmt.Sprintf("SSH key %s was found, do you want to overwrite it with a new one?", c.SshKeyPath),
 			true,
 		)
@@ -72,17 +72,17 @@ func (c *Container) DisplayPasswordAlert() {
 	fmt.Printf("User: %s\n", c.DefaultClusterUserName)
 	fmt.Printf("Password: %s\n", c.UserPassword)
 
-	components.NewConfirmation("Please confirm that you have stored the password!")
+	c.TUI.NewConfirmation("Please confirm that you have stored the password!")
 }
 
 // Get password gets the password with the following precedence:
 // 1. --password flag
 // 2. ./password.txt file in cwd
-func (c *Container) GetPassword(ctx *cli.Context) (string, error) {
+func defaultPasswordGetter(ctx *cli.Context) (string, error) {
 	if pwd := ctx.String(flags.Password); pwd != "" {
 		return pwd, nil
 	}
-	if pwd, err := os.ReadFile("./password.txt"); err != nil {
+	if pwd, err := os.ReadFile(configs.DEFAULT_PASSWORD_FILE); err != nil {
 		return "", fmt.Errorf("could not retrieve the password: %w", err)
 	} else {
 		return string(pwd), nil
