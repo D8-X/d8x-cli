@@ -74,7 +74,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 			},
 			expectHostsCfg: func(mhfi *mocks.MockHostsFileInteractor) {
 				mhfi.EXPECT().GetMangerPublicIp().Return("", assert.AnError)
@@ -92,7 +92,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(false, assert.AnError)
@@ -119,7 +119,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(true, nil)
@@ -150,7 +150,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(true, nil)
@@ -182,7 +182,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(true, nil)
@@ -220,7 +220,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(true, nil)
@@ -265,7 +265,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(true, nil)
@@ -316,7 +316,7 @@ func TestSwarmDeploy(t *testing.T) {
 					).Return(nil)
 			},
 			expectComponents: func(mcr *mocks.MockComponentsRunner) {
-				mcr.EXPECT().NewConfirmation("Confirm that your configs and .env are updated according your needs...").Return(nil)
+				mcr.EXPECT().NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...").Return(nil)
 				mcr.EXPECT().
 					NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true).
 					Return(true, nil)

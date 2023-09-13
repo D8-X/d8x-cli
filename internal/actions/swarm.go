@@ -32,12 +32,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
-	fmt.Println(styles.AlertImportant.Render("Please make sure you edit your .env and configuration files!"))
-	fmt.Println("The following configuration files will be copied to manager node for d8x-trader-backend swarm deploymend:")
+	fmt.Println(styles.AlertImportant.Render("Please edit your .env and configuration files before proceeding."))
+	fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
 	for _, f := range filesToCopy {
 		fmt.Println(f.Dst)
 	}
-	c.TUI.NewConfirmation("Confirm that your configs and .env are updated according your needs...")
+	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...")
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -202,7 +202,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 
 	fmt.Println(
 		styles.AlertImportant.Render(
-			"Make sure you correctly setup DNS A records with your manager IP address",
+			"Setup DNS A records with your manager IP address",
 		),
 	)
 	fmt.Println("Manager IP address: " + managerIp)
