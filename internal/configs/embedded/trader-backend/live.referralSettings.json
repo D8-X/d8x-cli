@@ -1,5 +1,5 @@
 {
-  "referralSystemEnabled": false,
+  "referralSystemEnabled": true,
   "agencyCutPercent": 80,
   "permissionedAgencies": [
     "0x21B864083eedF1a4279dA1a9A7B1321E6102fD39",
