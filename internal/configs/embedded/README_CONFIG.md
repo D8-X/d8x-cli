@@ -1,6 +1,5 @@
 # D8X Perpetuals Backend Configuration
 
-# Things To Decide Before You Start
 - Linode API token, which you can get in your linode account settings
 - Provisioned database cluster in linode. You can get the ID of your database cluster
   from the cluster management url
@@ -19,11 +18,21 @@
 
 # Broker-Server
 <details>
-  <summary>chainConfig.sol</summary>
-  Edit the segment with the relevant chainId for your deployment and set the array
-  "allowedExecutors" to the "executor" address; no other addresses should be in the array.
-  These addresses are allowed to send referral rebates.
+ <summary>chainConfig.sol</summary>
+  Edit the segment with the relevant chainId for your deployment.
+ 
+ The entry `allowedExecutors` in `chainConfig.json` must contain the address that executes payments for the referral system,
+ that is, `allowedExecutors` must contain the address that correspond to the private 
+key we set as `BROKER_KEY` in `trader-backend/.env`.
+
+ The provided entries should be fine for the following variables:
+ * `chainId` the chain id the entry refers to
+ * `name` name of the configuration-entry (for readability of the config only)
+ * `multiPayCtrctAddr` must be in line with the same entry in live.referralSettings.json
+ * `perpetualManagerProxyAddr` the address of the perpetuals-contract
+ 
 </details>
+
 
 # Candles
 <details>
@@ -59,32 +68,32 @@ the `SDK_CONFIG_NAME` (testnet for CHAIN_ID=80001, zkevmTestnet for chainId=1442
 
 Next, we edit the following configuration files located in the folder deployment:
 
-```bash
-live.referralSettings.json
-live.rpc.json
-live.wsConfig.json
-```
-
-- live.rpc.json: A list of RPC URLs used for interacting with the different chains.
+<details>
+  <summary>live.rpc.json</summary>
+  A list of RPC URLs used for interacting with the different chains.
   - You may add or remove as many RPCs as you need
   - It is encouraged to keep multiple HTTP options for best user experience/robustness
   - At least one Websocket RPC must be defined, otherwise the services will not work properly.
-- live.wsConfig.json: A list of price IDs and price streaming endpoints
+</details>
+<details>
+  <summary>live.wsConfig.json</summary>
+  A list of price IDs and price streaming endpoints
   - The services should be able to start with the default values provided
   - See the main API [readme](./packages/api/README.md) for details
-- live.referralSettings.json: Configuration of the referral service.
+</details>
+<details>
+  <summary>live.referralSettings.json</summary>
+  Configuration of the referral service.
   - You can turn off the referral system by editing config/live.referralSettings.json and setting `"referralSystemEnabled": false,` — if you choose to turn it on, see below how to configure the system.
+</details>
 
 <details>
  <summary>
   Referral System Configuration
  </summary>
-
-
 The referral system is optional and can be disabled by setting the first entry in  config/live.referralSettings.json to false. If you enable the referral system, also make sure there is a broker key entered in the .env-file (see above). 
 
 Here is how the referral system works in a nutshell.
-
 
 - The system allows referrers to distribute codes to traders. Traders will receive a fee rebate after a given amount of time and accrued fees. Referrers will also receive a portion of the trader fees that they referred
 - The broker can determine the share of the broker imposed trading fee that go to the referrer, and the referrer can re-distribute this fee between a fee rebate for the trader and a portion for themselves. The broker can make the size of the fee share dependent on token holdings of the referrer. The broker can configure the fee, amount, and token.
@@ -122,166 +131,20 @@ All of this can be configured as follows.
     you might want to separate the address that accrues the trading fees from the address that receives the fees after redistribution. Use this setting to determine the address that receives the net fees.
     </details>
 
-<details>
-  <summary>Sample Referral Configuration File (config/live.referralSettings.json)</summary>
-  
-  ```
- {
-  "referralSystemEnabled": false,
-  "agencyCutPercent": 80,
-  "permissionedAgencies": [
-    "0x21B864083eedF1a4279dA1a9A7B1321E6102fD39",
-    "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
-    "0x98232"
-  ],
-  "referrerCutPercentForTokenXHolding": [
-    [0.2, 0],
-    [1.5, 100],
-    [2.5, 1000],
-    [3.5, 10000]
-  ],
-  "tokenX": { "address": "0x2d10075E54356E16Ebd5C6BB5194290709B69C1e", "decimals": 18 },
-  "paymentScheduleMinHourDayofmonthWeekday": "0-14-*-0",
-  "paymentMaxLookBackDays": 14,
-  "minBrokerFeeCCForRebatePerPool": [
-    [100, 1],
-    [100, 2],
-    [0.01, 3]
-  ],
-  "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
-  "defaultReferralCode": {
-    "referrerAddr": "",
-    "agencyAddr": "0x863AD9Ce46acF07fD9390147B619893461036194",
-    "traderReferrerAgencyPerc": [0, 0, 45]
-  },
-  "multiPayContractAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5"
-}
-  ```
-</details>
+
 </details>
 
-If you opted in to deploy broker-server, you should make sure `chainConfig.json`
-in `deployment-broker` directory is configured as per your needs.
-<details>
- <summary>Broker-Server Configuration</summary>
- 
- The entry `allowedExecutors` in `chainConfig.json` must contain the address that executes payments for the referral system,
- that is, `allowedExecutors` must contain the address that correspond to the private 
-key we set as `BROKER_KEY` in `deployment/.env`.
 
- The provided entries should be fine for the following variables:
- * `chainId` the chain id the entry refers to
- * `name` name of the configuration-entry (for readability of the config only)
- * `multiPayCtrctAddr` must be in line with the same entry in live.referralSettings.json
- * `perpetualManagerProxyAddr` the address of the perpetuals-contract
- 
-</details>
-
-## Spin up infrastructure
-
-
- 
-You will need the following details to spin up a cluster:
-
-
-Note that setting everything up can take about 10 minutes.
-
-After setup is completed the following files will be generated:
-- `hosts.cfg` - ansible inventory file with nodes and their public ip addresses
-- `id_key_ed25519` - ssh private key which you can use to ssh into your cluster servers.
-- `password.txt` - password for `d8xtrader` user created on each cluster server.
-
-During the setup you will be asked to provide domains or subdomains for cluster
-services. These domain/subdomain values will be used in nginx configuration as
-`server_name` directives. You should also configure your DNS A records to point
-to manager node's public IP address as this will be needed when issuing
-certificates via certbot to enable HTTPS.
-
-# Update Images
-You can update the backend-service application by using the following docker update command.
-For example:
-```
-docker service update --image "ghcr.io/d8-x/d8x-trader-main:dev@sha256:aea8e56d6077c733a1d553b4291149712c022b8bd72571d2a852a5478e1ec559" stack_api
-```
-To find the hash (sha256:...), navigate to the root of the github repository,
-click on packages, choose the package and version you want to update and the hash is
-displayed on the top. For example, choose "trader-main" and click the relevant version
-for the main broker services.
-
-# Teardown
-
-## Completely remove cluster
-Perform terraform destroy:
-
-```bash
-export LINODE_TOKEN=<YOUR_TOKEN_HERE>
-terraform destroy -var='authorized_keys=[""]
-```
-
-## Docker stack
-
-In case you want to redeploy the services on existing provisioned servers, you
-can simply remove the deployed stack. 
-
+## Inspect Docker Stack Services
 The default deployed docker stack name is: **stack**
 
-You can manage your docker stack from your docker swarm manager. Refer to
-`hosts.cfg` file (or linode dashboard) to get the ip address of your manager
-node. You can ssh into your manager by using the default `id_key_ed25519` ssh
-key that is generated when running `./run.sh` setup.
-
-To remove the stack:
-```bash
-# SSH to manager
-ssh d8xtrader@<MANAGER_IP> -i ./id_key_ed25519
-sudo docker stack rm stack
-```
-
-Redeploy the stack (from your local machine where you have used `./run.sh`
-before):
-
-```bash
-# Number 4 is the deploy docker stack action
-./run.sh 4
-```
-
-# Known issues, limitations and caveats
-
-- If default port numbers are changed, make sure to edit `nginx.conf` before
-  running `run.sh`.
-- Certbot snap installation will show an error from ansible, even though the
-  certbot snap is installed correctly.
-
-
-# Troubleshooting
-
-Most of the command related to docker swarm must be executed on manager node.
-
-## Inspect services
-
+## 
 ```bash
 docker service ls
 ```
 
-## Inspect service logs
+**Inspect service logs**
 
 ```bash
 docker service logs <SERVICE>
 ```
-
-## I changed configs or `.env` in `deployment` directory - how do I redeploy changes?
-
-Ssh into your manager node and remove the stack:
-```bash
-docker stack rm stack
-```
-Rerun `./run.sh` with `#4` (Deploy docker stack)
-
-## Common issues
-
-**Service loop restarts on error `Error: No Websocket RPC defined for chain ID...`**
-
-Make sure you have set a correct `WS` Websockets RPC url in `live.rpc.json`.
-
-
-
