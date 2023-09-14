@@ -206,7 +206,9 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	token, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
 		components.TextInputOptValue(defaultToken),
+		components.TextInputOptMasked(),
 	)
+
 	if err != nil {
 		return nil, err
 	}

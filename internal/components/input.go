@@ -29,7 +29,13 @@ func newInput(opts ...TextInputOpt) (string, error) {
 		return "", err
 	}
 
-	return m.(inputModel).textInput.Value(), nil
+	mdl = m.(inputModel)
+	returnValue := mdl.textInput.Value()
+	if mdl.masked {
+		returnValue = mdl.value
+	}
+
+	return returnValue, nil
 }
 
 type (
@@ -39,6 +45,12 @@ type (
 type inputModel struct {
 	textInput textinput.Model
 	err       error
+
+	// Whether the displayed value should be masked
+	masked bool
+	// The actual value of text input, if masked is true, the value in textInput
+	// will be masked and this value will represent the actual value.
+	value string
 }
 
 func (m inputModel) Init() tea.Cmd {
@@ -61,7 +73,24 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	m.textInput, cmd = m.textInput.Update(msg)
+	// When input is masked, we store the value on inputModel, process a
+	// keystroke via internal m.textInput and then mask it.
+	if m.masked {
+		m.textInput.SetValue(m.value)
+		m.textInput, cmd = m.textInput.Update(msg)
+		m.value = m.textInput.Value()
+
+		// Mask it
+		masked := ""
+		for range m.value {
+			masked += "*"
+		}
+		m.textInput.SetValue(masked)
+
+	} else {
+		m.textInput, cmd = m.textInput.Update(msg)
+	}
+
 	return m, cmd
 }
 
@@ -91,8 +120,23 @@ type textInputOptValue struct {
 
 func (t textInputOptValue) Apply(s *inputModel) {
 	s.textInput.SetValue(t.val)
+	s.value = t.val
 }
 
 func TextInputOptValue(val string) TextInputOpt {
 	return textInputOptValue{val}
+}
+
+var _ TextInputOpt = (*testInputOptMasked)(nil)
+
+type testInputOptMasked struct {
+	val string
+}
+
+func (t testInputOptMasked) Apply(s *inputModel) {
+	s.masked = true
+}
+
+func TextInputOptMasked() TextInputOpt {
+	return testInputOptMasked{}
 }

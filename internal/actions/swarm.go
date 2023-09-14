@@ -195,17 +195,22 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		emailForCertbot = email
 	}
 
-	fmt.Println(
-		styles.AlertImportant.Render(
-			fmt.Sprintf("Make sure you correctly setup DNS A records with your manager IP address (%s)", managerIp),
-		),
-	)
-	c.TUI.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
-
 	services, err := c.swarmNginxCollectData()
 	if err != nil {
 		return err
 	}
+
+	fmt.Println(
+		styles.AlertImportant.Render(
+			"Make sure you correctly setup DNS A records with your manager IP address",
+		),
+	)
+	fmt.Println("Manager IP address: " + managerIp)
+	for _, svc := range services {
+		fmt.Printf("Service: %s Domain: %s\n", svc.serviceName, svc.server)
+	}
+	c.TUI.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
+
 	// Hostnames - domains list provided for certbot
 	hostnames := make([]string, len(services))
 	for i, svc := range services {
@@ -268,7 +273,8 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 // hostnames tuple for brevity (collecting data, prompts, replacements for
 // nginx.conf)
 type hostnameTuple struct {
-	// server value is entered by user
+	// server value is entered by user. It will be the domain or subdomain of
+	// the service
 	server      string
 	prompt      string
 	placeholder string

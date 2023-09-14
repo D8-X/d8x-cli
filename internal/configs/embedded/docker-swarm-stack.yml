@@ -74,6 +74,14 @@ services:
       - d8x_backend
   referral:
     image: ghcr.io/d8-x/d8x-trader-referral:dev
+    deploy:
+      # Restart 3 times with 30 seconds delay before giving up.
+      restart_policy:
+        condition: any
+        delay: 30s
+        max_attempts: 3
+        # Do not wait to verify restart
+        window: 0s
     environment:
       - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
       - DATABASE_DSN_REFERRAL=${DATABASE_DSN_REFERRAL}

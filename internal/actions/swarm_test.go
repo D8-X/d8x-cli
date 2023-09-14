@@ -546,8 +546,6 @@ func TestSwarmNginx(t *testing.T) {
 						components.TextInputOptPlaceholder("email@domain.com"),
 					).
 					Return("email@for.certbot", nil)
-				mcr.EXPECT().NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
-
 				// Setup fake inputs for nginx setup
 				for _, h := range hostsTpl {
 					mcr.EXPECT().
@@ -603,7 +601,6 @@ func TestSwarmNginx(t *testing.T) {
 						components.TextInputOptPlaceholder("email@domain.com"),
 					).
 					Return("email@for.certbot", nil)
-				mcr.EXPECT().NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
 
 				// Setup fake inputs for nginx setup
 				for _, h := range hostsTpl {
@@ -618,6 +615,8 @@ func TestSwarmNginx(t *testing.T) {
 				// Confirm that values are correct
 				mcr.EXPECT().NewPrompt("Are these values correct?", true).
 					Return(true, nil)
+
+				mcr.EXPECT().NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
 			},
 			expectFS: func(mf *mocks.MockFSInteractor) {
 				// Generate replacements (Reaplce with h.placeholder as defined in expectComponents)

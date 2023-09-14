@@ -40,7 +40,7 @@ these dependencies automatically. Note that for automatic installation you will
 need to have python3 and pip installed on your system
 
 For cluster provisioning and configuration, see the setup command and its 
-subcommands.
+subcommands. Run d8x setup --help for more information.
 `
 
 const SetupDescription = `Command setup performs complete D8X cluster setup.

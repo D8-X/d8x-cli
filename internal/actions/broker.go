@@ -54,6 +54,7 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	fmt.Println("Enter your broker private key:")
 	pk, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
 	)
 	if err != nil {
 		return err
@@ -145,10 +146,6 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
-	// Print alert about configs
-	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
-	fmt.Println("Broker server IP address: ", brokerIpAddr)
-
 	setupNginx, err := c.TUI.NewPrompt("Do you want to setup nginx for broker-server?", true)
 	if err != nil {
 		return err
@@ -176,6 +173,12 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// Print alert about DNS
+	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
+	fmt.Println("Broker server IP address:", brokerIpAddr)
+	fmt.Println("Broker domain:", brokerServerName)
+	c.TUI.NewConfirmation("Press enter to continue...")
 
 	if setupNginx {
 		fmt.Println(styles.ItalicText.Render("Setting up nginx for broker node"))
