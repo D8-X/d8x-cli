@@ -19,9 +19,9 @@ sudo mv d8x /usr/bin/d8x
 Head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
 extract the d8x binary and place it in your `PATH`. 
 
-Note that binary releases are provided only for Linux. To run D8X-CLI you will
-need to [build it from source](#building-from-source). See FAQ supported
-platforms for details.
+Note that binary releases are provided only for Linux. To run D8X-CLI on other
+platforms you will need to [build it from source](#building-from-source). See
+FAQ supported platforms for details.
 
 ## Configuration Files
 Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
