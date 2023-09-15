@@ -98,7 +98,7 @@ Here is how the referral system works in a nutshell.
 - The system allows referrers to distribute codes to traders. Traders will receive a fee rebate after a given amount of time and accrued fees. Referrers will also receive a portion of the trader fees that they referred
 - The broker can determine the share of the broker imposed trading fee that go to the referrer, and the referrer can re-distribute this fee between a fee rebate for the trader and a portion for themselves. The broker can make the size of the fee share dependent on token holdings of the referrer. The broker can configure the fee, amount, and token.
 - There is a second type of referral that works via agency. In this setup the agency serves as an intermediary that connects to referrers. In this case the token holdings are not considered. Instead, the broker sets a fixed amount of the trading fee to be redistributed to the agency (e.g., 80%), and the agency determines how this fee is split between referrer, trader, and agency
-- More details here [referral/README_PAYSYS.md](./packages/referral/README_PAYSYS.md)
+- More details here [README_PAYSYS](https://github.com/D8-X/d8x-trader-backend/blob/main/packages/referral/README_PAYSYS.md)
 
 All of this can be configured as follows.
 <details> <summary>How to set live.referralSettings.json Parameters</summary>
