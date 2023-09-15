@@ -41,7 +41,7 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
-	if err := c.BrokerServerDeployment(ctx); err != nil {
+	if err := c.BrokerDeploy(ctx); err != nil {
 		return err
 	}
 

@@ -59,7 +59,6 @@ In essence setup calls the following subcommands in sequence:
 	- swarm-nginx
 
 See individual command's help for information how each step operates.
-
 `
 
 // RunD8XCli is the entrypoint to D8X cli tool
@@ -109,7 +108,7 @@ func RunD8XCli() {
 					{
 						Name:   "broker-deploy",
 						Usage:  "Deploy and configure broker-server deployment",
-						Action: container.BrokerServerDeployment,
+						Action: container.BrokerDeploy,
 					},
 					{
 						Name:   "broker-nginx",

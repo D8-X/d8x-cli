@@ -14,11 +14,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// BrokerServerDeployment collects information related to broker-server
+// BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
-func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Starting broker server deployment and nginx configuration...")
+func (c *Container) BrokerDeploy(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
 	// Dest filenames, TODO - centralize this via flags
 	var (
@@ -44,7 +44,7 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 
 	bsd := brokerServerDeployment{}
 
-	brokerIpAddr, err := c.getBrokerServerIp()
+	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
 		return err
 	}
@@ -107,14 +107,6 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	return nil
 }
 
-func (c *Container) getBrokerServerIp() (string, error) {
-	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
-	if err != nil {
-		return "", fmt.Errorf("could not determine broker ip address: %w", err)
-	}
-	return brokerIpAddr, nil
-}
-
 func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Performing nginx and certbot setup for broker server...")
 
@@ -141,7 +133,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
-	brokerIpAddr, err := c.getBrokerServerIp()
+	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
 		return err
 	}
@@ -201,13 +193,13 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 			"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, c.SshKeyPath),
 			"--extra-vars", "ansible_host_key_checking=false",
 			"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, password),
-			"-i", "./hosts.cfg",
+			"-i", configs.DEFAULT_HOSTS_FILE,
 			"-u", c.DefaultClusterUserName,
 			"./playbooks/broker.ansible.yaml",
 		}
 		cmd := exec.Command("ansible-playbook", args...)
 		connectCMDToCurrentTerm(cmd)
-		if err := cmd.Run(); err != nil {
+		if err := c.RunCmd(cmd); err != nil {
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render("Broker server nginx setup done!"))
