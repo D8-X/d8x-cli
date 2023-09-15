@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-func NewPrompt(question string, confirmed bool) (bool, error) {
+func newPrompt(question string, confirmed bool) (bool, error) {
 	out, err := tea.NewProgram(promptModel{
 		question:  question,
 		confirmed: confirmed,

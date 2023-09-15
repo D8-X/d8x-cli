@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+//go:generate mockgen -package mocks -destination ../mocks/files.go . EmbedFileCopier,HostsFileInteractor,FSInteractor
+
 type EmbedCopierOp struct {
 	// Src is the path to the file in embed.FS
 	Src string

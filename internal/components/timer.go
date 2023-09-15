@@ -86,7 +86,7 @@ func (m timerModel) View() string {
 	return s
 }
 
-func NewTimer(timeout time.Duration, title string) error {
+func newTimer(timeout time.Duration, title string) error {
 	m := timerModel{
 		title: title,
 		timer: timer.NewWithInterval(timeout, time.Millisecond),

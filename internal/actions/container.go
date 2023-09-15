@@ -7,9 +7,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
+	"github.com/urfave/cli/v2"
 )
+
+type SSHConnectionMaker func()
 
 // Container is the cli container which provides all the command and subcommand
 // actions
@@ -42,7 +47,7 @@ type Container struct {
 	// deployed.
 	CreateBrokerServer bool
 
-	LoadHostsFile files.HostsFileLoader
+	HostsCfg files.HostsFileInteractor
 
 	// pg.crt path, defaults to ./pg.crt
 	PgCrtPath string
@@ -51,6 +56,17 @@ type Container struct {
 	HttpClient *http.Client
 
 	ConfigRWriter configs.D8XConfigReadWriter
+
+	// terminal ui runner
+	TUI components.ComponentsRunner
+
+	// Retrieve the servers default user sudo password
+	GetPassword func(ctx *cli.Context) (string, error)
+
+	CreateSSHConn conn.SSHConnectionEstablisher
+
+	// RunCmd runs the provided command
+	RunCmd func(*exec.Cmd) error
 }
 
 func NewDefaultContainer() *Container {
@@ -59,8 +75,14 @@ func NewDefaultContainer() *Container {
 	return &Container{
 		EmbedCopier:   files.NewEmbedFileCopier(),
 		FS:            files.NewFileSystemInteractor(),
-		LoadHostsFile: files.LoadHostsFileFromFS,
+		HostsCfg:      files.NewFSHostsFileInteractor(configs.DEFAULT_HOSTS_FILE),
 		HttpClient:    httpClient,
+		TUI:           components.InteractiveRunner{},
+		GetPassword:   defaultPasswordGetter,
+		CreateSSHConn: conn.NewSSHConnection,
+		RunCmd: func(c *exec.Cmd) error {
+			return c.Run()
+		},
 	}
 }
 

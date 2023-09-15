@@ -40,7 +40,7 @@ these dependencies automatically. Note that for automatic installation you will
 need to have python3 and pip installed on your system
 
 For cluster provisioning and configuration, see the setup command and its 
-subcommands.
+subcommands. Run d8x setup --help for more information.
 `
 
 const SetupDescription = `Command setup performs complete D8X cluster setup.
@@ -59,7 +59,6 @@ In essence setup calls the following subcommands in sequence:
 	- swarm-nginx
 
 See individual command's help for information how each step operates.
-
 `
 
 // RunD8XCli is the entrypoint to D8X cli tool
@@ -109,7 +108,7 @@ func RunD8XCli() {
 					{
 						Name:   "broker-deploy",
 						Usage:  "Deploy and configure broker-server deployment",
-						Action: container.BrokerServerDeployment,
+						Action: container.BrokerDeploy,
 					},
 					{
 						Name:   "broker-nginx",

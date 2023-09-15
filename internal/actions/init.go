@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -44,7 +43,7 @@ func (c *Container) Init(ctx *cli.Context) error {
 
 	if !tfFound || !ansibleFound {
 		fmt.Println(styles.SuccessText.Italic(true).MarginTop(1).Render("Select which dependencies you wish to install automatically:"))
-		selected, err := components.NewSelection(install)
+		selected, err := c.TUI.NewSelection(install)
 		if err != nil {
 			return err
 		}

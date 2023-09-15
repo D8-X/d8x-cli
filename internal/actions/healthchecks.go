@@ -38,7 +38,7 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 
 		ch := make(chan healthCheckMsg)
 
-		// Run health check requests for
+		// Run health check requests for each svc
 		go c.healthCheckWithBackoff(
 			ch,
 			svc,
@@ -46,7 +46,7 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 			time.Second*2,
 		)
 
-		// Listen for updates from health cheker
+		// Listen for updates from health checker
 		go func(ch chan healthCheckMsg, s *serviceHostnameStatus) {
 			for info := range ch {
 				if info.done {
@@ -112,8 +112,9 @@ func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D
 }
 
 const (
-	notok = "❌"
-	ok    = "✅"
+	notok   = "❌"
+	ok      = "✅"
+	warning = "⚠️"
 )
 
 type serviceHostnameStatus struct {
@@ -202,6 +203,7 @@ func (h healthCheckModel) View() string {
 			}
 			if svc.responseStatus >= 500 {
 				responseStatus = styles.ErrorText.Render(responseStatus)
+				spinner = warning
 			}
 
 		} else {

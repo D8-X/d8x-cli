@@ -7,8 +7,6 @@ jobs:
     permissions:
       contents: write
       packages: write
-    strategy:
-      fail-fast: false
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
@@ -22,6 +20,8 @@ jobs:
         with:
           timeZone: UTC
           format: "YYYY-MM-DD HH-mm-ss"
+      - name: Run tests
+        run: go test ./...
       - name: Build D8X CLI
         run: |
           GOOS=linux go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go

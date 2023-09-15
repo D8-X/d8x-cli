@@ -203,10 +203,12 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 
 	// Token
 	fmt.Println("Enter your Linode API token")
-	token, err := components.NewInput(
+	token, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
 		components.TextInputOptValue(defaultToken),
+		components.TextInputOptMasked(),
 	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +216,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 
 	// DB
 	fmt.Println("Enter your Linode database cluster ID")
-	dbId, err := components.NewInput(
+	dbId, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("12345678"),
 		components.TextInputOptValue(defaultDbId),
 	)
@@ -224,7 +226,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l.linodeDbId = dbId
 
 	// Region
-	selected, err := components.NewList(
+	selected, err := c.TUI.NewList(
 		linodeRegions,
 		"Choose the Linode cluster region",
 		components.ListOptSelectedItem(defaultRegionItem),
@@ -245,7 +247,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 
 	// Label prefix
 	fmt.Println("Enter your Linode nodes label prefix")
-	label, err := components.NewInput(
+	label, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("my-d8x-cluster"),
 		components.TextInputOptValue(defaultClusterLabelPrefix),
 	)
@@ -255,7 +257,7 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l.linodeNodesLabelPrefix = label
 
 	// Broker-server
-	createBrokerServer, err := components.NewPrompt("Do you want to provision a broker-server server?", true)
+	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker-server server?", true)
 	if err != nil {
 		return nil, err
 	}

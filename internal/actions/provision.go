@@ -30,7 +30,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	fmt.Println("Select your server provider")
 
 	// List of supported server providers
-	selected, err := components.NewSelection([]string{
+	selected, err := c.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
 		// string(ServerProviderAws),
 	},

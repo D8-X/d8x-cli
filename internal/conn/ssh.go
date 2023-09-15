@@ -8,8 +8,25 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// NewSSHClient attempts to connect to server via ssh on default 22 port
-func NewSSHClient(serverIp, user, idFilePath string) (*ssh.Client, error) {
+//go:generate mockgen -package mocks -destination ../mocks/conn.go . SSHConnection
+
+type SSHConnection interface {
+	// Execute cmd on remote server
+	ExecCommand(cmd string) ([]byte, error)
+
+	// ExecCommandPiped works exactly like ExecCommand but connects
+	// stdin/out/err
+	ExecCommandPiped(cmd string) error
+
+	CopyFilesOverSftp(srcDst ...SftpCopySrcDest) error
+}
+
+type SSHConnectionEstablisher func(serverIp, user, idFilePath string) (SSHConnection, error)
+
+var _ (SSHConnectionEstablisher) = NewSSHConnection
+
+// NewSSHClient attempts to connect to server via ssh on default port 22
+func NewSSHConnection(serverIp, user, idFilePath string) (SSHConnection, error) {
 	pk, err := os.ReadFile(idFilePath)
 	if err != nil {
 		return nil, err
@@ -27,11 +44,22 @@ func NewSSHClient(serverIp, user, idFilePath string) (*ssh.Client, error) {
 		Timeout:         time.Second * 10,
 	}
 
-	return ssh.Dial("tcp", serverIp+":22", config)
+	// TODO pass port as parameter
+	c, err := ssh.Dial("tcp", serverIp+":22", config)
+	if err != nil {
+		return nil, err
+	}
+	return &sshConnection{c: c}, nil
 }
 
-func SSHExecCommand(c *ssh.Client, cmd string) ([]byte, error) {
-	s, err := c.NewSession()
+var _ (SSHConnection) = (*sshConnection)(nil)
+
+type sshConnection struct {
+	c *ssh.Client
+}
+
+func (conn *sshConnection) ExecCommand(cmd string) ([]byte, error) {
+	s, err := conn.c.NewSession()
 	if err != nil {
 		return nil, err
 	}
@@ -39,14 +67,11 @@ func SSHExecCommand(c *ssh.Client, cmd string) ([]byte, error) {
 }
 
 // SSHExecCommandPiped connects stdin/out/err
-func SSHExecCommandPiped(c *ssh.Client, cmd string) error {
-	s, err := c.NewSession()
+func (conn *sshConnection) ExecCommandPiped(cmd string) error {
+	s, err := conn.c.NewSession()
 	if err != nil {
 		return err
 	}
-	// if err := s.RequestSubsystem("bash"); err != nil {
-	// 	return err
-	// }
 
 	if err := s.RequestPty("xterm", 80, 80,
 		ssh.TerminalModes{
@@ -70,4 +95,8 @@ func SSHExecCommandPiped(c *ssh.Client, cmd string) error {
 	}
 
 	return s.Close()
+}
+
+func (conn *sshConnection) CopyFilesOverSftp(srcDst ...SftpCopySrcDest) error {
+	return CopyFilesOverSftp(conn.c, srcDst...)
 }

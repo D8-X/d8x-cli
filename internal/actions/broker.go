@@ -12,14 +12,13 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
-	"golang.org/x/crypto/ssh"
 )
 
-// BrokerServerDeployment collects information related to broker-server
+// BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
-func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Starting broker server deployment and nginx configuration...")
+func (c *Container) BrokerDeploy(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
 	// Dest filenames, TODO - centralize this via flags
 	var (
@@ -38,14 +37,14 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	components.NewConfirmation(
+	c.TUI.NewConfirmation(
 		"Please review the configuration file and ensure values are correct before proceeding:" + "\n" +
 			styles.AlertImportant.Render(absChainConfig),
 	)
 
 	bsd := brokerServerDeployment{}
 
-	brokerIpAddr, err := c.getBrokerServerIp()
+	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
 		return err
 	}
@@ -53,15 +52,16 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 
 	// Collect required information
 	fmt.Println("Enter your broker private key:")
-	pk, err := components.NewInput(
+	pk, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
 	)
 	if err != nil {
 		return err
 	}
 	bsd.brokerKey = pk
 	fmt.Println("Enter your broker fee tbps value:")
-	tbps, err := components.NewInput(
+	tbps, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("60"),
 		components.TextInputOptValue("60"),
 	)
@@ -76,7 +76,7 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
-	sshClient, err := conn.NewSSHClient(
+	sshClient, err := c.CreateSSHConn(
 		bsd.brokerServerIpAddr,
 		c.DefaultClusterUserName,
 		c.SshKeyPath,
@@ -84,7 +84,7 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("establishing ssh connection: %w", err)
 	}
-	if err := conn.CopyFilesOverSftp(sshClient,
+	if err := sshClient.CopyFilesOverSftp(
 		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
 	); err != nil {
@@ -94,8 +94,7 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
 	cmd := "cd ./broker && echo '%s' | sudo -S BROKER_KEY=%s BROKER_FEE_TBPS=%s docker compose up -d"
-	out, err := conn.SSHExecCommand(
-		sshClient,
+	out, err := sshClient.ExecCommand(
 		fmt.Sprintf(cmd, password, bsd.brokerKey, bsd.brokerFeeTBPS),
 	)
 	if err != nil {
@@ -106,19 +105,6 @@ func (c *Container) BrokerServerDeployment(ctx *cli.Context) error {
 	}
 
 	return nil
-}
-
-func (c *Container) getBrokerServerIp() (string, error) {
-	hostsCfg, err := c.LoadHostsFile("./hosts.cfg")
-	if err != nil {
-		return "", err
-	}
-
-	brokerIpAddr, err := hostsCfg.GetBrokerPublicIp()
-	if err != nil {
-		return "", fmt.Errorf("could not determine broker ip address: %w", err)
-	}
-	return brokerIpAddr, nil
 }
 
 func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
@@ -147,27 +133,23 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
-	brokerIpAddr, err := c.getBrokerServerIp()
+	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
 		return err
 	}
 
-	// Print alert about configs
-	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
-	fmt.Println("Broker server IP address: ", brokerIpAddr)
-
-	setupNginx, err := components.NewPrompt("Do you want to setup nginx for broker-server?", true)
+	setupNginx, err := c.TUI.NewPrompt("Do you want to setup nginx for broker-server?", true)
 	if err != nil {
 		return err
 	}
-	setupCertbot, err := components.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
+	setupCertbot, err := c.TUI.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
 	if err != nil {
 		return err
 	}
 	emailForCertbot := ""
 	if setupCertbot {
 		fmt.Println("Enter your email address for certbot notifications: ")
-		email, err := components.NewInput(
+		email, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("email@domain.com"),
 		)
 		if err != nil {
@@ -177,12 +159,18 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	}
 
 	fmt.Println("Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):")
-	brokerServerName, err := components.NewInput(
+	brokerServerName, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("your-broker.domain.com"),
 	)
 	if err != nil {
 		return err
 	}
+
+	// Print alert about DNS
+	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
+	fmt.Println("Broker server IP address:", brokerIpAddr)
+	fmt.Println("Broker domain:", brokerServerName)
+	c.TUI.NewConfirmation("Press enter to continue...")
 
 	if setupNginx {
 		fmt.Println(styles.ItalicText.Render("Setting up nginx for broker node"))
@@ -205,13 +193,13 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 			"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, c.SshKeyPath),
 			"--extra-vars", "ansible_host_key_checking=false",
 			"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, password),
-			"-i", "./hosts.cfg",
+			"-i", configs.DEFAULT_HOSTS_FILE,
 			"-u", c.DefaultClusterUserName,
 			"./playbooks/broker.ansible.yaml",
 		}
 		cmd := exec.Command("ansible-playbook", args...)
 		connectCMDToCurrentTerm(cmd)
-		if err := cmd.Run(); err != nil {
+		if err := c.RunCmd(cmd); err != nil {
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render("Broker server nginx setup done!"))
@@ -227,7 +215,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	if setupCertbot {
 		fmt.Println(styles.ItalicText.Render("Setting up certbot for broker server..."))
 
-		sshClient, err := conn.NewSSHClient(
+		sshConn, err := c.CreateSSHConn(
 			brokerIpAddr,
 			c.DefaultClusterUserName,
 			c.SshKeyPath,
@@ -236,7 +224,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 			return err
 		}
 
-		out, err := c.certbotNginxSetup(sshClient, password, emailForCertbot, []string{brokerServerName})
+		out, err := c.certbotNginxSetup(sshConn, password, emailForCertbot, []string{brokerServerName})
 		fmt.Println(string(out))
 		if err != nil {
 			return err
@@ -261,7 +249,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 // certbotNginxSetup performs certificate issuance for given domains. Nginx and
 // DNS A records must be setup beforehand.
-func (c *Container) certbotNginxSetup(sshClient *ssh.Client, userSudoPassword, email string, domains []string) ([]byte, error) {
+func (c *Container) certbotNginxSetup(sshConn conn.SSHConnection, userSudoPassword, email string, domains []string) ([]byte, error) {
 	cmd := fmt.Sprintf(
 		`echo '%s' | sudo -S certbot --nginx -d %s -n  --agree-tos -m %s`,
 		userSudoPassword,
@@ -269,7 +257,7 @@ func (c *Container) certbotNginxSetup(sshClient *ssh.Client, userSudoPassword, e
 		email,
 	)
 
-	return conn.SSHExecCommand(sshClient, cmd)
+	return sshConn.ExecCommand(cmd)
 }
 
 type brokerServerDeployment struct {
