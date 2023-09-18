@@ -32,6 +32,7 @@ type D8XConfig struct {
 	ServerProvider D8XServerProvider             `json:"server_provider"`
 
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
+	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 }
 
 type D8XServerProvider string
@@ -44,6 +45,13 @@ const (
 type D8XLinodeConfig struct {
 	Token       string `json:"linode_token"`
 	DbId        string `json:"db_id"`
+	Region      string `json:"region"`
+	LabelPrefix string `json:"label_prefix"`
+}
+
+type D8XAWSConfig struct {
+	AccesKey    string `json:"access_key"`
+	SecretKey   string `json:"secret_key"`
 	Region      string `json:"region"`
 	LabelPrefix string `json:"label_prefix"`
 }
