@@ -116,7 +116,7 @@ services:
         - REDIS_PW=${REDIS_PASSWORD}
         - REDIS_ADDR=redis:6379
         # Use different database tha
-        - REDIS_DB_NUM=1
+        - REDIS_DB_NUM=0
         - CONFIG_PATH=/cfg_candles
       networks:
         - candles
@@ -139,7 +139,7 @@ services:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
       # Use different database tha
-      - REDIS_DB_NUM=1
+      - REDIS_DB_NUM=0
       - CONFIG_PATH=/cfg_candles
       - WS_ADDR=0.0.0.0:8080
     networks:
