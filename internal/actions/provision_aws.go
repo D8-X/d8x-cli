@@ -42,7 +42,8 @@ func (a *awsConfigurer) generateArgs() []string {
 		"-var", fmt.Sprintf(`aws_access_key=%s`, a.AccesKey),
 		"-var", fmt.Sprintf(`aws_secret_key=%s`, a.SecretKey),
 		"-var", fmt.Sprintf(`region=%s`, a.Region),
-		"-var", fmt.Sprintf(`authorized_key="%s"`, a.authorizedKey),
+		// Do not include the quotes here
+		"-var", fmt.Sprintf(`authorized_key=%s`, a.authorizedKey),
 	}
 }
 
@@ -93,6 +94,16 @@ func (c *Container) awsServerConfigurer() (ServerProviderConfigurer, error) {
 		return nil, err
 	}
 	awsCfg.Region = region
+
+	fmt.Println("Enter server tag prefix: ")
+	labelPrefix, err := c.TUI.NewInput(
+		components.TextInputOptValue("d8x-cluster"),
+		components.TextInputOptPlaceholder("my-cluster"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	awsCfg.LabelPrefix = labelPrefix
 
 	// SSH key check
 	if err := c.ensureSSHKeyPresent(); err != nil {

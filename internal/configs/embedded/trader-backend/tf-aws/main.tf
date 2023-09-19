@@ -19,12 +19,88 @@ resource "aws_key_pair" "d8x_cluster_ssh_key" {
   public_key = var.authorized_key
 }
 
+// Find latest ubuntu 22.04 LTS 
+data "aws_ami" "ubuntu" {
+  most_recent = true
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+resource "aws_vpc" "d8x_cluster_vpc" {
+  cidr_block       = "10.0.0.0/16"
+  instance_tenancy = "default"
+
+  tags = {
+    Name = "d8x-cluster-vpc"
+  }
+}
+
+resource "aws_security_group" "allow_ssh" {
+  name   = "allow-all-sg"
+  vpc_id = aws_vpc.d8x_cluster_vpc.id
+  ingress {
+    cidr_blocks = [
+      "0.0.0.0/0"
+    ]
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_subnet" "workers_subnet" {
+  vpc_id     = aws_vpc.d8x_cluster_vpc.id
+  cidr_block = "10.0.1.0/24"
+  tags = {
+    Name = "d8x-cluster-subnet_workers"
+  }
+}
+
+resource "aws_subnet" "public_subnet" {
+  vpc_id     = aws_vpc.d8x_cluster_vpc.id
+  cidr_block = "10.0.2.0/24"
+
+  tags = {
+    Name = "d8x-cluster-subnet_public"
+  }
+  map_public_ip_on_launch = true
+}
+
+resource "aws_instance" "manager" {
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.worker_size
+  key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
+
+  subnet_id = aws_subnet.public_subnet.id
+
+  security_groups = [aws_security_group.allow_ssh.id]
+
+  tags = {
+    Name = format("%s-%s", var.server_label_prefix, "manager")
+  }
+}
+
 resource "aws_instance" "nodes" {
   count = var.num_workers
 
-  ami           = var.ami_image_id
+  ami           = data.aws_ami.ubuntu.id
   instance_type = var.worker_size
   key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
+
+  subnet_id = aws_subnet.workers_subnet.id
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "worker-${count.index + 1}")

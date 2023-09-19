@@ -21,7 +21,6 @@ variable "num_workers" {
 variable "region" {
   type        = string
   description = "Cluster region"
-  default     = "eu-north-1"
 }
 
 variable "worker_size" {
@@ -34,13 +33,6 @@ variable "server_label_prefix" {
   type        = string
   description = "Prefix that will be used in instance tag"
   default     = "d8x-cluster"
-}
-
-variable "ami_image_id" {
-  type        = string
-  description = "value of the AMI image id to be used for all servers"
-  # Ubuntu LTS 22.04
-  default = "ami-0989fb15ce71ba39e"
 }
 
 variable "authorized_key" {
