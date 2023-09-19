@@ -109,29 +109,6 @@ services:
         target: /pg.crt
     networks:
       - d8x_backend
-  pyth_connection:
-    image: ghcr.io/d8-x/d8x-trader-pxws-client:dev
-    environment:
-      - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
-      - PORT_REST=${PXWS_API_PORT_HTTP:-3005}
-      - PORT_WEBSOCKET=${PXWS_API_PORT_WEBSOCKET:-3006}
-      - CHAIN_ID=${CHAIN_ID}
-      - CONFIG_PATH_RPC=/cfg_rpc
-      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
-      - CONFIG_PATH_WSCFG=/cfg_wscfg
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "1k"
-        max-file: "10"
-    configs:
-      - cfg_rpc
-      - cfg_referral
-      - cfg_wscfg
-      - source: pg_ca
-        target: /pg.crt
-    networks:
-      - d8x_backend
 
   candles-pyth-client:
       image: ghcr.io/d8-x/d8x-candles-pyth-client:main
