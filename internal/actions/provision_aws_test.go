@@ -39,7 +39,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 				e.Components.EXPECT().
 					NewInput(
 						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("", assert.AnError)
 			},
@@ -54,7 +53,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 				e.Components.EXPECT().
 					NewInput(
 						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("aws-access-key", nil)
 				e.Components.EXPECT().
@@ -75,7 +73,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 				e.Components.EXPECT().
 					NewInput(
 						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("aws-access-key", nil)
 				e.Components.EXPECT().

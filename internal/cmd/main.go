@@ -138,6 +138,11 @@ func RunD8XCli() {
 				ArgsUsage: "manager|broker",
 				Action:    container.Ips,
 			},
+			{
+				Name:   "tf-destroy",
+				Usage:  "Run terraform destroy for current setup",
+				Action: container.TerraformDestroy,
+			},
 		},
 		// Global flags accesible to all subcommands
 		Flags: []cli.Flag{

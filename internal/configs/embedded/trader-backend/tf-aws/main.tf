@@ -34,30 +34,12 @@ data "aws_ami" "ubuntu" {
 }
 
 resource "aws_vpc" "d8x_cluster_vpc" {
-  cidr_block       = "10.0.0.0/16"
-  instance_tenancy = "default"
+  cidr_block           = "10.0.0.0/16"
+  instance_tenancy     = "default"
+  enable_dns_hostnames = true
 
   tags = {
     Name = "d8x-cluster-vpc"
-  }
-}
-
-resource "aws_security_group" "allow_ssh" {
-  name   = "allow-all-sg"
-  vpc_id = aws_vpc.d8x_cluster_vpc.id
-  ingress {
-    cidr_blocks = [
-      "0.0.0.0/0"
-    ]
-    from_port = 22
-    to_port   = 22
-    protocol  = "tcp"
-  }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
@@ -79,14 +61,65 @@ resource "aws_subnet" "public_subnet" {
   map_public_ip_on_launch = true
 }
 
+// attach igw to vpc
+resource "aws_internet_gateway" "d8x_igw" {
+  vpc_id = aws_vpc.d8x_cluster_vpc.id
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.d8x_cluster_vpc.id
+}
+
+resource "aws_route" "internet" {
+  route_table_id         = aws_route_table.public.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.d8x_igw.id
+}
+
+resource "aws_route_table_association" "manager_association" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_security_group" "allow_ssh" {
+  name_prefix = "d8x-cluster-ssh-sg"
+  vpc_id      = aws_vpc.d8x_cluster_vpc.id
+  ingress {
+    cidr_blocks = [
+      "0.0.0.0/0"
+    ]
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# resource "aws_eip" "manager_public_ip" {
+#   tags = {
+#     Name = "d8x-cluster-manager-public-ip"
+#   }
+# }
+
+# resource "aws_eip_association" "eip_assoc" {
+#   instance_id   = aws_instance.manager.primary_network_interface_id
+#   allocation_id = aws_eip.manager_public_ip.id
+# }
+
+
 resource "aws_instance" "manager" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.worker_size
   key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
 
-  subnet_id = aws_subnet.public_subnet.id
-
-  security_groups = [aws_security_group.allow_ssh.id]
+  subnet_id                   = aws_subnet.public_subnet.id
+  associate_public_ip_address = true
+  security_groups             = [aws_security_group.allow_ssh.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "manager")
@@ -99,8 +132,9 @@ resource "aws_instance" "nodes" {
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.worker_size
   key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
+  subnet_id     = aws_subnet.workers_subnet.id
 
-  subnet_id = aws_subnet.workers_subnet.id
+  security_groups = [aws_security_group.allow_ssh.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "worker-${count.index + 1}")

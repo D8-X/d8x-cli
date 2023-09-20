@@ -66,7 +66,6 @@ func (c *Container) awsServerConfigurer() (ServerProviderConfigurer, error) {
 	fmt.Println("Enter your AWS Access Key: ")
 	accessKey, err := c.TUI.NewInput(
 		components.TextInputOptValue(awsKey),
-		components.TextInputOptMasked(),
 		components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 	)
 	if err != nil {

@@ -100,10 +100,10 @@ func (c *Container) Provision(ctx *cli.Context) error {
 			Region:      i.linodeRegion,
 			LabelPrefix: i.linodeNodesLabelPrefix,
 		}
-	}
 
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return err
+		if err := c.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
 	}
 
 	return nil
