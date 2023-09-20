@@ -15,9 +15,9 @@ services:
     deploy:
       replicas: 1
       # placement:
-        # constraints:
-          # Always run redis on the same node
-          # - "node.hostname==worker-1"
+      # constraints:
+      # Always run redis on the same node
+      # - "node.hostname==worker-1"
   api:
     image: ghcr.io/d8-x/d8x-trader-main:dev
     ports:
@@ -37,15 +37,13 @@ services:
       - MAIN_API_PORT_WEBSOCKET=${MAIN_API_PORT_WEBSOCKET:-3002}
       - CONFIG_PATH_RPC=/cfg_rpc
       - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
-      - CONFIG_PATH_WSCFG=/cfg_wscfg
     networks:
       - d8x_backend
     deploy:
       replicas: 2
-    configs:  
+    configs:
       - cfg_rpc
       - cfg_referral
-      - cfg_wscfg
   history:
     image: ghcr.io/d8-x/d8x-trader-history:dev
     environment:
@@ -56,7 +54,6 @@ services:
       - CORS_ON=${CORS_ON:-FALSE}
       - CONFIG_PATH_RPC=/cfg_rpc
       - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
-      - CONFIG_PATH_WSCFG=/cfg_wscfg
     ports:
       - "${HISTORY_API_PORT_HTTP:-3003}:${HISTORY_API_PORT_HTTP:-3003}"
     logging:
@@ -69,7 +66,6 @@ services:
     configs:
       - cfg_rpc
       - cfg_referral
-      - cfg_wscfg
     networks:
       - d8x_backend
   referral:
@@ -93,7 +89,6 @@ services:
       - HISTORY_API_ENDPOINT="http://history:${HISTORY_API_PORT_HTTP:-3003}"
       - CONFIG_PATH_RPC=/cfg_rpc
       - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
-      - CONFIG_PATH_WSCFG=/cfg_wscfg
     ports:
       - "${REFERRAL_API_PORT_HTTP:-3004}:${REFERRAL_API_PORT_HTTP:-3004}"
     logging:
@@ -104,31 +99,30 @@ services:
     configs:
       - cfg_rpc
       - cfg_referral
-      - cfg_wscfg
       - source: pg_ca
         target: /pg.crt
     networks:
       - d8x_backend
 
   candles-pyth-client:
-      image: ghcr.io/d8-x/d8x-candles-pyth-client:main
-      environment:
-        - REDIS_PW=${REDIS_PASSWORD}
-        - REDIS_ADDR=redis:6379
-        # Use different database tha
-        - REDIS_DB_NUM=0
-        - CONFIG_PATH=/cfg_candles
-      networks:
-        - candles
-        - d8x_backend
-      logging:
-        options:
-          max-size: "10m"
-          max-file: "10"
-      configs:  
-        - cfg_candles
-      deploy:
-        replicas: 1
+    image: ghcr.io/d8-x/d8x-candles-pyth-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      # Use different database tha
+      - REDIS_DB_NUM=0
+      - CONFIG_PATH=/cfg_candles
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
+    configs:
+      - cfg_candles
+    deploy:
+      replicas: 1
 
   # Candles websockets server
   candles-ws-server:
@@ -149,11 +143,10 @@ services:
       options:
         max-size: "10m"
         max-file: "10"
-    configs:  
+    configs:
       - cfg_candles
     deploy:
       replicas: 1
-
 
 networks:
   d8x_backend:
@@ -165,8 +158,6 @@ configs:
   cfg_rpc:
     external: true
   cfg_referral:
-    external: true
-  cfg_wscfg:
     external: true
   pg_ca:
     external: true
