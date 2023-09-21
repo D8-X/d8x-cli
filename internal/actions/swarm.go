@@ -23,7 +23,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
 		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
 		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
-		{Src: "embedded/trader-backend/live.wsConfig.json", Dst: "./trader-backend/live.wsConfig.json", Overwrite: false},
 		// Candles configs
 		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
 		// Docker swarm file

@@ -23,7 +23,6 @@ func TestSwarmDeploy(t *testing.T) {
 		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
 		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
 		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
-		{Src: "embedded/trader-backend/live.wsConfig.json", Dst: "./trader-backend/live.wsConfig.json", Overwrite: false},
 		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 	}
@@ -32,7 +31,6 @@ func TestSwarmDeploy(t *testing.T) {
 		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
 		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
 		{Src: "./trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json"},
-		{Src: "./trader-backend/live.wsConfig.json", Dst: "./trader-backend/live.wsConfig.json"},
 		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
