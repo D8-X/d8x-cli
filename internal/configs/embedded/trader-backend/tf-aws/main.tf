@@ -51,6 +51,23 @@ resource "aws_subnet" "workers_subnet" {
   }
 }
 
+resource "aws_eip" "manager_ip" {
+
+}
+
+resource "aws_nat_gateway" "public_nat" {
+  allocation_id = aws_eip.manager_ip.id
+  subnet_id     = aws_subnet.workers_subnet.id
+
+  tags = {
+    Name = "d8x-cluster-nat-gateway"
+  }
+
+  # To ensure proper ordering, it is recommended to add an explicit dependency
+  # on the Internet Gateway for the VPC.
+  depends_on = [aws_internet_gateway.d8x_igw]
+}
+
 resource "aws_subnet" "public_subnet" {
   vpc_id     = aws_vpc.d8x_cluster_vpc.id
   cidr_block = "10.0.2.0/24"
@@ -126,6 +143,21 @@ resource "aws_instance" "manager" {
   }
 }
 
+resource "aws_instance" "broker_server" {
+  count         = var.create_broker_server ? 1 : 0
+  ami           = data.aws_ami.ubuntu.id
+  instance_type = var.worker_size
+  key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
+
+  subnet_id                   = aws_subnet.public_subnet.id
+  associate_public_ip_address = true
+  security_groups             = [aws_security_group.allow_ssh.id]
+
+  tags = {
+    Name = format("%s-%s", var.server_label_prefix, "manager")
+  }
+}
+
 resource "aws_instance" "nodes" {
   count = var.num_workers
 
@@ -142,19 +174,50 @@ resource "aws_instance" "nodes" {
 }
 
 
-# Geneate ansible inventory
-# resource "local_file" "hosts_cfg" {
-#   depends_on = [linode_instance.manager, linode_instance.nodes, aws_instance.nodes.*.]
-#   content = templatefile("inventory.tpl",
-#     {
-#       manager_public_ip   = linode_instance.manager.ip_address
-#       manager_private_ip  = linode_instance.manager.private_ip_address
-#       workers_public_ips  = linode_instance.nodes.*.ip_address
-#       workers_private_ips = linode_instance.nodes.*.private_ip_address
-#       broker_public_ip    = var.create_broker_server ? linode_instance.broker_server[0].ip_address : ""
-#       broker_private_ip   = var.create_broker_server ? linode_instance.broker_server[0].private_ip_address : ""
-#     }
-#   )
-#   filename = "hosts.cfg"
-# }
+variable "ssh_jump_host_cfg_path" {
+  default = "./manager_ssh_jump.conf"
+}
+
+# Geneate ansible inventory with jump host for workers
+resource "local_file" "hosts_cfg" {
+  depends_on = [aws_instance.nodes, aws_instance.manager]
+  content    = <<EOF
+[managers]
+${aws_instance.manager.public_ip} manager_private_ip=${aws_instance.manager.private_ip} hostname=manager-1
+
+[workers]
+%{for index, ip in aws_instance.nodes[*].private_ip}
+${ip} hostname=${format("worker-%02d", index + 1)}
+%{endfor~}
+
+[workers:vars]
+ansible_ssh_common_args="-J jump_host -F ${var.ssh_jump_host_cfg_path}"
+
+%{if var.create_broker_server}
+[broker]
+${aws_instance.broker_server[0].public_ip} private_ip=${aws_instance.broker_server[0].private_ip}
+%{endif~}
+EOF
+
+  filename = "hosts.cfg"
+}
+
+# Template for manager as jump host ssh config. We can later use ProxyJump
+# jump_host for accessing workers via ansible.
+variable "ssh_jump_host" {
+  default = <<EOF
+  Host jump_host
+    Hostname %s
+    User ubuntu
+    IdentityFile ./id_ed25519
+    Port 22
+  EOF
+}
+
+# Generate a small ssh config workaround for accessing workers through manager
+# as a ProxyJump
+resource "local_file" "jump_host_ssh_config" {
+  content  = format(var.ssh_jump_host, aws_instance.manager.public_ip)
+  filename = var.ssh_jump_host_cfg_path
+}
 

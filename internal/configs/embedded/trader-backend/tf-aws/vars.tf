@@ -39,3 +39,10 @@ variable "authorized_key" {
   type        = string
   description = "SSH public key that will be added to each server. A "
 }
+
+
+variable "create_broker_server" {
+  type        = bool
+  description = "Whether broker-server node should be created"
+  default     = false
+}

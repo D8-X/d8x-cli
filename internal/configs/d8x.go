@@ -35,6 +35,18 @@ type D8XConfig struct {
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 }
 
+// GetAnsibleUser returns the default sudo user for initial ansible
+// configuration step
+func (d *D8XConfig) GetAnsibleUser() string {
+	if d.ServerProvider == D8XServerProviderLinode {
+		return "root"
+	} else if d.ServerProvider == D8XServerProviderAWS {
+		// In case used image changes - we should also chane the user!
+		return "ubuntu"
+	}
+	return ""
+}
+
 type D8XServerProvider string
 
 const (

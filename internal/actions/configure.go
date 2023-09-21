@@ -16,6 +16,11 @@ import (
 func (c *Container) Configure(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Performing servers setup configuration with ansible...")
 
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
 	// Copy the playbooks file
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
@@ -57,14 +62,19 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
 		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, c.UserPassword),
 		"-i", "./hosts.cfg",
-		"-u", "root",
+		"-u", cfg.GetAnsibleUser(),
 		"./playbooks/setup.ansible.yaml",
+	}
+
+	// For aws setup we need to use manager server as bastion/jump host
+	if cfg.ServerProvider == configs.D8XServerProviderAWS {
+		// args
 	}
 
 	cmd := exec.Command("ansible-playbook", args...)
 	connectCMDToCurrentTerm(cmd)
 
-	return cmd.Run()
+	return c.RunCmd(cmd)
 }
 
 func (c *Container) generatePassword(n int) (string, error) {

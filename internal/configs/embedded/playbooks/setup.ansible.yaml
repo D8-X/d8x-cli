@@ -138,6 +138,7 @@
     - managers
     - broker
   name: Configure manager
+  become: true
   tasks:
     - name: Install nginx on manager
       ansible.builtin.apt:

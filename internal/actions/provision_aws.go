@@ -22,6 +22,7 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 		// Embed paths must be in this order: main.tf vars.tf
 		"embedded/trader-backend/tf-aws/main.tf",
 		"embedded/trader-backend/tf-aws/vars.tf",
+		"embedded/trader-backend/tf-aws/output.tf",
 	); err != nil {
 		return nil, fmt.Errorf("generating aws.tf file: %w", err)
 	}
