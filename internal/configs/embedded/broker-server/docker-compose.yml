@@ -1,16 +1,70 @@
+version: '3'
 services:
   broker:
-    image: ghcr.io/d8-x/d8x-broker-server:main
+    image: ghcr.io/d8-x/d8x-broker-server:dev
     restart: always
+    depends_on:
+      - redis
     ports:
       # Default svc port is 8000
-      - 127.0.0.1:8000:8000
+      - 8000:8000
+    networks:
+      - app-net
     environment:
+      REDIS_ADDR: redis:6379
+      REDIS_PW: "${REDIS_PW}"
       BROKER_KEY: "${BROKER_KEY}"
       BROKER_FEE_TBPS: "${BROKER_FEE_TBPS}"
       CONFIG_PATH: /chain_config
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
     configs:
       - chain_config
+
+  executorws:
+    image: ghcr.io/d8-x/d8x-broker-exec-ws:dev
+    restart: always
+    depends_on:
+      - redis
+    ports:
+      # Default svc port is 8080
+      - 8080:8080
+    networks:
+      - app-net
+    environment:
+      REDIS_ADDR: redis:6379
+      REDIS_PW: "${REDIS_PW}"
+      WS_ADDR: executorws:8080
+      BROKER_KEY: "${BROKER_KEY}"
+      BROKER_FEE_TBPS: "${BROKER_FEE_TBPS}"
+      CONFIG_PATH: /chain_config
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
+    configs:
+      - chain_config
+
+  redis:
+    image: redis
+    command: redis-server --requirepass ${REDIS_PW}
+    environment:
+      - TZ=UTC
+    ports:
+      - "6379:6379"
+    networks:
+      - app-net
+    restart: on-failure
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
+
+networks:
+  app-net:
+
 configs:
   chain_config:
     file: ./chainConfig.json
