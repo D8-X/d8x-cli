@@ -59,7 +59,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	pk = strings.TrimPrefix(pk, "0x")
 	bsd.brokerKey = pk
+
 	fmt.Println("Enter your broker fee tbps value:")
 	tbps, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("60"),
