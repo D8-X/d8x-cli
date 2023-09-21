@@ -12,7 +12,7 @@
   {
     "chainId": 1442,
     "name": "zkEVM Testnet",
-    "perpetualManagerProxyAddr": "0xb56b81e40e1cDB77bb5Db6C0283e25C27DAE1Be6",
+    "perpetualManagerProxyAddr": "0x0e23619704556945B1C7CB550Dee6D428f7d2E2B",
     "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
     "allowedExecutors": ["0x9d5aaB428e98678d0E645ea4AeBd25f744341a05", "0xDa47a0CAc77D50114F2725D06a2Ce887cF9f4D98"]
   }
