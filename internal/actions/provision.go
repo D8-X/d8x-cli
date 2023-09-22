@@ -27,12 +27,21 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		return err
 	}
 
+	// Cp inventory.tpl for hosts.cfg
+	if err := c.EmbedCopier.CopyMultiToDest(
+		configs.EmbededConfigs,
+		"./inventory.tpl",
+		"embedded/trader-backend/inventory.tpl",
+	); err != nil {
+		return fmt.Errorf("generating inventory.tpl file: %w", err)
+	}
+
 	fmt.Println("Select your server provider")
 
 	// List of supported server providers
 	selected, err := c.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
-		// string(ServerProviderAws),
+		string(ServerProviderAws),
 	},
 		components.SelectionOptAllowOnlySingleItem(),
 		components.SelectionOptRequireSelection(),
@@ -75,7 +84,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Set the provisioning time
 	c.provisioningTime = time.Now()
 
-	// Perform providerd dependent actions
+	// Perform provider dependent actions
 	switch i := providerConfigurer.(type) {
 	case linodeConfigurer:
 		// Pull the cert
@@ -91,10 +100,10 @@ func (c *Container) Provision(ctx *cli.Context) error {
 			Region:      i.linodeRegion,
 			LabelPrefix: i.linodeNodesLabelPrefix,
 		}
-	}
 
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return err
+		if err := c.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -113,6 +122,8 @@ func (c *Container) configureServerProviderForTF(provider SupportedServerProvide
 	switch provider {
 	case ServerProviderLinode:
 		return c.linodeServerConfigurer()
+	case ServerProviderAws:
+		return c.awsServerConfigurer()
 	}
 
 	return nil, nil

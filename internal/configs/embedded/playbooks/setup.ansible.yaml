@@ -15,6 +15,9 @@
         name: sshd
         state: restarted
   tasks:
+    - name: Wait for connection to server
+      wait_for_connection:
+        timeout: 360
     # Essentials, hostnames, users setup, ssh keys
     - name: Set hostname
       ansible.builtin.hostname:
@@ -135,6 +138,7 @@
     - managers
     - broker
   name: Configure manager
+  become: true
   tasks:
     - name: Install nginx on manager
       ansible.builtin.apt:

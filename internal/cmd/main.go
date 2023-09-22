@@ -68,10 +68,11 @@ func RunD8XCli() {
 	// Initialize cli application and its subcommands and bind default values
 	// for ac (via flags.Destination)
 	app := &cli.App{
-		Name:        CmdName,
-		HelpName:    CmdName,
-		Usage:       CmdUsage,
-		Description: MainDescription,
+		Name:                 CmdName,
+		HelpName:             CmdName,
+		Usage:                CmdUsage,
+		Description:          MainDescription,
+		EnableBashCompletion: true,
 		Commands: []*cli.Command{
 			{
 				Name:   "init",
@@ -138,6 +139,11 @@ func RunD8XCli() {
 				ArgsUsage: "manager|broker",
 				Action:    container.Ips,
 			},
+			{
+				Name:   "tf-destroy",
+				Usage:  "Run terraform destroy for current setup",
+				Action: container.TerraformDestroy,
+			},
 		},
 		// Global flags accesible to all subcommands
 		Flags: []cli.Flag{
@@ -177,7 +183,13 @@ func RunD8XCli() {
 				Usage:       "pg.crt certificate path",
 			},
 		},
-		Action:  container.Init,
+		Action: func(ctx *cli.Context) error {
+			// Disallow running d8x with incorrect subcommands
+			if ctx.Args().Len() == 0 {
+				return container.Init(ctx)
+			}
+			return fmt.Errorf("unknown command %s", ctx.Args().First())
+		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
 			// Create d8x.conf config read writer. We can only do this here,
