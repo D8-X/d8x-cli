@@ -24,12 +24,17 @@ data "aws_ami" "ubuntu" {
   most_recent = true
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-20230608"]
   }
 
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
+  }
+
+  filter {
+    name   = "state"
+    values = ["available"]
   }
 }
 
@@ -127,7 +132,6 @@ resource "aws_security_group" "allow_ssh" {
 #   instance_id   = aws_instance.manager.primary_network_interface_id
 #   allocation_id = aws_eip.manager_public_ip.id
 # }
-
 
 resource "aws_instance" "manager" {
   ami           = data.aws_ami.ubuntu.id

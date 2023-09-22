@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -22,6 +23,8 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	var args []string = []string{
 		"destroy", "-auto-approve",
 	}
+
+	var env []string = []string{}
 
 	// Provide necessary variables for terraform destroy based on the provider
 	switch cfg.ServerProvider {
@@ -44,10 +47,13 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		)
 
 	case configs.D8XServerProviderLinode:
-		// TODO
+		args = append(args, "-var", `authorized_keys=[""]`)
+		env = append(env, fmt.Sprintf("LINODE_TOKEN=%s", cfg.LinodeConfig.Token))
 	}
 
 	cmd := exec.Command("terraform", args...)
+	cmd.Env = append(os.Environ(), env...)
+
 	connectCMDToCurrentTerm(cmd)
 	return c.RunCmd(cmd)
 }

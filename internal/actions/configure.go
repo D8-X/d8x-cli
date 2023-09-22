@@ -64,6 +64,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"-i", "./hosts.cfg",
 		"-u", cfg.GetAnsibleUser(),
 		"./playbooks/setup.ansible.yaml",
+		"-vvv",
 	}
 
 	// For aws setup we need to use manager server as bastion/jump host
