@@ -81,7 +81,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("generating password: %w", err)
 	}
-	if err := c.FS.WriteFile("./redis_broker_password.txt", []byte(redisPw)); err != nil {
+	if c.FS == nil {
+		fmt.Println("redis password not stored: " + redisPw)
+	} else if err := c.FS.WriteFile("./redis_broker_password.txt", []byte(redisPw)); err != nil {
 		return fmt.Errorf("storing password in ./redis_broker_password.txt file: %w", err)
 	}
 	fmt.Println(
