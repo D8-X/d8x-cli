@@ -41,12 +41,14 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
-	if err := c.BrokerDeploy(ctx); err != nil {
-		return err
-	}
+	if c.CreateBrokerServer {
+		if err := c.BrokerDeploy(ctx); err != nil {
+			return err
+		}
 
-	if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
-		return err
+		if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
+			return err
+		}
 	}
 
 	if err := c.SwarmDeploy(ctx); err != nil {

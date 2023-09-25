@@ -6,17 +6,18 @@
   (https://cloud.linode.com/databases/postgresql/THEID) or via `linode-cli`.
 - Decide on which of the available chains you will run the backend. For example zkEVM Testnet with chainId 1442.
 - Decide how to deal with the broker:
-  - Option 1 (recommended):  A separate Broker Server that hosts the broker-key
-        a) You need to provide the broker key
-        b) You will need an additional private key, "the executor", for which the address
-           is whitelisted on the broker-server
-           under “allowedExecutors”.
+  - Option 1 (recommended): A separate Broker Server that hosts the broker-key
+    a) You need to provide the broker key
+    b) You will need an additional private key, "the executor", for which the address
+    is whitelisted on the broker-server
+    under “allowedExecutors”.
   - Option 2: No separate Broker Server, the broker-key is hosted on the servers that contain the
     remaining services
   - Option 3: No broker key and server. In this case you will not be able to set a broker specific fee
- - Domain names: you will need to create A-name entries for different services
+- Domain names: you will need to create A-name entries for different services
 
 # Broker-Server
+
 <details>
  <summary>chainConfig.sol</summary>
   Edit the segment with the relevant chainId for your deployment.
@@ -25,16 +26,17 @@
  that is, `allowedExecutors` must contain the address that correspond to the private 
 key we set as `BROKER_KEY` in `trader-backend/.env`.
 
- The provided entries should be fine for the following variables:
- * `chainId` the chain id the entry refers to
- * `name` name of the configuration-entry (for readability of the config only)
- * `multiPayCtrctAddr` must be in line with the same entry in live.referralSettings.json
- * `perpetualManagerProxyAddr` the address of the perpetuals-contract
- 
+The provided entries should be fine for the following variables:
+
+- `chainId` the chain id the entry refers to
+- `name` name of the configuration-entry (for readability of the config only)
+- `multiPayCtrctAddr` must be in line with the same entry in live.referralSettings.json
+- `perpetualManagerProxyAddr` the address of the perpetuals-contract
+
 </details>
 
-
 # Candles
+
 <details>
   <summary>live.config.json</summary>
   No edits required. If you run your own price-service, you can replace
@@ -43,28 +45,29 @@ key we set as `BROKER_KEY` in `trader-backend/.env`.
 </details>
 
 # Trader Backend
+
 <details><summary>Environment file (.env).</summary>
 
 You can edit environment variables in `trader-backend/.env` file. Environment
 variables defined in `.env` will be used when deploying docker stack in swarm.
 
 - Provide the connection strings as `DATABASE_DSN_HISTORY` and
-`DATABASE_DSN_REFERRALS` environment variables in your `.env` file. If your password contains a dollar sign
-`$`, it needs to be escaped, that is, replace `$` by `\$`. See
-[also here](https://stackoverflow.com/questions/3582552/what-is-the-format-for-the-postgresql-connection-string-url/20722229#20722229) for more info about DSN structure.
+  `DATABASE_DSN_REFERRALS` environment variables in your `.env` file. If your password contains a dollar sign
+  `$`, it needs to be escaped, that is, replace `$` by `\$`. See
+  [also here](https://stackoverflow.com/questions/3582552/what-is-the-format-for-the-postgresql-connection-string-url/20722229#20722229) for more info about DSN structure.
 - Insert a broker key (BROKER_KEY=”abcde0123…” without “0x”).
-    - Option 1: Broker Key on Server
-        - if the broker key is to be hosted on this server, then you also set the broker fee. That is, adjust BROKER_FEE_TBPS. The unit is tenth of a basis point, so 60 = 6 basis points = 0.06%.
-    - Option 2: External Broker Server That Hosts The Broker-Key
-        - You can run an external “broker server” that hosts the key: https://github.com/D8-X/d8x-broker-server
-        - You will still need “BROKER_KEY”, and the address corresponding to your BROKER_KEY has to be whitelisted on the broker-server in the file config/live.chainConfig.json under “allowedExecutors”. (The BROKER_KEY in this case is used for the referral system to sign the payment execution request that is sent to the broker-server).
-        - For the broker-server to be used, set the environment variable `REMOTE_BROKER_HTTP=""` to the http-address of your broker server.
-- Specify `CHAIN_ID=80001` for [the chain](https://chainlist.org/) that you are running the backend for (of course only chains where D8X perpetuals are deployed to like Mumbai 80001 or zkEVM testnet 1442), that must align with 
-the `SDK_CONFIG_NAME` (testnet for CHAIN_ID=80001, zkevmTestnet for chainId=1442, zkevm for chainId=1101)
+  - Option 1: Broker Key on Server
+    - if the broker key is to be hosted on this server, then you also set the broker fee. That is, adjust BROKER_FEE_TBPS. The unit is tenth of a basis point, so 60 = 6 basis points = 0.06%.
+  - Option 2: External Broker Server That Hosts The Broker-Key
+    - You can run an external “broker server” that hosts the key: https://github.com/D8-X/d8x-broker-server
+    - You will still need “BROKER_KEY”, and the address corresponding to your BROKER_KEY has to be whitelisted on the broker-server in the file config/live.chainConfig.json under “allowedExecutors”. (The BROKER_KEY in this case is used for the referral system to sign the payment execution request that is sent to the broker-server).
+    - For the broker-server to be used, set the environment variable `REMOTE_BROKER_HTTP=""` to the http-address of your broker server.
+- Specify `CHAIN_ID=80001` for [the chain](https://chainlist.org/) that you are running the backend for (of course only chains where D8X perpetuals are deployed to like Mumbai 80001 or zkEVM testnet 1442), that must align with
+  the `SDK_CONFIG_NAME` (testnet for CHAIN_ID=80001, zkevmTestnet for chainId=1442, zkevm for chainId=1101)
 - Change passwords for the entries `REDIS_PASSWORD`, and `POSTGRES_PASSWORD`
-  - It is recommended to set a strong password for `REDIS_PASSWORD` variable. This password is needed by both,  and docker swarm.
+  - It is recommended to set a strong password for `REDIS_PASSWORD` variable. This password is needed by both, and docker swarm.
   - Set the host to the private IP of : `REDIS_HOST=<PRIVATEIPOFSERVER1>`
-</details>
+  </details>
 
 Next, we edit the following configuration files located in the folder deployment:
 
@@ -76,12 +79,6 @@ Next, we edit the following configuration files located in the folder deployment
   - At least one Websocket RPC must be defined, otherwise the services will not work properly.
 </details>
 <details>
-  <summary>live.wsConfig.json</summary>
-  A list of price IDs and price streaming endpoints
-  - The services should be able to start with the default values provided
-  - See the main API [readme](./packages/api/README.md) for details
-</details>
-<details>
   <summary>live.referralSettings.json</summary>
   Configuration of the referral service.
   - You can turn off the referral system by editing config/live.referralSettings.json and setting `"referralSystemEnabled": false,` — if you choose to turn it on, see below how to configure the system.
@@ -91,7 +88,7 @@ Next, we edit the following configuration files located in the folder deployment
  <summary>
   Referral System Configuration
  </summary>
-The referral system is optional and can be disabled by setting the first entry in  config/live.referralSettings.json to false. If you enable the referral system, also make sure there is a broker key entered in the .env-file (see above). 
+The referral system is optional and can be disabled by setting the first entry in  config/live.referralSettings.json to false. If you enable the referral system, also make sure there is a broker key entered in the .env-file (see above).
 
 Here is how the referral system works in a nutshell.
 
@@ -101,6 +98,7 @@ Here is how the referral system works in a nutshell.
 - More details here [README_PAYSYS](https://github.com/D8-X/d8x-trader-backend/blob/main/packages/referral/README_PAYSYS.md)
 
 All of this can be configured as follows.
+
 <details> <summary>How to set live.referralSettings.json Parameters</summary>
   
 - `referralSystemEnabled`
@@ -131,14 +129,14 @@ All of this can be configured as follows.
     you might want to separate the address that accrues the trading fees from the address that receives the fees after redistribution. Use this setting to determine the address that receives the net fees.
     </details>
 
-
 </details>
 
-
 ## Inspect Docker Stack Services
+
 The default deployed docker stack name is: **stack**
 
-## 
+##
+
 ```bash
 docker service ls
 ```

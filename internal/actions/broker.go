@@ -59,7 +59,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	pk = strings.TrimPrefix(pk, "0x")
 	bsd.brokerKey = pk
+
 	fmt.Println("Enter your broker fee tbps value:")
 	tbps, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("60"),
@@ -73,6 +75,20 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// redis password
+	redisPw, err := c.generatePassword(16)
+	if err != nil {
+		return fmt.Errorf("generating password: %w", err)
+	}
+	if c.FS == nil {
+		fmt.Println("redis password not stored: " + redisPw)
+	} else if err := c.FS.WriteFile("./redis_broker_password.txt", []byte(redisPw)); err != nil {
+		return fmt.Errorf("storing password in ./redis_broker_password.txt file: %w", err)
+	}
+	fmt.Println(
+		styles.SuccessText.Render("REDIS Password for broker-server was stored in ./redis_broker_password.txt file"),
+	)
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
@@ -93,9 +109,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd := "cd ./broker && echo '%s' | sudo -S BROKER_KEY=%s BROKER_FEE_TBPS=%s docker compose up -d"
+	cmd := "cd ./broker && echo '%s' | sudo -S BROKER_KEY=%s BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
 	out, err := sshClient.ExecCommand(
-		fmt.Sprintf(cmd, password, bsd.brokerKey, bsd.brokerFeeTBPS),
+		fmt.Sprintf(cmd, password, bsd.brokerKey, bsd.brokerFeeTBPS, redisPw),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))

@@ -84,14 +84,6 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	); err != nil {
 		return nil, fmt.Errorf("generating lindode.tf file: %w", err)
 	}
-	// Cp inventory.tpl for hosts.cfg
-	if err := c.EmbedCopier.CopyMultiToDest(
-		configs.EmbededConfigs,
-		"./inventory.tpl",
-		"embedded/trader-backend/tf-linode/inventory.tpl",
-	); err != nil {
-		return nil, fmt.Errorf("generating inventory.tpl file: %w", err)
-	}
 
 	// Build the terraform apply command
 	args := l.generateArgs()

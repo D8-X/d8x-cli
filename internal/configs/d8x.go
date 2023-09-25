@@ -32,6 +32,19 @@ type D8XConfig struct {
 	ServerProvider D8XServerProvider             `json:"server_provider"`
 
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
+	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
+}
+
+// GetAnsibleUser returns the default sudo user for initial ansible
+// configuration step
+func (d *D8XConfig) GetAnsibleUser() string {
+	if d.ServerProvider == D8XServerProviderLinode {
+		return "root"
+	} else if d.ServerProvider == D8XServerProviderAWS {
+		// In case used image changes - we should also chane the user!
+		return "ubuntu"
+	}
+	return ""
 }
 
 type D8XServerProvider string
@@ -44,6 +57,13 @@ const (
 type D8XLinodeConfig struct {
 	Token       string `json:"linode_token"`
 	DbId        string `json:"db_id"`
+	Region      string `json:"region"`
+	LabelPrefix string `json:"label_prefix"`
+}
+
+type D8XAWSConfig struct {
+	AccesKey    string `json:"access_key"`
+	SecretKey   string `json:"secret_key"`
 	Region      string `json:"region"`
 	LabelPrefix string `json:"label_prefix"`
 }

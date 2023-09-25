@@ -29,6 +29,7 @@ type Container struct {
 	// Default user that will be created on each cluster node. This user will
 	// have ssh key provided via SshKeyPath added to authorized_keys
 	DefaultClusterUserName string
+
 	// Password of DefaultClusterUserName. If not provided, attempt to read
 	// password from ./password.txt will be made in Before action. If
 	// Configuration action was executed, the password value will be set.
