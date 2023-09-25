@@ -19,7 +19,7 @@ services:
       # Always run redis on the same node
       # - "node.hostname==worker-1"
   api:
-    image: ghcr.io/d8-x/d8x-trader-main:dev
+    image: ghcr.io/d8-x/d8x-trader-main:main
     ports:
       # REST API
       - ${MAIN_API_PORT_HTTP:-3001}:${MAIN_API_PORT_HTTP:-3001}
@@ -45,7 +45,7 @@ services:
       - cfg_rpc
       - cfg_referral
   history:
-    image: ghcr.io/d8-x/d8x-trader-history:dev
+    image: ghcr.io/d8-x/d8x-trader-history:main
     environment:
       - DATABASE_DSN_HISTORY=${DATABASE_DSN_HISTORY}
       - HISTORY_API_PORT_HTTP=${HISTORY_API_PORT_HTTP:-3003}
@@ -69,7 +69,7 @@ services:
     networks:
       - d8x_backend
   referral:
-    image: ghcr.io/d8-x/d8x-trader-referral:dev
+    image: ghcr.io/d8-x/d8x-trader-referral:main
     deploy:
       # Restart 3 times with 30 seconds delay before giving up.
       restart_policy:
