@@ -41,7 +41,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// List of supported server providers
 	selected, err := c.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
-		// string(ServerProviderAws),
+		string(ServerProviderAws),
 	},
 		components.SelectionOptAllowOnlySingleItem(),
 		components.SelectionOptRequireSelection(),

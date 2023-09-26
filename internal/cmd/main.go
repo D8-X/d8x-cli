@@ -58,7 +58,37 @@ In essence setup calls the following subcommands in sequence:
 	- swarm-deploy
 	- swarm-nginx
 
-See individual command's help for information how each step operates.
+Command provision performs resource provisioning with terraform.
+
+Command configure performs configuration of provisioned resources with ansible.
+
+Command broker-deploy performs broker-server deployment.
+
+Command broker-nginx performs nginx + certbot setup for broker-server
+deployment.
+
+Command swarm-deploy performs d8x-trader-backend docker swarm cluster
+deployment.
+
+Command swarm-nginx performs nginx + certbot setup for d8x-trader-backend docker
+swarm deployment on manager server.
+
+See individual command's help for information and more details how each step operates.
+`
+
+const ProvisionDescription = `Comman provision performs resource provisioning with terraform.
+
+Currently supported providers are:
+	- linode
+	- aws	
+
+Provisioning Linode resources requires linode token database id and region
+information. Database provisioning is not included by default, since it takes up
+to half an hour to complete.
+
+Provisioning AWS resources will require you to provide your AWS access and
+secret keys. We recommend creating a dedicated IAM user with sufficient
+permissions to manage your VPCs, EC2 instances, RDS instances.
 `
 
 // RunD8XCli is the entrypoint to D8X cli tool
@@ -97,9 +127,10 @@ func RunD8XCli() {
 				},
 				Subcommands: []*cli.Command{
 					{
-						Name:   "provision",
-						Usage:  "Provision server resources with terraform",
-						Action: container.Provision,
+						Name:        "provision",
+						Usage:       "Provision server resources with terraform",
+						Action:      container.Provision,
+						Description: ProvisionDescription,
 					},
 					{
 						Name:   "configure",

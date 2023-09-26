@@ -21,30 +21,31 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 		"./aws.tf",
 		// Embed paths must be in this order: main.tf vars.tf
 		"embedded/trader-backend/tf-aws/main.tf",
+		"embedded/trader-backend/tf-aws/routes.tf",
+		"embedded/trader-backend/tf-aws/sg.tf",
 		"embedded/trader-backend/tf-aws/vars.tf",
 		"embedded/trader-backend/tf-aws/output.tf",
 	); err != nil {
 		return nil, fmt.Errorf("generating aws.tf file: %w", err)
 	}
 
-	cmd := exec.Command("terraform", a.generateArgs()...)
+	cmd := exec.Command("terraform",
+		append([]string{"apply", "-auto-approve"}, a.generateVariables()...)...,
+	)
 
 	return cmd, nil
 }
 
-func (a *awsConfigurer) generateArgs() []string {
+// generateVariables generates terraform variables for aws provider
+func (a *awsConfigurer) generateVariables() []string {
 	return []string{
-		"apply", "-auto-approve",
-		// "-var", fmt.Sprintf(`authorized_keys=["%s"]`, strings.TrimSpace(l.authorizedKey)),
-		// "-var", fmt.Sprintf(`linode_db_cluster_id=%s`, l.linodeDbId),
-		// "-var", fmt.Sprintf(`region=%s`, a.linodeRegion),
-		// "-var", fmt.Sprintf(`server_label_prefix=%s`, l.linodeNodesLabelPrefix),
 		"-var", fmt.Sprintf(`server_label_prefix=%s`, a.LabelPrefix),
 		"-var", fmt.Sprintf(`aws_access_key=%s`, a.AccesKey),
 		"-var", fmt.Sprintf(`aws_secret_key=%s`, a.SecretKey),
 		"-var", fmt.Sprintf(`region=%s`, a.Region),
 		// Do not include the quotes here
 		"-var", fmt.Sprintf(`authorized_key=%s`, a.authorizedKey),
+		"-var", fmt.Sprintf("db_instance_class=%s", a.RDSInstanceClass),
 	}
 }
 
@@ -59,9 +60,13 @@ func (c *Container) awsServerConfigurer() (ServerProviderConfigurer, error) {
 	// Text field values
 	awsKey := ""
 	awsSecret := ""
+	awsRDSInstanceClass := "db.t4g.small"
 	if cfg.AWSConfig != nil {
 		awsKey = cfg.AWSConfig.AccesKey
 		awsSecret = cfg.AWSConfig.SecretKey
+		if cfg.AWSConfig.RDSInstanceClass != "" {
+			awsRDSInstanceClass = cfg.AWSConfig.RDSInstanceClass
+		}
 	}
 
 	fmt.Println("Enter your AWS Access Key: ")
@@ -94,6 +99,16 @@ func (c *Container) awsServerConfigurer() (ServerProviderConfigurer, error) {
 		return nil, err
 	}
 	awsCfg.Region = region
+
+	fmt.Println("Enter your AWS RDS DB instance class: ")
+	dbClass, err := c.TUI.NewInput(
+		components.TextInputOptValue(awsRDSInstanceClass),
+		components.TextInputOptPlaceholder("db.t3.medium"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	awsCfg.RDSInstanceClass = dbClass
 
 	fmt.Println("Enter server tag prefix: ")
 	labelPrefix, err := c.TUI.NewInput(

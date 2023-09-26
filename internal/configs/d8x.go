@@ -62,10 +62,11 @@ type D8XLinodeConfig struct {
 }
 
 type D8XAWSConfig struct {
-	AccesKey    string `json:"access_key"`
-	SecretKey   string `json:"secret_key"`
-	Region      string `json:"region"`
-	LabelPrefix string `json:"label_prefix"`
+	AccesKey         string `json:"access_key"`
+	SecretKey        string `json:"secret_key"`
+	Region           string `json:"region"`
+	LabelPrefix      string `json:"label_prefix"`
+	RDSInstanceClass string `json:"rds_instance_class"`
 }
 
 type D8XService struct {
