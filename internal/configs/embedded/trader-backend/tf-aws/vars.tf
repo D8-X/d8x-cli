@@ -49,6 +49,11 @@ variable "db_instance_class" {
   description = "Postgres database instance size"
 }
 
+variable "rds_creds_filepath" {
+  type        = string
+  description = "RDS Postgres database credentials file path"
+}
+
 variable "create_broker_server" {
   type        = bool
   description = "Whether broker-server node should be created"

@@ -105,6 +105,10 @@ func RunD8XCli() {
 		EnableBashCompletion: true,
 		Commands: []*cli.Command{
 			{
+				Name:   "test",
+				Action: container.Test,
+			},
+			{
 				Name:   "init",
 				Action: container.Init,
 				Usage:  "Initialize configuration directory and install dependencies",
@@ -219,7 +223,7 @@ func RunD8XCli() {
 			if ctx.Args().Len() == 0 {
 				return container.Init(ctx)
 			}
-			return fmt.Errorf("unknown command %s", ctx.Args().First())
+			return fmt.Errorf("unknown command %s, check --help for more info about available commands", ctx.Args().First())
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {

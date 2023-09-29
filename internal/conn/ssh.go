@@ -19,6 +19,8 @@ type SSHConnection interface {
 	ExecCommandPiped(cmd string) error
 
 	CopyFilesOverSftp(srcDst ...SftpCopySrcDest) error
+
+	GetClient() *ssh.Client
 }
 
 type SSHConnectionEstablisher func(serverIp, user, idFilePath string) (SSHConnection, error)
@@ -56,6 +58,10 @@ var _ (SSHConnection) = (*sshConnection)(nil)
 
 type sshConnection struct {
 	c *ssh.Client
+}
+
+func (s *sshConnection) GetClient() *ssh.Client {
+	return s.c
 }
 
 func (conn *sshConnection) ExecCommand(cmd string) ([]byte, error) {

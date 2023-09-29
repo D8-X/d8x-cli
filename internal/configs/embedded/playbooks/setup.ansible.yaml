@@ -9,6 +9,10 @@
     default_user: "{{ default_user_name }}"
     default_user_pwd: "{{ default_user_password }}"
 
+    # Server providers such as AWS do not need ufw to be enabled, therfore, we
+    # will skip ufw setup when no_ufw is true
+    setup_ufw: "{{ no_ufw | bool | default(false) == false }}"
+
   handlers:
     - name: Restart SSHD
       ansible.builtin.service:
@@ -16,7 +20,7 @@
         state: restarted
   tasks:
     - name: Wait for connection to server
-      wait_for_connection:
+      ansible.builtin.wait_for_connection:
         timeout: 360
     # Essentials, hostnames, users setup, ssh keys
     - name: Set hostname
@@ -54,23 +58,28 @@
       community.general.ufw:
         rule: allow
         port: 22
+      when: setup_ufw
     # Docker swarm ports
     - name: Allow port 2377 ufw
       community.general.ufw:
         rule: allow
         port: 2377
+      when: setup_ufw
     - name: Allow port 7946 ufw
       community.general.ufw:
         rule: allow
         port: 7946
+      when: setup_ufw
     - name: Allow port 4789 ufw
       community.general.ufw:
         rule: allow
         port: 4789
+      when: setup_ufw
     - name: Enable ufw
       community.general.ufw:
         state: enabled
 
+      when: setup_ufw
     # Installation of docker
     - name: Install essential packages
       ansible.builtin.apt:
@@ -139,6 +148,8 @@
     - broker
   name: Configure manager
   become: true
+  vars:
+    setup_ufw: "{{ no_ufw | bool | default(false) == false }}"
   tasks:
     - name: Install nginx on manager
       ansible.builtin.apt:
@@ -157,9 +168,11 @@
         rule: allow
         port: 80
         proto: tcp
+      when: setup_ufw
     - name: Allow port 443 ufw
       community.general.ufw:
         rule: allow
         port: 443
         proto: tcp
         state: reloaded
+      when: setup_ufw

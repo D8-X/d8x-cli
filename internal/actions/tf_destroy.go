@@ -13,6 +13,15 @@ import (
 func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Running terraform destroy...")
 
+	ok, err := c.TUI.NewPrompt("Are you sure you want to run terraform destroy? This will destroy all the resources created by d8x-cli. This action is irreversible!", false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Println("Not destroying...")
+		return nil
+	}
+
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
