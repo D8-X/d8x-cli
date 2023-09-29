@@ -27,70 +27,6 @@ const CmdName = "d8x"
 
 const CmdUsage = "D8X Backend management CLI tool"
 
-// MainDescription is the description text for d8x cli tool
-const MainDescription = `D8X Perpetual Exchange broker backend setup and management CLI tool 
-
-Running d8x without any subcommands or init command will perform initalization
-of ./.d8x-config directory (--config-directory), as well as prompt you to
-install any missing dependencies.
-
-D8X CLI relies on the following external tools: terraform, ansible. You can
-manually install them or let the cli attempt to perform the installation of
-these dependencies automatically. Note that for automatic installation you will
-need to have python3 and pip installed on your system
-
-For cluster provisioning and configuration, see the setup command and its 
-subcommands. Run d8x setup --help for more information.
-`
-
-const SetupDescription = `Command setup performs complete D8X cluster setup.
-
-Setup should be performed only once! Once cluster is provisioned and deployed,
-you should use one of the individual setup subcommands. Calling setup on
-provisioned cluster might result in data corruption: password.txt overwrites,
-ssh key overwrites, misconfiguration of servers, etc.
-
-In essence setup calls the following subcommands in sequence:
-	- provision
-	- configure
-	- broker-deploy
-	- broker-nginx
-	- swarm-deploy
-	- swarm-nginx
-
-Command provision performs resource provisioning with terraform.
-
-Command configure performs configuration of provisioned resources with ansible.
-
-Command broker-deploy performs broker-server deployment.
-
-Command broker-nginx performs nginx + certbot setup for broker-server
-deployment.
-
-Command swarm-deploy performs d8x-trader-backend docker swarm cluster
-deployment.
-
-Command swarm-nginx performs nginx + certbot setup for d8x-trader-backend docker
-swarm deployment on manager server.
-
-See individual command's help for information and more details how each step operates.
-`
-
-const ProvisionDescription = `Comman provision performs resource provisioning with terraform.
-
-Currently supported providers are:
-	- linode
-	- aws	
-
-Provisioning Linode resources requires linode token database id and region
-information. Database provisioning is not included by default, since it takes up
-to half an hour to complete.
-
-Provisioning AWS resources will require you to provide your AWS access and
-secret keys. We recommend creating a dedicated IAM user with sufficient
-permissions to manage your VPCs, EC2 instances, RDS instances.
-`
-
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
 	container := actions.NewDefaultContainer()
@@ -104,10 +40,6 @@ func RunD8XCli() {
 		Description:          MainDescription,
 		EnableBashCompletion: true,
 		Commands: []*cli.Command{
-			{
-				Name:   "test",
-				Action: container.Test,
-			},
 			{
 				Name:   "init",
 				Action: container.Init,
@@ -137,9 +69,10 @@ func RunD8XCli() {
 						Description: ProvisionDescription,
 					},
 					{
-						Name:   "configure",
-						Usage:  "Configure servers with ansible",
-						Action: container.Configure,
+						Name:        "configure",
+						Usage:       "Configure servers with ansible",
+						Action:      container.Configure,
+						Description: ConfigureDescription,
 					},
 					{
 						Name:   "broker-deploy",
@@ -152,14 +85,16 @@ func RunD8XCli() {
 						Action: container.BrokerServerNginxCertbotSetup,
 					},
 					{
-						Name:   "swarm-deploy",
-						Usage:  "Deploy and configure d8x-trader-backend swarm cluster",
-						Action: container.SwarmDeploy,
+						Name:        "swarm-deploy",
+						Usage:       "Deploy and configure d8x-trader-backend swarm cluster",
+						Action:      container.SwarmDeploy,
+						Description: SwarmDeployDescription,
 					},
 					{
-						Name:   "swarm-nginx",
-						Usage:  "Configure and setup nginx + certbot for d8x-trader swarm deployment",
-						Action: container.SwarmNginx,
+						Name:        "swarm-nginx",
+						Usage:       "Configure and setup nginx + certbot for d8x-trader swarm deployment",
+						Action:      container.SwarmNginx,
+						Description: SwarmNginxDescription,
 					},
 				},
 			},

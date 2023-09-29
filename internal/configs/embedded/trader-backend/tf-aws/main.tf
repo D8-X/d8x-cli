@@ -51,7 +51,9 @@ resource "aws_vpc" "d8x_cluster_vpc" {
 
 
 resource "aws_eip" "manager_ip" {
-
+  tags = {
+    Name = "d8x-cluster-eip"
+  }
 }
 
 resource "aws_nat_gateway" "public_nat" {
@@ -100,6 +102,9 @@ resource "aws_subnet" "private_subnet_2" {
 // attach igw to vpc
 resource "aws_internet_gateway" "d8x_igw" {
   vpc_id = aws_vpc.d8x_cluster_vpc.id
+  tags = {
+    Name = "d8x-cluster-igw"
+  }
 }
 
 # Provision postgres on RDS
@@ -114,7 +119,7 @@ resource "aws_db_subnet_group" "pg_subnet" {
 resource "random_password" "db_password" {
   length           = 28
   special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
+  override_special = "!#$%&*-_=+{}<>"
 }
 
 resource "aws_db_instance" "pg" {
