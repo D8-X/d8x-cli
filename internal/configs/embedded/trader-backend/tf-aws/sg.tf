@@ -75,3 +75,33 @@ resource "aws_security_group" "db_access" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+resource "aws_security_group" "http_access" {
+  name_prefix = "d8x-cluster-http-sg"
+  vpc_id      = aws_vpc.d8x_cluster_vpc.id
+
+  tags = {
+    Name = "d8x-cluster-http-sg"
+  }
+
+  ingress {
+    cidr_blocks = local.subnets
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+  }
+
+  ingress {
+    cidr_blocks = local.subnets
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}

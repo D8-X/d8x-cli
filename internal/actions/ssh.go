@@ -8,6 +8,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 )
 
 // SSH establishes ssh connection to manager or broker servers and attaches ssh
@@ -45,9 +46,24 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	defer session.Close()
 
-	if err := session.RequestPty("xterm", 80, 80, ssh.TerminalModes{
-		ssh.ECHO: 0,
+	fileDescriptor := int(os.Stdin.Fd())
+	originalState, err := term.MakeRaw(fileDescriptor)
+	if err != nil {
+		return err
+	}
+
+	w, h, err := term.GetSize(fileDescriptor)
+	if err != nil {
+		return err
+	}
+	defer term.Restore(fileDescriptor, originalState)
+
+	if err := session.RequestPty("xterm", w, h, ssh.TerminalModes{
+		ssh.ECHO:          1,     // enable echoing
+		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
+		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
 	}); err != nil {
 		return err
 	}

@@ -171,7 +171,7 @@ resource "aws_instance" "manager" {
 
   subnet_id                   = aws_subnet.public_subnet.id
   associate_public_ip_address = true
-  security_groups             = [aws_security_group.ssh_docker_sg.id]
+  security_groups             = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "manager")
@@ -186,7 +186,7 @@ resource "aws_instance" "broker_server" {
 
   subnet_id                   = aws_subnet.public_subnet.id
   associate_public_ip_address = true
-  security_groups             = [aws_security_group.ssh_docker_sg.id]
+  security_groups             = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "broker-server")
