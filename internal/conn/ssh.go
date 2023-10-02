@@ -81,9 +81,9 @@ func (conn *sshConnection) ExecCommandPiped(cmd string) error {
 
 	if err := s.RequestPty("xterm", 80, 80,
 		ssh.TerminalModes{
-			ssh.ECHO:          0,     // disable echoing
-			ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-			ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
+			ssh.ECHO:          0,
+			ssh.TTY_OP_ISPEED: 14400,
+			ssh.TTY_OP_OSPEED: 14400,
 		},
 	); err != nil {
 		return err

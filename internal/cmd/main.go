@@ -114,6 +114,11 @@ func RunD8XCli() {
 				Usage:  "Run terraform destroy for current setup",
 				Action: container.TerraformDestroy,
 			},
+			{
+				Name:   "ssh",
+				Usage:  "Attach ssh session to one of your servers",
+				Action: container.SSH,
+			},
 		},
 		// Global flags accesible to all subcommands
 		Flags: []cli.Flag{
