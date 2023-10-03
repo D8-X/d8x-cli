@@ -221,9 +221,8 @@ resource "local_file" "hosts_cfg" {
 ${aws_instance.manager.public_ip} manager_private_ip=${aws_instance.manager.private_ip} hostname=manager-1
 
 [workers]
-%{for index, ip in aws_instance.nodes[*].private_ip}
-${ip} hostname=${format("worker-%02d", index + 1)}
-%{endfor~}
+%{for index, ip in aws_instance.nodes[*].private_ip}${ip} hostname=${format("worker-%02d", index + 1)}%{endfor~}
+
 
 [workers:vars]
 ansible_ssh_common_args="-J jump_host -F ${var.ssh_jump_host_cfg_path}"
