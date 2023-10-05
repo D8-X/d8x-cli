@@ -23,6 +23,119 @@ Note that binary releases are provided only for Linux. To run D8X-CLI on other
 platforms you will need to [build it from source](#building-from-source). See
 FAQ supported platforms for details.
 
+## Usage
+
+### Setup
+
+Performing a complete servers provisioning + configuration and services
+deployment can be done with the `setup` command:
+
+```bash
+d8x setup
+```
+
+The `setup` command is an aggregate of multiple individual subcommands such as
+`provision`, `configure`, `swarm-deploy`, etc. Setup will walk you through
+entire process of provisioning servers and deploying all the services. See `d8x
+setup --help` for more information and available `setup` subcommands.
+
+#### Provisioning and Configuration
+Setup will start with provisioning servers with terraform and configuring them
+with ansible. Depending on your selected server provider, you will need to
+provide API tokens, access keys and other necessary information.
+
+After provisioning and configuration is done a couple of files will be created
+in your current working directory:
+
+  - hosts.cfg - ansible inventory file
+  - id_ed25519 - ssh key used to access servers (added to each provisioned server)
+  - id_ed25519.pub - public key of id_ed25519 
+  - password.txt - default user password on all servers
+  - pg.crt - postgress database root CA certificate (downloaded from server provider)
+  - aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
+	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
+
+Do not delete these files, as they are to establish connections to your servers
+when running individual `setup` subcommands.
+
+For Linode provider - you need to make sure to provision database instance by
+yourself and provide the linode database instance id in the setup process. This
+step is manual due to the fact that database instance provisioning very slow on
+linode and usually takes around 30 minutes.
+
+For AWS provider - RDS Postgres instance will be provisioned automatically. You
+will be able to automatically create new databases for history and referral
+services. Database credentials will be stored in `aws_rds_postgres.txt` file.
+Note that RDS instance is provisioned in a private subnet, therefore you will
+need to use manager node as a jump host in order to access it from your local or
+other machine.
+
+For example, to establish a ssh tunnel on port 5433 to your RDS instance, you
+can run the following command:
+
+```bash
+ssh -F ./manager_ssh_jump.conf jump_host -L 5433:<YOUR_RDS_HOSTNAME_HERE>:5432 -v -N
+```
+
+#### Broker server (optional)
+If you chose to provision broker-server, once provisioning is done, broker
+server deployment and nginx + certbot configuration will be performed. If you
+select to configure SSL (certbot setup), you must make sure to set up your DNS A
+records of your provided domains to point to your broker-server public ip
+address. This ip address will be displayed to you in the setup process, or you
+can find it in `hosts.cfg` file or in your server provider's dashboard.
+
+Follow the instructions in the setup process on which configuration files you
+should modify before each step.
+
+To run only broker deployment:
+```bash
+d8x setup broker-deploy
+```
+
+To run only broker nginx+certbot setup:
+```bash
+d8x setup broker-nginx
+```
+
+#### Trader backend (Swarm)
+Trader backend docker swarm deployment and nginx + certbot setup is analogous to
+broker-server deployment, but involves slightly more configuration files. Make
+sure to follow the setup instructions and modify the configuration files as well
+as `.env` file. Particularly important configuration file that you should
+supply with valid values is `live.rpc.json`. As the default values do not contain
+websockets rpc endpoints which are necessary to run the services.
+
+Nginx + certbot setup is completely analogous to broker-server setup, but
+involves more domains for services.
+
+
+To run only trader backend swarm deployment:
+```bash
+d8x setup swarm-deploy
+```
+
+Command `d8x setup swarm-deploy` can be run multiple times. For example if you
+have modified any configuration or .env files, you can simply rerun `d8x setup
+swarm-deploy` to redeploy the services. This will remove existing services and
+redeploy them via the manager node. Note that this will result in some downtime.
+
+To run only trader backend swarm nginx+certbot setup:
+```bash
+d8x setup swarm-nginx
+```
+
+### Teardown
+
+If you wish to completely remove any provisioned resources, you can do so by
+running `tf-destroy` command.
+
+```bash
+d8x tf-destroy
+```
+
+**Note that this action is irreversible**
+
 ## Configuration Files
 Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
 find out how to configure the system in the

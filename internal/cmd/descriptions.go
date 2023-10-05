@@ -5,7 +5,7 @@ const MainDescription = `D8X Perpetual Exchange broker backend setup and managem
 
 Running d8x without any subcommands or init command will perform initalization
 of ./.d8x-config directory (--config-directory), as well as prompt you to
-install any missing dependencies.
+install any missing dependencies such as ansible or terraform.
 
 D8X CLI relies on the following external tools: terraform, ansible. You can
 manually install them or let the cli attempt to perform the installation of
@@ -56,6 +56,7 @@ Files created by setup and it's subcommands:
 	- password.txt - default user password on all servers
 	- pg.crt - postgress database root CA certificate (downloaded from server provider)
 	- aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
+	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
 `
 
 const ProvisionDescription = `Command provision performs resource provisioning with terraform.
