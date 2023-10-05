@@ -13,6 +13,8 @@
     # will skip ufw setup when no_ufw is true
     setup_ufw: "{{ no_ufw | bool | default(false) == false }}"
 
+    docker_ingress_subnet: "172.16.1.0/24"
+
   handlers:
     - name: Restart SSHD
       ansible.builtin.service:
@@ -128,7 +130,14 @@
       register: swarm_result
       # Only one manager should run this, otherwsie register results in when condition output
       run_once: true
-
+    - name: Delete default ingress network
+      ansible.builtin.shell:
+        cmd: yes | docker network rm -f ingress
+      when: inventory_hostname in groups["managers"]
+    - name: Create ingress network
+      ansible.builtin.shell:
+        cmd: docker network create --driver overlay --ingress --subnet="{{ docker_ingress_subnet }}" ingress
+      when: inventory_hostname in groups["managers"]
     - name: Set manager availability to DRAIN
       when: inventory_hostname in groups["managers"]
       community.docker.docker_node:

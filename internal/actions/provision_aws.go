@@ -53,7 +53,9 @@ func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
 	// Pull sslrootcert for pg instance
 	a.pullRDSCaCert(c.PgCrtPath)
 	fmt.Println(styles.AlertImportant.Render("Important RDS instance information"))
-	confirmText := `RDS Postgres credentials are stored in %s file. Please make sure you use these credentials from this file when providing DATABASE_DSN_REFERRAL and DATABASE_DSN_HISTORY .env values.`
+	confirmText := `RDS Postgres credentials are stored in %s file. Please make sure you use these
+	credentials from this file when providing DATABASE_DSN_REFERRAL and
+	DATABASE_DSN_HISTORY .env values.`
 	confirmText = fmt.Sprintf(confirmText, RDS_CREDS_FILE)
 	if err := c.TUI.NewConfirmation(strings.TrimSpace(confirmText)); err != nil {
 		return err

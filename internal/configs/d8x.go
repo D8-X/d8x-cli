@@ -35,6 +35,10 @@ type D8XConfig struct {
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 }
 
+func (d *D8XConfig) IsEmpty() bool {
+	return d.ServerProvider == ""
+}
+
 // GetAnsibleUser returns the default sudo user for initial ansible
 // configuration step
 func (d *D8XConfig) GetAnsibleUser() string {
@@ -92,6 +96,8 @@ type D8XConfigReadWriter interface {
 	// Read reads the config from underlying storagesystem. If config is not
 	// found, an empty D8XConfig is returned
 	Read() (*D8XConfig, error)
+
+	// Write writes given D8XConfig to underlying storage system
 	Write(*D8XConfig) error
 }
 

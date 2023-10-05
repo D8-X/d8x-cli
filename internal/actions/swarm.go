@@ -16,11 +16,6 @@ import (
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
-	}
-
 	// Copy embed files before starting
 	filesToCopy := []files.EmbedCopierOp{
 		// Trader backend configs
@@ -84,36 +79,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			if err != nil {
 				return fmt.Errorf("removing existing stack: %w", err)
 			}
-		}
-	}
-
-	// Make sure we change the subnet of default ingress network, otherwise it
-	// will overlap with our subnets and DNS resolution will not work as swarm
-	// will be confused thinking that our private subnet addresses are within
-	// docker itself.
-	if cfg.ServerProvider == configs.D8XServerProviderAWS {
-		fmt.Println(styles.ItalicText.Render("Configuring ingress network..."))
-		out, err := sshConn.ExecCommand(
-			"echo '" + pwd + "' | sudo -S  bash -c 'yes | docker network rm -f ingress'",
-		)
-		fmt.Println(string(out))
-		if err != nil {
-			fmt.Println(
-				styles.ErrorText.Render(
-					fmt.Sprintf("removing default ingress network: %v", err),
-				),
-			)
-		}
-		out, err = sshConn.ExecCommand(
-			"echo '" + pwd + "' | sudo -S docker network create --driver overlay --ingress --subnet=10.255.0.0/16 --gateway=10.255.0.2 --opt com.docker.network.driver.mtu=1200 ingress",
-		)
-		fmt.Println(string(out))
-		if err != nil {
-			fmt.Println(
-				styles.ErrorText.Render(
-					fmt.Sprintf("creating default ingress network: %v", err),
-				),
-			)
 		}
 	}
 
