@@ -19,6 +19,8 @@ type SSHConnection interface {
 	ExecCommandPiped(cmd string) error
 
 	CopyFilesOverSftp(srcDst ...SftpCopySrcDest) error
+
+	GetClient() *ssh.Client
 }
 
 type SSHConnectionEstablisher func(serverIp, user, idFilePath string) (SSHConnection, error)
@@ -58,6 +60,10 @@ type sshConnection struct {
 	c *ssh.Client
 }
 
+func (s *sshConnection) GetClient() *ssh.Client {
+	return s.c
+}
+
 func (conn *sshConnection) ExecCommand(cmd string) ([]byte, error) {
 	s, err := conn.c.NewSession()
 	if err != nil {
@@ -75,9 +81,9 @@ func (conn *sshConnection) ExecCommandPiped(cmd string) error {
 
 	if err := s.RequestPty("xterm", 80, 80,
 		ssh.TerminalModes{
-			ssh.ECHO:          0,     // disable echoing
-			ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-			ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
+			ssh.ECHO:          0,
+			ssh.TTY_OP_ISPEED: 14400,
+			ssh.TTY_OP_OSPEED: 14400,
 		},
 	); err != nil {
 		return err

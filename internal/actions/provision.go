@@ -21,12 +21,6 @@ const (
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
 
-	// Load config for storing server provider details
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
-	}
-
 	// Cp inventory.tpl for hosts.cfg
 	if err := c.EmbedCopier.CopyMultiToDest(
 		configs.EmbededConfigs,
@@ -41,7 +35,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// List of supported server providers
 	selected, err := c.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
-		// string(ServerProviderAws),
+		string(ServerProviderAws),
 	},
 		components.SelectionOptAllowOnlySingleItem(),
 		components.SelectionOptRequireSelection(),
@@ -85,35 +79,24 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	c.provisioningTime = time.Now()
 
 	// Perform provider dependent actions
-	switch i := providerConfigurer.(type) {
-	case linodeConfigurer:
-		// Pull the cert
-		if err := i.pullPgCert(c.HttpClient, c.PgCrtPath); err != nil {
-			return err
-		}
-
-		// Write linode config to cfg
-		cfg.ServerProvider = configs.D8XServerProviderLinode
-		cfg.LinodeConfig = &configs.D8XLinodeConfig{
-			Token:       i.linodeToken,
-			DbId:        i.linodeDbId,
-			Region:      i.linodeRegion,
-			LabelPrefix: i.linodeNodesLabelPrefix,
-		}
-
-		if err := c.ConfigRWriter.Write(cfg); err != nil {
-			return err
-		}
+	if err := providerConfigurer.PostProvisioningAction(c); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-// ServerProviderConfigurer generates neccessary files and configs to start
-// terraform provisioning. Returned exec.Cmd can be used to execute terraform
-// apply
+// ServerProviderConfigurer
 type ServerProviderConfigurer interface {
+	//  BuildTerraformCMD generates neccessary files and configs to start
+	// terraform provisioning. Returned exec.Cmd can be used to execute
+	// terraform apply
 	BuildTerraformCMD(*Container) (*exec.Cmd, error)
+
+	// PostProvisioningAction is called once BuildTerraformCMD Cmd is executed
+	// successfuly. This method is used to perform provider specific actions
+	// after the provisioning.
+	PostProvisioningAction(*Container) error
 }
 
 // configureServerProviderForTF collects details about user specified provider
@@ -121,9 +104,9 @@ type ServerProviderConfigurer interface {
 func (c *Container) configureServerProviderForTF(provider SupportedServerProvider) (ServerProviderConfigurer, error) {
 	switch provider {
 	case ServerProviderLinode:
-		return c.linodeServerConfigurer()
+		return c.createLinodeServerConfigurer()
 	case ServerProviderAws:
-		return c.awsServerConfigurer()
+		return c.createAWSServerConfigurer()
 	}
 
 	return nil, nil

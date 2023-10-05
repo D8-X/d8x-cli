@@ -1,4 +1,8 @@
 
+// All our cidrs will be defined with this variable
+locals {
+  subnets = cidrsubnets("10.0.0.0/20", 4, 4, 4)
+}
 
 variable "aws_access_key" {
   type        = string
@@ -37,9 +41,18 @@ variable "server_label_prefix" {
 
 variable "authorized_key" {
   type        = string
-  description = "SSH public key that will be added to each server. A "
+  description = "SSH public key that will be added to each server"
 }
 
+variable "db_instance_class" {
+  type        = string
+  description = "Postgres database instance size"
+}
+
+variable "rds_creds_filepath" {
+  type        = string
+  description = "RDS Postgres database credentials file path"
+}
 
 variable "create_broker_server" {
   type        = bool

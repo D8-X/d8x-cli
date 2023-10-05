@@ -151,8 +151,14 @@ networks:
   d8x_backend:
     driver: overlay
     name: d8x_backend
+    ipam:
+      config:
+      - subnet: 172.16.2.0/24
   candles:
     driver: overlay
+    ipam:
+      config:
+      - subnet: 172.16.3.0/24
 configs:
   cfg_rpc:
     external: true

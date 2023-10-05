@@ -110,7 +110,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			conn.SftpCopySrcDest{Src: c.PgCrtPath, Dst: "./trader-backend/pg.crt"},
 		)
 	} else {
-		return fmt.Errorf(c.PgCrtPath + " was not found!")
+		fmt.Println(
+			styles.ErrorText.Render(c.PgCrtPath + " was not found!"),
+		)
 	}
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))

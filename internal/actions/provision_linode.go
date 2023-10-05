@@ -164,9 +164,9 @@ func getRegionItemByRegionId(regionId string) components.ListItem {
 	return components.ListItem{}
 }
 
-// linodeServerConfigurer collects information for the linode cluster
+// createLinodeServerConfigurer collects information for the linode cluster
 // provisioning and creates linode ServerProviderConfigurer
-func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
+func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l := linodeConfigurer{}
 
 	// Attempt to load defaults from config
@@ -267,4 +267,28 @@ func (c *Container) linodeServerConfigurer() (ServerProviderConfigurer, error) {
 	l.authorizedKey = pub
 
 	return l, nil
+}
+
+func (i linodeConfigurer) PostProvisioningAction(c *Container) error {
+	// Load config for storing server provider details
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	// Pull the cert for database
+	if err := i.pullPgCert(c.HttpClient, c.PgCrtPath); err != nil {
+		return err
+	}
+
+	// Write linode config to cfg
+	cfg.ServerProvider = configs.D8XServerProviderLinode
+	cfg.LinodeConfig = &configs.D8XLinodeConfig{
+		Token:       i.linodeToken,
+		DbId:        i.linodeDbId,
+		Region:      i.linodeRegion,
+		LabelPrefix: i.linodeNodesLabelPrefix,
+	}
+
+	return c.ConfigRWriter.Write(cfg)
 }

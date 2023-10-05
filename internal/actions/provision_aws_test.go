@@ -113,7 +113,7 @@ func TestAWSServerConfigurer(t *testing.T) {
 				TUI:           fakeTUI,
 			}
 
-			_, err := c.awsServerConfigurer()
+			_, err := c.createAWSServerConfigurer()
 			if tt.wantErr != "" {
 				assert.EqualError(t, err, tt.wantErr)
 			} else {
@@ -121,4 +121,30 @@ func TestAWSServerConfigurer(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAwsConfigurerGenerateVariables(t *testing.T) {
+	a := &awsConfigurer{
+		authorizedKey: "the_key",
+		D8XAWSConfig: configs.D8XAWSConfig{
+			AccesKey:           "the_access_key",
+			SecretKey:          "secret",
+			Region:             "region",
+			LabelPrefix:        "prefix",
+			RDSInstanceClass:   "db.t4g.small",
+			CreateBrokerServer: true,
+		},
+	}
+	wantVars := []string{
+		"-var", "server_label_prefix=prefix",
+		"-var", "aws_access_key=the_access_key",
+		"-var", "aws_secret_key=secret",
+		"-var", "region=region",
+		"-var", "authorized_key=the_key",
+		"-var", "db_instance_class=db.t4g.small",
+		"-var", "create_broker_server=true",
+		"-var", "rds_creds_filepath=" + RDS_CREDS_FILE,
+	}
+
+	assert.Equal(t, wantVars, a.generateVariables())
 }
