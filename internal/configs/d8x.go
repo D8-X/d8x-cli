@@ -109,17 +109,23 @@ var _ (D8XConfigReadWriter) = (*d8xConfigFileReadWriter)(nil)
 
 type d8xConfigFileReadWriter struct {
 	filePath string
+
+	warningShown bool
 }
 
 func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
 	cfg := NewD8XConfig()
 	if contents, err := os.ReadFile(d.filePath); err != nil {
-		// Print error message to indicate empty config when not intended
-		fmt.Println(
-			styles.ErrorText.Render(
-				fmt.Sprintf("Config file was not found: %s", d.filePath),
-			),
-		)
+		// Print error message to indicate empty config when not intended. Only
+		// once in current session!
+		if !d.warningShown {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Config file was not found: %s", d.filePath),
+				),
+			)
+			d.warningShown = true
+		}
 		return cfg, nil
 	} else {
 		if err := json.Unmarshal(contents, cfg); err != nil {
