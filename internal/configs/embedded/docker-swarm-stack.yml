@@ -81,6 +81,8 @@ services:
     environment:
       - DATABASE_DSN_HISTORY=${DATABASE_DSN}
       - BROKER_KEY=${BROKER_KEY}
+      - CHAIN_ID=${CHAIN_ID}
+      - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
       - CONFIG_PATH=/cfg_referral
       - RPC_URL_PATH=/cfg_rpc
       - API_BIND_ADDR=0.0.0.0
@@ -150,12 +152,12 @@ networks:
     name: d8x_backend
     ipam:
       config:
-      - subnet: 172.16.2.0/24
+        - subnet: 172.16.2.0/24
   candles:
     driver: overlay
     ipam:
       config:
-      - subnet: 172.16.3.0/24
+        - subnet: 172.16.3.0/24
 configs:
   cfg_rpc:
     external: true
