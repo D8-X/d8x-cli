@@ -1,7 +1,6 @@
 package actions
 
 import (
-	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -49,23 +48,6 @@ type linodeConfigurer struct {
 	authorizedKey string
 
 	createBroker bool
-}
-
-// copyEmbedFilesToDest copies embedFiles from embedFS into dest in the order that embedFS are provided
-func copyEmbedFilesToDest(dest *os.File, embedFS embed.FS, embedFiles ...string) error {
-	for _, embedFile := range embedFiles {
-		f, err := embedFS.Open(embedFile)
-		if err != nil {
-			return err
-		}
-
-		_, err = io.Copy(dest, f)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 // BuildTerraformCMD builds terraform configuration for linode cluster creation.

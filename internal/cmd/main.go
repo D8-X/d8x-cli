@@ -99,6 +99,11 @@ func RunD8XCli() {
 				},
 			},
 			{
+				Name:   "service-update",
+				Usage:  "Update service with new image version",
+				Action: container.ServiceUpdate,
+			},
+			{
 				Name:   "health",
 				Usage:  "Perform health checks of deployed services",
 				Action: container.HealthCheck,

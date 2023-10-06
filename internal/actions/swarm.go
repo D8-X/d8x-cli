@@ -13,6 +13,11 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Stack name that will be used when creating/destroying or managing swarm
+// cluster deployment.
+// TODO - store this in config and make this configurable via flags
+var dockerStackName = "stack"
+
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
@@ -56,11 +61,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-
-	// Stack name that will be used when creating/destroying or managing swarm
-	// cluster deployment.
-	// TODO - store this in config and make this configurable via flags
-	dockerStackName := "stack"
 
 	// Stack might exist, prompt user to remove it
 	if _, err := sshConn.ExecCommand(
