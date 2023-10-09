@@ -13,13 +13,13 @@ variable "region" {
 variable "worker_size" {
   type        = string
   description = "Worker linodes size"
-  default     = "g6-standard-2"
+  default     = "g6-dedicated-2"
 }
 
 variable "broker_size" {
   type        = string
   description = "Worker linodes size"
-  default     = "g6-standard-1"
+  default     = "g6-dedicated-2"
 }
 
 variable "authorized_keys" {

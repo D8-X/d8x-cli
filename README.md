@@ -63,6 +63,12 @@ yourself and provide the linode database instance id in the setup process. This
 step is manual due to the fact that database instance provisioning very slow on
 linode and usually takes around 30 minutes.
 
+**Note** that at the time of writing this documentation (2023 October), Linode
+has disabled option to create new managed databases. Therefore, you might need
+to use external Postgres database which you can either provision yourself or use
+an external database provider. Don't forget to update your database's security
+policies to allow access from all of the provisioned servers ip addresses. 
+
 For AWS provider - RDS Postgres instance will be provisioned automatically. You
 will be able to automatically create new databases for history and referral
 services. Database credentials will be stored in `aws_rds_postgres.txt` file.

@@ -3,6 +3,7 @@ package actions
 import (
 	"testing"
 
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,20 +17,22 @@ func TestGenerateArgs(t *testing.T) {
 		{
 			name: "ok",
 			l: linodeConfigurer{
-				linodeToken:            "token",
-				linodeDbId:             "123",
-				linodeRegion:           "eu-north",
-				linodeNodesLabelPrefix: "prefix",
-				authorizedKey:          "ssh-pub",
-				createBroker:           false,
+				D8XLinodeConfig: configs.D8XLinodeConfig{
+					Token:              "token",
+					DbId:               "123",
+					Region:             "eu-north",
+					LabelPrefix:        "prefix",
+					CreateBrokerServer: false,
+				},
+				authorizedKey: "ssh-pub",
 			},
 			wantOut: []string{
 				"apply", "-auto-approve",
 				"-var", `authorized_keys=["ssh-pub"]`,
-				"-var", `linode_db_cluster_id=123`,
 				"-var", `region=eu-north`,
 				"-var", `server_label_prefix=prefix`,
 				"-var", `create_broker_server=false`,
+				"-var", `linode_db_cluster_id=123`,
 			},
 		},
 	}

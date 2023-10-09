@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
-	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -20,15 +19,6 @@ const (
 
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
-
-	// Cp inventory.tpl for hosts.cfg
-	if err := c.EmbedCopier.CopyMultiToDest(
-		configs.EmbededConfigs,
-		"./inventory.tpl",
-		"embedded/trader-backend/inventory.tpl",
-	); err != nil {
-		return fmt.Errorf("generating inventory.tpl file: %w", err)
-	}
 
 	fmt.Println("Select your server provider")
 

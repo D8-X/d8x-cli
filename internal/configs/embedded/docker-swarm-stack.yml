@@ -97,8 +97,6 @@ services:
     configs:
       - cfg_rpc
       - cfg_referral
-      - source: pg_ca
-        target: /pg.crt
     networks:
       - d8x_backend
 
@@ -162,8 +160,6 @@ configs:
   cfg_rpc:
     external: true
   cfg_referral:
-    external: true
-  pg_ca:
     external: true
   cfg_candles:
     external: true

@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -18,7 +19,10 @@ func (c *Container) Setup(ctx *cli.Context) error {
 
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
-		if ok, err := c.TUI.NewPrompt("Existing configuration was found. Do you want to remove it? (Recommended for only fresh start)", false); ok {
+		if ok, err := c.TUI.NewPrompt(
+			fmt.Sprintf("Existing configuration (%s) was found. Do you want to remove it? (Recommended for only fresh start)", cfg.ServerProvider),
+			false,
+		); ok {
 			if err != nil {
 				return err
 			}

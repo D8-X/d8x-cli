@@ -85,7 +85,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
-		"docker config rm cfg_rpc cfg_referral pg_ca cfg_candles",
+		// "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles",
+		"docker config rm cfg_rpc cfg_referral cfg_candles",
 		"docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1",
 		"docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1",
 		"docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1",
@@ -101,19 +102,19 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
 	// Include pg.cert
-	if _, err := c.FS.Stat(c.PgCrtPath); err == nil {
-		dockerConfigsCMD = append(
-			dockerConfigsCMD,
-			"docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1",
-		)
-		copyList = append(copyList,
-			conn.SftpCopySrcDest{Src: c.PgCrtPath, Dst: "./trader-backend/pg.crt"},
-		)
-	} else {
-		fmt.Println(
-			styles.ErrorText.Render(c.PgCrtPath + " was not found!"),
-		)
-	}
+	// if _, err := c.FS.Stat(c.PgCrtPath); err == nil {
+	// 	dockerConfigsCMD = append(
+	// 		dockerConfigsCMD,
+	// 		"docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1",
+	// 	)
+	// 	copyList = append(copyList,
+	// 		conn.SftpCopySrcDest{Src: c.PgCrtPath, Dst: "./trader-backend/pg.crt"},
+	// 	)
+	// } else {
+	// 	fmt.Println(
+	// 		styles.ErrorText.Render(c.PgCrtPath + " was not found!"),
+	// 	)
+	// }
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
 	if err := sshConn.CopyFilesOverSftp(

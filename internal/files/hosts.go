@@ -11,6 +11,7 @@ import (
 type HostsFileInteractor interface {
 	GetBrokerPublicIp() (string, error)
 	GetMangerPublicIp() (string, error)
+	GetWorkerIps() ([]string, error)
 }
 
 func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
@@ -48,6 +49,12 @@ func (f *fsHostFileInteractor) GetMangerPublicIp() (string, error) {
 		return "", err
 	}
 	return f.cached.GetMangerPublicIp()
+}
+func (f *fsHostFileInteractor) GetWorkerIps() ([]string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return nil, err
+	}
+	return f.cached.GetWorkerIps()
 }
 
 // HostsFileLoader attempts to load and parse give file as HostsFile (hosts.cfg)
@@ -100,6 +107,14 @@ func (h *HostsFile) GetMangerPublicIp() (string, error) {
 	return ip, nil
 }
 
+func (h *HostsFile) GetWorkerIps() ([]string, error) {
+	ip, err := h.FindAllIps("[workers]")
+	if err != nil {
+		return nil, fmt.Errorf("manager ip was not found in hosts file: %w", err)
+	}
+	return ip, nil
+}
+
 // FindFirstIp returns the first item in the next line matching of
 func (h *HostsFile) FindFirstIp(of string) (string, error) {
 	for i, l := range h.lines {
@@ -111,4 +126,32 @@ func (h *HostsFile) FindFirstIp(of string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// FindAllIps returns all items in the next line matching of
+func (h *HostsFile) FindAllIps(of string) ([]string, error) {
+	ret := []string{}
+
+	runLoop := false
+	for i, l := range h.lines {
+		// Find first occurence of "of"
+		if !runLoop && strings.Contains(l, of) {
+			runLoop = true
+			continue
+		}
+
+		if runLoop {
+			// runLoop until we find the next group
+			if strings.HasPrefix(l, "[") {
+				break
+			}
+
+			// Ip address is the first entry
+			ip := strings.Split(h.lines[i], " ")[0]
+			if len(ip) > 0 {
+				ret = append(ret, ip)
+			}
+		}
+	}
+	return ret, nil
 }

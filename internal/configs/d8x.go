@@ -59,10 +59,14 @@ const (
 )
 
 type D8XLinodeConfig struct {
-	Token       string `json:"linode_token"`
-	DbId        string `json:"db_id"`
-	Region      string `json:"region"`
-	LabelPrefix string `json:"label_prefix"`
+	Token              string `json:"linode_token"`
+	DbId               string `json:"db_id"`
+	Region             string `json:"region"`
+	LabelPrefix        string `json:"label_prefix"`
+	SwarmWorkerSize    string `json:"swarm_worker_size"`
+	SwarmNodeSize      string `json:"swarm_node_size"`
+	BrokerServerSize   string `json:"broker_server_size"`
+	CreateBrokerServer bool   `json:"create_broker_server"`
 }
 
 type D8XAWSConfig struct {
