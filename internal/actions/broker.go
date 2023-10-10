@@ -115,15 +115,32 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 
 	// Exec broker-server deployment cmd
-	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd := "cd ./broker && docker volume create d8x-broker-server_mydata "
-	cmd = cmd + "&& docker run --rm -v $PWD:/source -v d8x-broker-server_mydata:/dest -w /source alpine cp ./keyfile.txt /dest "
-	cmd = cmd + "&& docker volume create mydata && docker copy keyfile.txt mydata:key_config/keyfile.txt && echo '%s' | sudo -S BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
+	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
+	cmd := "cd ./broker && echo '%s' | sudo -S docker volume create broker_mydata "
+	cmd = cmd + "&& echo '%s' | sudo -S docker run --rm -v $PWD:/source -v broker_mydata:/dest -w /source alpine cp ./keyfile.txt /dest"
 	out, err := sshClient.ExecCommand(
-		fmt.Sprintf(cmd, password, bsd.brokerKey, bsd.brokerFeeTBPS, redisPw),
+		fmt.Sprintf(cmd, password, password),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
+		return err
+	}
+	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
+	cmd = "cd ./broker && echo '%s' | sudo -S BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
+	out, err = sshClient.ExecCommand(
+		fmt.Sprintf(cmd, password, bsd.brokerFeeTBPS, redisPw),
+	)
+	if err != nil {
+		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
+		return err
+	}
+	fmt.Println(styles.ItalicText.Render("Cleaning up..."))
+	cmd = "cd ./broker && rm ./keyfile.txt"
+	out, err = sshClient.ExecCommand(
+		fmt.Sprintf(cmd),
+	)
+	if err != nil {
+		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server cleanup ^^^"))
 		return err
 	} else {
 		fmt.Println(styles.SuccessText.Render("broker-server deployed!"))
