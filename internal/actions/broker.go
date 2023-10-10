@@ -24,6 +24,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	var (
 		chainConfig   = "./broker-server/chainConfig.json"
 		dockerCompose = "./broker-server/docker-compose.yml"
+		keyfile       = "./broker-server/keyfile.txt"
 	)
 	// Copy the config files and nudge user to review them
 	if err := c.EmbedCopier.Copy(
@@ -90,6 +91,11 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		styles.SuccessText.Render("REDIS Password for broker-server was stored in ./redis_broker_password.txt file"),
 	)
 
+	// write keyfile
+	if err := c.FS.WriteFile(keyfile, []byte("0x"+pk)); err != nil {
+		return fmt.Errorf("temp storage of keyfile failed: %w", err)
+	}
+
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
 	sshClient, err := c.CreateSSHConn(
@@ -103,13 +109,16 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err := sshClient.CopyFilesOverSftp(
 		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
+		conn.SftpCopySrcDest{Src: keyfile, Dst: "./broker/keyfile.txt"},
 	); err != nil {
 		return err
 	}
 
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd := "cd ./broker && echo '%s' | sudo -S BROKER_KEY=%s BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
+	cmd := "cd ./broker && docker volume create d8x-broker-server_mydata "
+	cmd = cmd + "&& docker run --rm -v $PWD:/source -v d8x-broker-server_mydata:/dest -w /source alpine cp ./keyfile.txt /dest "
+	cmd = cmd + "&& docker volume create mydata && docker copy keyfile.txt mydata:key_config/keyfile.txt && echo '%s' | sudo -S BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
 	out, err := sshClient.ExecCommand(
 		fmt.Sprintf(cmd, password, bsd.brokerKey, bsd.brokerFeeTBPS, redisPw),
 	)
