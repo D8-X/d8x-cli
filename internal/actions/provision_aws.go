@@ -61,28 +61,7 @@ DATABASE_DSN_HISTORY .env values.`
 		return err
 	}
 
-	// Create databases so users don't have to do this manually - outdated
-	// ok, err := c.TUI.NewPrompt("\nDo you want to automatically create new databases for history and referral services on provisioned RDS instance?", true)
-	// if err != nil {
-	// 	return err
-	// }
-	// if ok {
-	// 	fmt.Println("Enter the name of history database:")
-	// 	historyDbName, err := c.TUI.NewInput()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	fmt.Println("Enter the name of referral database:")
-	// 	referralDbName, err := c.TUI.NewInput()
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// 	if err := a.createRDSDatabases(c, historyDbName, referralDbName); err != nil {
-	// 		return fmt.Errorf("creating new databases in RDS instance: %w", err)
-	// 	}
-	// }
-
-	// Attempt to update known_hosts with manager
+	// Attempt to update known_hosts with manager's host key
 	managerIp, _ := c.HostsCfg.GetMangerPublicIp()
 	if err := a.putManagerToKnownHosts(managerIp); err != nil {
 		fmt.Println(
