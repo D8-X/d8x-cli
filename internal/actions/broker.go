@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -111,8 +112,10 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
 		conn.SftpCopySrcDest{Src: keyfile, Dst: "./broker/keyfile.txt"},
 	); err != nil {
+		os.Remove(keyfile)
 		return err
 	}
+	os.Remove(keyfile)
 
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
