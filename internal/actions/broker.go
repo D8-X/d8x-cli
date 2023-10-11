@@ -24,12 +24,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	// Dest filenames, TODO - centralize this via flags
 	var (
 		chainConfig   = "./broker-server/chainConfig.json"
+		rpcConfig     = "./broker-server/rpc.json"
 		dockerCompose = "./broker-server/docker-compose.yml"
 		keyfile       = "./broker-server/keyfile.txt"
 	)
 	// Copy the config files and nudge user to review them
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
+		files.EmbedCopierOp{Src: "embedded/broker-server/rpc.json", Dst: rpcConfig, Overwrite: false},
 		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: chainConfig, Overwrite: false},
 		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: dockerCompose, Overwrite: true},
 	); err != nil {
@@ -39,9 +41,13 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	absRpcConfig, err := filepath.Abs(rpcConfig)
+	if err != nil {
+		return err
+	}
 	c.TUI.NewConfirmation(
-		"Please review the configuration file and ensure values are correct before proceeding:" + "\n" +
-			styles.AlertImportant.Render(absChainConfig),
+		"Please review the configuration files and ensure values are correct before proceeding:" + "\n" +
+			styles.AlertImportant.Render(absChainConfig) + "\n" + styles.AlertImportant.Render(absRpcConfig),
 	)
 
 	bsd := brokerServerDeployment{}
@@ -109,6 +115,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	if err := sshClient.CopyFilesOverSftp(
 		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
+		conn.SftpCopySrcDest{Src: rpcConfig, Dst: "./broker/rpc.json"},
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
 		conn.SftpCopySrcDest{Src: keyfile, Dst: "./broker/keyfile.txt"},
 	); err != nil {
