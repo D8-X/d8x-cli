@@ -79,10 +79,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 	bsd.brokerFeeTBPS = tbps
-	password, err := c.GetPassword(ctx)
-	if err != nil {
-		return err
-	}
 
 	// redis password
 	redisPw, err := c.generatePassword(16)
@@ -126,19 +122,19 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-	cmd := "cd ./broker && echo '%s' | sudo -S docker volume create broker_mydata "
-	cmd = cmd + "&& echo '%s' | sudo -S docker run --rm -v $PWD:/source -v broker_mydata:/dest -w /source alpine cp ./keyfile.txt /dest"
+	cmd := "cd ./broker && docker volume create broker_mydata "
+	cmd = cmd + "&& docker run --rm -v $PWD:/source -v broker_mydata:/dest -w /source alpine cp ./keyfile.txt /dest"
 	out, err := sshClient.ExecCommand(
-		fmt.Sprintf(cmd, password, password),
+		fmt.Sprintf(cmd),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err
 	}
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd = "cd ./broker && echo '%s' | sudo -S BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
+	cmd = "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
 	out, err = sshClient.ExecCommand(
-		fmt.Sprintf(cmd, password, bsd.brokerFeeTBPS, redisPw),
+		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
