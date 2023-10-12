@@ -3,6 +3,8 @@ package actions
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -24,7 +26,24 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	case "broker":
 		ip, err = c.HostsCfg.GetBrokerPublicIp()
 	default:
-		return fmt.Errorf("Incorrect server name was passed. Accepted values are manager, broker")
+		// Parse workers
+		if strings.HasPrefix(serverName, "worker-") {
+			ips, err := c.HostsCfg.GetWorkerIps()
+			if err != nil {
+				return err
+			}
+			parsedWorkerNum, err := strconv.Atoi(strings.Split(serverName, "worker-")[1])
+			if err != nil {
+				return fmt.Errorf("Incorrect worker name was passed. Accepted values are worker-1, worker-2, worker-3, worker-*...")
+			}
+
+			if parsedWorkerNum <= len(ips) {
+				ip = ips[parsedWorkerNum-1]
+				break
+			}
+		}
+
+		return fmt.Errorf("Incorrect server name was passed. Accepted values are manager, broker, worker-* (where * is a digit)")
 	}
 
 	if err != nil {
@@ -60,7 +79,7 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	}
 	defer term.Restore(fileDescriptor, originalState)
 
-	if err := session.RequestPty("xterm", w, h, ssh.TerminalModes{
+	if err := session.RequestPty("xterm", h, w, ssh.TerminalModes{
 		ssh.ECHO:          1,     // enable echoing
 		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
 		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
