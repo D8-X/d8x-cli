@@ -105,7 +105,6 @@ services:
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
-      # Use different database tha
       - REDIS_DB_NUM=0
       - CONFIG_PATH=/cfg_candles
     networks:

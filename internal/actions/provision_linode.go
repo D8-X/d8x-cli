@@ -195,7 +195,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 	l.Token = token
 
 	// DB
-	if ok, err := c.TUI.NewPrompt("Do you want to use your own provisioned Linode database (external db)?", false); err == nil && ok {
+	if ok, err := c.TUI.NewPrompt("Do you want to use your own provisioned Linode database?", false); err == nil && ok {
 		fmt.Println("Enter your Linode database cluster ID")
 		dbId, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("12345678"),
@@ -301,7 +301,8 @@ func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
 
 		fmt.Printf(`You should configure your external database to allow connection from provisioned cluster.
 Make sure to refer to %s inventory file or visit your server provider's dashboard to 
-find the public ip addresses of your servers.\n`, configs.DEFAULT_HOSTS_FILE)
+find the public ip addresses of your servers.
+`, configs.DEFAULT_HOSTS_FILE)
 
 		workers, _ := c.HostsCfg.GetWorkerIps()
 		manager, _ := c.HostsCfg.GetMangerPublicIp()
