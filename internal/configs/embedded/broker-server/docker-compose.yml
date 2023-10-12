@@ -2,29 +2,39 @@ version: '3'
 services:
   broker:
     image: ghcr.io/d8-x/d8x-broker-server:dev
+    #build:
+    #  context: .
+    #  dockerfile: ./cmd/brokerapi/Dockerfile
     restart: always
     depends_on:
       - redis
     ports:
-      # Default svc port is 8000
-      - 8000:8000
+      # Default svc port is 8001
+      - 8001:8001
     networks:
       - app-net
     environment:
       REDIS_ADDR: redis:6379
       REDIS_PW: "${REDIS_PW}"
-      BROKER_KEY: "${BROKER_KEY}"
       BROKER_FEE_TBPS: "${BROKER_FEE_TBPS}"
       CONFIG_PATH: /chain_config
+      CONFIG_RPC_PATH: /rpc_config
+      KEYFILE_PATH: /keyfile/
     logging:
       options:
         max-size: "10m"
         max-file: "10"
     configs:
       - chain_config
+      - rpc_config
+    volumes:
+      - mydata:/keyfile
 
   executorws:
     image: ghcr.io/d8-x/d8x-broker-exec-ws:dev
+    #build:
+    #  context: .
+    #  dockerfile: ./cmd/executorws/Dockerfile
     restart: always
     depends_on:
       - redis
@@ -36,9 +46,7 @@ services:
     environment:
       REDIS_ADDR: redis:6379
       REDIS_PW: "${REDIS_PW}"
-      WS_ADDR: executorws:8080
-      BROKER_KEY: "${BROKER_KEY}"
-      BROKER_FEE_TBPS: "${BROKER_FEE_TBPS}"
+      WS_ADDR: "${WS_ADDR}"
       CONFIG_PATH: /chain_config
     logging:
       options:
@@ -68,3 +76,8 @@ networks:
 configs:
   chain_config:
     file: ./chainConfig.json
+  rpc_config:
+    file: ./rpc.json
+
+volumes:
+  mydata:
