@@ -24,6 +24,10 @@ platforms you will need to [build it from source](#building-from-source). See
 FAQ supported platforms for details.
 
 ## Usage
+### Before You Start The CLI
+* With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database (any name is fine it's called 'history' in our pre-defined config) 
+* Have a broker key ready, and a broker executor key. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up)
+* Have some private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
 
 ### Setup
 
