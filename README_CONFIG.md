@@ -51,22 +51,20 @@ The provided entries should be fine for the following variables:
 You can edit environment variables in `trader-backend/.env` file. Environment
 variables defined in `.env` will be used when deploying docker stack in swarm.
 
-- Provide the connection strings as `DATABASE_DSN_HISTORY` and
-  `DATABASE_DSN_REFERRALS` environment variables in your `.env` file. If your password contains a dollar sign
-  `$`, it needs to be escaped, that is, replace `$` by `\$`. See
-  [also here](https://stackoverflow.com/questions/3582552/what-is-the-format-for-the-postgresql-connection-string-url/20722229#20722229) for more info about DSN structure.
-- Insert a broker key (BROKER_KEY=”abcde0123…” without “0x”).
+- Provide the connection strings `DATABASE_DSN=` in your `.env` file. If your password contains a dollar sign
+  `$` or other special characters, it needs to be escaped, that is, replace `$` by `\$`. It's best to have a password with letters, dashes and underscores only.
+  On Linode, the connection string will look something like this: `DATABASE_DSN="postgresql://linpostgres:ANzAaan26-o0-v1d@lin-31881-14321-pgsql-primary-private.servers.linodedb.net:5432/history"`
+  and you can use the private host if you deploy in the same region as the other servers.
+- Insert a broker key (BROKER_KEY=”abcde0123…” without “0x”) in .env
   - Option 1: Broker Key on Server
     - if the broker key is to be hosted on this server, then you also set the broker fee. That is, adjust BROKER_FEE_TBPS. The unit is tenth of a basis point, so 60 = 6 basis points = 0.06%.
   - Option 2: External Broker Server That Hosts The Broker-Key
     - You can run an external “broker server” that hosts the key: https://github.com/D8-X/d8x-broker-server
     - You will still need “BROKER_KEY”, and the address corresponding to your BROKER_KEY has to be whitelisted on the broker-server in the file config/live.chainConfig.json under “allowedExecutors”. (The BROKER_KEY in this case is used for the referral system to sign the payment execution request that is sent to the broker-server).
-    - For the broker-server to be used, set the environment variable `REMOTE_BROKER_HTTP=""` to the http-address of your broker server.
-- Specify `CHAIN_ID=80001` for [the chain](https://chainlist.org/) that you are running the backend for (of course only chains where D8X perpetuals are deployed to like Mumbai 80001 or zkEVM testnet 1442), that must align with
-  the `SDK_CONFIG_NAME` (testnet for CHAIN_ID=80001, zkevmTestnet for chainId=1442, zkevm for chainId=1101)
-- Change passwords for the entries `REDIS_PASSWORD`, and `POSTGRES_PASSWORD`
-  - It is recommended to set a strong password for `REDIS_PASSWORD` variable. This password is needed by both, and docker swarm.
-  - Set the host to the private IP of : `REDIS_HOST=<PRIVATEIPOFSERVER1>`
+    - For the broker-server to be used, set the environment variable `REMOTE_BROKER_HTTP=""` to the http-address of your broker server, for example `REMOTE_BROKER_HTTP="https://broker.zk.awesomebroker.xyz"`
+- Specify `CHAIN_ID=1442` for [the chain](https://chainlist.org/) that you are running the backend for (of course only chains where D8X perpetuals are deployed to like zkEVM testnet 1442), that must align with
+  the `SDK_CONFIG_NAME` (set zkevmTestnet for chainId=1442, zkevm for chainId=1101)
+- Change passwords for the entry `REDIS_PASSWORD`
   </details>
 
 Next, we edit the following configuration files located in the folder deployment:
@@ -88,27 +86,9 @@ Next, we edit the following configuration files located in the folder deployment
  <summary>
   Referral System Configuration
  </summary>
-The referral system is optional and can be disabled by setting the first entry in  config/live.referralSettings.json to false. If you enable the referral system, also make sure there is a broker key entered in the .env-file (see above).
-
-Here is how the referral system works in a nutshell.
-
-- The system allows referrers to distribute codes to traders. Traders will receive a fee rebate after a given amount of time and accrued fees. Referrers will also receive a portion of the trader fees that they referred
-- The broker can determine the share of the broker imposed trading fee that go to the referrer, and the referrer can re-distribute this fee between a fee rebate for the trader and a portion for themselves. The broker can make the size of the fee share dependent on token holdings of the referrer. The broker can configure the fee, amount, and token.
-- There is a second type of referral that works via agency. In this setup the agency serves as an intermediary that connects to referrers. In this case the token holdings are not considered. Instead, the broker sets a fixed amount of the trading fee to be redistributed to the agency (e.g., 80%), and the agency determines how this fee is split between referrer, trader, and agency
-- More details here [README_PAYSYS](https://github.com/D8-X/d8x-trader-backend/blob/main/packages/referral/README_PAYSYS.md)
-
-All of this can be configured as follows.
+The referral system is detailed in its dedicated repository. It can be configured as follows.
 
 <details> <summary>How to set live.referralSettings.json Parameters</summary>
-  
-- `referralSystemEnabled`
-    set to true to enable the referral system, false otherwise. The following settings do not matter if the system is disabled.
-    
-- `agencyCutPercent`
-    if the broker works with an agency that distributes referral codes to referrers/KOL (Key Opinion Leaders), the broker redistributes 80% of the fees earned by a trader that was referred through the agency. Set this value to another percentage if desired.
-    
-- `permissionedAgencies`
-    the broker allow-lists the agencies that can generate referral codes. The broker doesn’t want to open this to the public because otherwise each trader could be their own agency and get an 80% (or so) fee rebate.
     
 - `referrerCutPercentForTokenXHolding`
     the broker can have their own token and allow a different rebate to referrers that do not use an agency. The more tokens that the referrer holds, the higher the rebate they get. Here is how to set this. For example, in the config below the referrer without tokens gets 0.2% rebate that they can re-distribute between them and a trader, and the referrer with 100 tokens gets 1.5% rebate. Note that the referrer can also be the trader, because creating referral codes is permissionless, so don’t be to generous especially for low token holdings. 
@@ -116,17 +96,14 @@ All of this can be configured as follows.
 - `tokenX`
     specify the token address that you as a broker want to use for the referrer cut. If you do not have a token, use the D8X token! Set the decimals according to the ERC-20 decimal convention. Most tokens use 18 decimals.
     
-- `paymentScheduleMinHourDayofmonthWeekday`
-    here you can schedule the rebate payments that will automatically be performed. The syntax is similar to “cron”-schedules that you might be familiar with. In the example below, *"0-14-*-0"*, the payments are processed on Sundays (weekday 0) at 14:00 UTC.
+- `paymentScheduleCron`
+    here you can schedule the rebate payments that will automatically be performed. The syntax is the one used by the “cron”-scheduling system that you might be familiar with.
     
 - `paymentMaxLookBackDays`
     If no payment was processed, the maximal look-back time for trading fee rebates is 14 days. For example, fees paid 15 days ago will not be eligible for a rebate. This setting is not of high importance and 14 is a good value.
     
-- `minBrokerFeeCCForRebatePerPool`
-    this settings is crucial, it determines the minimal amount of trader fees accrued for a given trader in the pool’s collateral currency that triggers a payment. For example, in pool 1, the trader needs to have paid at least 100 tokens in fees before a rebate is paid. If the trader accrues 100 tokens only after 3 payment cycles, the entire amount will be considered. Hence this setting saves on gas-costs for the payments. Depending on whether the collateral of the pool is BTC or MATIC, we obviously need quite a different number. 
-    
 - `brokerPayoutAddr`
-    you might want to separate the address that accrues the trading fees from the address that receives the fees after redistribution. Use this setting to determine the address that receives the net fees.
+    we recommend you use a separate address that accrues the trading fees from the address that receives the fees after redistribution. Use this setting to determine the address that receives the net fees.
     </details>
 
 </details>
