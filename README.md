@@ -150,6 +150,15 @@ find out how to configure the system in the
 ## FAQ
 
 <details>
+  <summary>What if I need to change the configuration files?</summary>
+Edit the configuration files in your local folder from which you deployed. Redeploy using the CLI, see also `d8x setup --help`.
+For example `d8x setup swarm-deploy` if the config is part of "trader-backend", or `d8x setup broker-deploy` if the config is
+part of "broker-server"
+</details>
+
+
+
+<details>
   <summary>How do I update the server software images to a new version?</summary>
 
   You login to the server where your software resides (e.g., the broker-server, or the
