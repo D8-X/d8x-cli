@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -82,6 +83,21 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 	}
 
+	fmt.Println("Enter your referral payment executor private key:")
+	pk, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
+	)
+	if err != nil {
+		return err
+	}
+	pk = strings.TrimPrefix(pk, "0x")
+	keyfileLocal := "./trader-backend/keyfile.txt"
+	// write keyfile
+	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
+		return fmt.Errorf("temp storage of keyfile failed: %w", err)
+	}
+
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
@@ -97,6 +113,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
 		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
 		{Src: "./trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json"},
+		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
 		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
@@ -120,8 +137,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if err := sshConn.CopyFilesOverSftp(
 		copyList...,
 	); err != nil {
+		os.Remove(keyfileLocal)
 		return fmt.Errorf("copying configuration files to manager: %w", err)
 	} else {
+		os.Remove(keyfileLocal)
 		fmt.Println(styles.SuccessText.Render("configuration files copied to manager"))
 	}
 
