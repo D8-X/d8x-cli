@@ -56,13 +56,9 @@ variables defined in `.env` will be used when deploying docker stack in swarm.
   `$` or other special characters, it needs to be escaped, that is, replace `$` by `\$`. It's best to have a password with letters, dashes and underscores only.
   On Linode, the connection string will look something like this: `DATABASE_DSN="postgresql://linpostgres:ANzAaan26-o0-v1d@lin-31881-14321-pgsql-primary-private.servers.linodedb.net:5432/history"`
   and you can use the private host if you deploy in the same region as the other servers.
-- Insert a broker key (BROKER_KEY=”abcde0123…” without “0x”) in .env
-  - Option 1: Broker Key on Server
-    - if the broker key is to be hosted on this server, then you also set the broker fee. That is, adjust BROKER_FEE_TBPS. The unit is tenth of a basis point, so 60 = 6 basis points = 0.06%.
-  - Option 2: External Broker Server That Hosts The Broker-Key
-    - You can run an external “broker server” that hosts the key: https://github.com/D8-X/d8x-broker-server
-    - You will still need “BROKER_KEY”, and the address corresponding to your BROKER_KEY has to be whitelisted on the broker-server in the file config/live.chainConfig.json under “allowedExecutors”. (The BROKER_KEY in this case is used for the referral system to sign the payment execution request that is sent to the broker-server).
-    - For the broker-server to be used, set the environment variable `REMOTE_BROKER_HTTP=""` to the http-address of your broker server, for example `REMOTE_BROKER_HTTP="https://broker.zk.awesomebroker.xyz"`
+- The 'broker key' in this configuration file (BROKER_KEY=”abcde0123…” without “0x”) in .env, serves as the referral payment executor agent. The external “broker server” hosts the broker key that signs transactions for all trades: https://github.com/D8-X/d8x-broker-server
+    - Set the environment variable `REMOTE_BROKER_HTTP=""` to the http-address of your broker server, for example `REMOTE_BROKER_HTTP="https://broker.zk.awesomebroker.xyz"`
+    - Ensure that the address corresponding to the key BROKER_KEY is added to "allowed executors" in the chainConfig.json for the broker server (see above)
 - Specify `CHAIN_ID=1442` for [the chain](https://chainlist.org/) that you are running the backend for (of course only chains where D8X perpetuals are deployed to like zkEVM testnet 1442), that must align with
   the `SDK_CONFIG_NAME` (set zkevmTestnet for chainId=1442, zkevm for chainId=1101)
 - Change passwords for the entry `REDIS_PASSWORD`
