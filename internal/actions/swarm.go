@@ -155,6 +155,14 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 	fmt.Println(styles.SuccessText.Render("docker configs were created on manager node!"))
 
+	// docker volumes
+	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
+	cmd := "docker volume create referral_mydata "
+	cmd = cmd + "&& docker run --rm -v $PWD:/source -v referral_mydata:/dest -w /source alpine cp ./trader-backend/keyfile.txt /dest"
+	out, err = sshConn.ExecCommand(
+		fmt.Sprintf(cmd),
+	)
+
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
 	swarmDeployCMD := fmt.Sprintf(

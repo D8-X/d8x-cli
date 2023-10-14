@@ -99,6 +99,8 @@ services:
       - cfg_referral
     networks:
       - d8x_backend
+    volumes:
+      - mydata:/keyfile
 
   candles-pyth-client:
     image: ghcr.io/d8-x/d8x-candles-pyth-client:main
@@ -155,6 +157,8 @@ networks:
     ipam:
       config:
         - subnet: 172.16.3.0/24
+volumes:
+  mydata:
 configs:
   cfg_rpc:
     external: true
