@@ -90,10 +90,9 @@ can run the following command:
 ssh -F ./manager_ssh_jump.conf jump_host -L 5433:<YOUR_RDS_HOSTNAME_HERE>:5432 -v -N
 ```
 
-#### Broker server (optional)
-If you chose to provision broker-server, once provisioning is done, broker
-server deployment and nginx + certbot configuration will be performed. If you
-select to configure SSL (certbot setup), you must make sure to set up your DNS A
+#### Broker Server
+Upon selecting broker-server provisioning, deployment and nginx + certbot configuration will be performed. 
+When you select to configure SSL (certbot setup), you need to set up your DNS "A"
 records of your provided domains to point to your broker-server public ip
 address. This ip address will be displayed to you in the setup process, or you
 can find it in `hosts.cfg` file or in your server provider's dashboard.
