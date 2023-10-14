@@ -39,8 +39,9 @@ The provided entries should be fine for the following variables:
 
 <details>
   <summary>live.config.json</summary>
-  No edits required. If you run your own price-service, you can replace
-  priceServiceWSEndpoint by that address. The 'id' and 'idVaa' entries correspond
+  Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). 
+  The service endpoint will have to be added to the configuration file as an entry for the variable priceServiceWSEndpoint. 
+  The 'id' and 'idVaa' entries correspond
   to the asset id's and idVaa between mainnet and testnet differ.
 </details>
 
