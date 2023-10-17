@@ -111,7 +111,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
-	cmd := fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir var/nfs/general -p && chown nobody:nogroup /var/nfs/general" `, pwd)
+	cmd := fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir /var/nfs/general -p && chown nobody:nogroup /var/nfs/general" `, pwd)
 	configEtcExports := "#"
 	for _, ip := range ipWorkersPriv {
 		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "ufw allow from %s to any port nfs" `, pwd, ip)
@@ -177,7 +177,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	// enable nfs server
 	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server" `, pwd)
+	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
+	cmd = cmd + fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports \
+		&& systemctl restart nfs-kernel-server" `, pwd)
 	out, err = sshConn.ExecCommand(
 		fmt.Sprintf(cmd),
 	)
@@ -220,7 +222,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	fmt.Printf("\nPrivate ip : %s\n", ipMgrPriv)
 	cmd = fmt.Sprintf(`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`, ipMgrPriv)
-	cmd = cmd + " && docker run --rm -v $PWD:/source -v nfsvol:/dest -w /source alpine cp ./trader-backend/keyfile.txt /dest"
 	out, err = sshConn.ExecCommand(
 		fmt.Sprintf(cmd),
 	)
