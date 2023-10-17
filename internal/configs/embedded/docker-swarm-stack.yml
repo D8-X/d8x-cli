@@ -68,8 +68,9 @@ services:
       - cfg_referral
     networks:
       - d8x_backend
+
   referral:
-    image: ghcr.io/d8-x/d8x-referral-system:main
+    image: ghcr.io/d8-x/d8x-referral-system:dev
     deploy:
       # Restart 5 times with 60 seconds delay before giving up.
       restart_policy:
@@ -87,6 +88,7 @@ services:
       - RPC_URL_PATH=/cfg_rpc
       - API_BIND_ADDR=0.0.0.0
       - API_PORT=8080
+      - KEYFILE_PATH=/keyfile/
     ports:
       - "${REFERRAL_API_PORT_HTTP:-3004}:8080"
     logging:
@@ -100,7 +102,7 @@ services:
     networks:
       - d8x_backend
     volumes:
-      - mydata:/keyfile
+      - nfsvol:/keyfile
 
   candles-pyth-client:
     image: ghcr.io/d8-x/d8x-candles-pyth-client:main
@@ -158,7 +160,8 @@ networks:
       config:
         - subnet: 172.16.3.0/24
 volumes:
-  mydata:
+  nfsvol:
+    external: true
 configs:
   cfg_rpc:
     external: true

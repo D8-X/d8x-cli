@@ -11,6 +11,7 @@ import (
 type HostsFileInteractor interface {
 	GetBrokerPublicIp() (string, error)
 	GetMangerPublicIp() (string, error)
+	GetMangerPrivateIp() (string, error)
 	GetWorkerIps() ([]string, error)
 }
 
@@ -49,6 +50,12 @@ func (f *fsHostFileInteractor) GetMangerPublicIp() (string, error) {
 		return "", err
 	}
 	return f.cached.GetMangerPublicIp()
+}
+func (f *fsHostFileInteractor) GetMangerPrivateIp() (string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return "", err
+	}
+	return f.cached.GetMangerPrivateIp()
 }
 func (f *fsHostFileInteractor) GetWorkerIps() ([]string, error) {
 	if err := f.ensureFileLoaded(); err != nil {
@@ -99,6 +106,13 @@ func (h *HostsFile) GetBrokerPublicIp() (string, error) {
 
 }
 
+func (h *HostsFile) GetMangerPrivateIp() (string, error) {
+	ip, err := h.FindManagerPrivateIp()
+	if err != nil {
+		return "", fmt.Errorf("manager private ip was not found in hosts file: %w", err)
+	}
+	return ip, nil
+}
 func (h *HostsFile) GetMangerPublicIp() (string, error) {
 	ip, err := h.FindFirstIp("[managers]")
 	if err != nil {
@@ -123,6 +137,18 @@ func (h *HostsFile) FindFirstIp(of string) (string, error) {
 				// Ip address is the first entry
 				return strings.Split(h.lines[i+1], " ")[0], nil
 			}
+		}
+	}
+	return "", nil
+}
+
+func (h *HostsFile) FindManagerPrivateIp() (string, error) {
+	var ret string
+	for _, l := range h.lines {
+		if strings.Contains(l, "manager_private_ip") {
+			v := strings.Split(l, "manager_private_ip=")[1]
+			ret = strings.Split(v, " ")[0]
+			return ret, nil
 		}
 	}
 	return "", nil

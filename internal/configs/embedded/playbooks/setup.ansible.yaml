@@ -93,6 +93,7 @@
           - python3-pip
           - git
           - certbot
+          - nfs-common
         state: latest
         update_cache: true
     - name: Get Docker apt repo key

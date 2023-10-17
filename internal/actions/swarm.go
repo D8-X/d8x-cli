@@ -157,11 +157,54 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	// docker volumes
 	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-	cmd := "docker volume create referral_mydata "
-	cmd = cmd + "&& docker run --rm -v $PWD:/source -v referral_mydata:/dest -w /source alpine cp ./trader-backend/keyfile.txt /dest"
+	ipMgr, err := c.HostsCfg.GetMangerPrivateIp()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("\nPrivate ip : %s\n", ipMgr)
+	cmd := fmt.Sprintf(`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`, ipMgr)
+	cmd = cmd + " && docker run --rm -v $PWD:/source -v nfsvol:/dest -w /source alpine cp ./trader-backend/keyfile.txt /dest"
 	out, err = sshConn.ExecCommand(
 		fmt.Sprintf(cmd),
 	)
+	// create volume on worker nodes
+	workerIps, err := c.HostsCfg.GetWorkerIps()
+	if err != nil {
+		return fmt.Errorf("finding worker ip addresses: %w", err)
+	}
+	cmd = fmt.Sprintf(
+		`echo '%s' | sudo -S bash -c "docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol"`,
+		pwd,
+		ipMgr,
+	)
+	cmdDir := fmt.Sprintf(
+		`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general"`,
+		pwd,
+		ipMgr,
+	)
+	for _, ip := range workerIps {
+		sshConnWorker, err := c.CreateSSHConn(
+			ip,
+			c.DefaultClusterUserName,
+			c.SshKeyPath,
+		)
+		if err != nil {
+			return err
+		}
+		out, err = sshConnWorker.ExecCommand(
+			fmt.Sprintf(cmdDir),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create nfs dir on worker: %w", err)
+		}
+		out, err = sshConnWorker.ExecCommand(
+			fmt.Sprintf(cmd),
+		)
+		fmt.Println(string(out))
+		if err != nil {
+			return fmt.Errorf("creating volume on worker failed: %w", err)
+		}
+	}
 
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
