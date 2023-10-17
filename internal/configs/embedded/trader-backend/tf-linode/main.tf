@@ -78,7 +78,7 @@ ${linode_instance.manager.ip_address} manager_private_ip=${linode_instance.manag
 
 [workers]
 %{for index, ip in linode_instance.nodes.*.ip_address~}
-${ip} hostname=${format("worker-%02d", index + 1)}
+${ip} worker_private_ip=${linode_instance.nodes[index].private_ip_address} hostname=${format("worker-%02d", index + 1)}
 %{endfor~}
 
 %{if var.create_broker_server}
