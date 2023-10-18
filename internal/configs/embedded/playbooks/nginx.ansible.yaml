@@ -11,6 +11,11 @@
         src: ../nginx.configured.conf
         dest: /etc/nginx/sites-enabled/d8x
         mode: "644"
+    - name: Copy main nginx server config
+      ansible.builtin.copy:
+        src: ../nginx.server.conf
+        dest: /etc/nginx/nginx.conf
+        mode: "644"
     - name: Reload nginx
       ansible.builtin.systemd_service:
         state: reloaded

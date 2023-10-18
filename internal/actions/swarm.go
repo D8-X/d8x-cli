@@ -164,6 +164,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
 		files.EmbedCopierOp{Src: "embedded/nginx/nginx.conf", Dst: "./nginx/nginx.conf", Overwrite: true},
+		files.EmbedCopierOp{Src: "embedded/nginx/nginx.server.conf", Dst: "./nginx.server.conf", Overwrite: true},
 		files.EmbedCopierOp{Src: "embedded/playbooks/nginx.ansible.yaml", Dst: "./playbooks/nginx.ansible.yaml", Overwrite: true},
 	); err != nil {
 		return err
