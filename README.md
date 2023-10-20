@@ -5,7 +5,7 @@ other d8x broker services.
 
 Setup includes provisioning resources on supported cloud providers, configuring servers, deploying swarm cluster and individual services.
 
-For more information check and usage out the `d8x help` command.
+
 
 ## Building From Source
 
@@ -13,6 +13,7 @@ For more information check and usage out the `d8x help` command.
 go build -o d8x ./main.go
 sudo mv d8x /usr/bin/d8x
 ```
+Check out the `d8x help` command.
 
 ## Using A Release
 
@@ -25,8 +26,9 @@ FAQ supported platforms for details.
 
 ## Usage
 ### Before You Start The CLI
-* The CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so. You can use an external database. 
-* With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database (any name is fine it's called 'history' in our pre-defined config) 
+* The CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
+* The CLI gives you the choice of using a cloud-provider database or an external database. 
+* With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name is fine. The db is called 'history' in our pre-defined config.
 * Have a broker key ready, and a broker executor key. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
 	* Fund the executor wallet with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance 
 * Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
