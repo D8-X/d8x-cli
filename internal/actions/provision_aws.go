@@ -205,7 +205,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 	awsCfg.LabelPrefix = labelPrefix
 
 	// Broker-server
-	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker-server server?", true)
+	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker server?", true)
 	if err != nil {
 		return nil, err
 	}

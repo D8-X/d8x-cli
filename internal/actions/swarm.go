@@ -32,7 +32,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		// Note that .env.example is not recognized in embed.FS
 		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
 		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
-		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
+		{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
+		{Src: "embedded/trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json", Overwrite: false},
+		{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 		// Candles configs
 		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
 		// Docker swarm file
@@ -135,18 +137,20 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
-		// "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles",
-		"docker config rm cfg_rpc cfg_referral cfg_candles",
-		"docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1",
-		"docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1",
-		"docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1",
+		`docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1`,
+		`docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1`,
+		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
+		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
+		`docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
 	copyList := []conn.SftpCopySrcDest{
 		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
 		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
-		{Src: "./trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json"},
+		{Src: "./trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json"},
+		{Src: "./trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json"},
+		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
 		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
 		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
 		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
@@ -225,7 +229,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Create configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err := managerSSHConn.ExecCommand(
-		fmt.Sprintf(`echo '%s' | sudo -S bash -c "%s"`, pwd, strings.Join(dockerConfigsCMD, ";")),
+		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + fmt.Sprintf(strings.Join(dockerConfigsCMD, ";")),
 	)
 	fmt.Println(string(out))
 	if err != nil {

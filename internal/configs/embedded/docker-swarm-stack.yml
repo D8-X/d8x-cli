@@ -36,14 +36,12 @@ services:
       - MAIN_API_PORT_HTTP=${MAIN_API_PORT_HTTP:-3002}
       - MAIN_API_PORT_WEBSOCKET=${MAIN_API_PORT_WEBSOCKET:-3002}
       - CONFIG_PATH_RPC=/cfg_rpc
-      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+    configs:
+      - cfg_rpc
     networks:
       - d8x_backend
     deploy:
       replicas: 2
-    configs:
-      - cfg_rpc
-      - cfg_referral
   history:
     image: ghcr.io/d8-x/d8x-trader-history:main
     environment:
@@ -52,7 +50,7 @@ services:
       - SDK_CONFIG_NAME=${SDK_CONFIG_NAME}
       - CHAIN_ID=${CHAIN_ID}
       - CORS_ON=${CORS_ON:-FALSE}
-      - CONFIG_PATH_RPC=/cfg_rpc
+      - CONFIG_PATH_RPC=/cfg_rpc_history
       - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
     ports:
       - "${HISTORY_API_PORT_HTTP:-3003}:${HISTORY_API_PORT_HTTP:-3003}"
@@ -64,7 +62,7 @@ services:
     deploy:
       replicas: 1
     configs:
-      - cfg_rpc
+      - cfg_rpc_history
       - cfg_referral
     networks:
       - d8x_backend
@@ -85,7 +83,7 @@ services:
       - CHAIN_ID=${CHAIN_ID}
       - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
       - CONFIG_PATH=/cfg_referral
-      - RPC_URL_PATH=/cfg_rpc
+      - RPC_URL_PATH=/cfg_rpc_referral
       - API_BIND_ADDR=0.0.0.0
       - API_PORT=8080
       - KEYFILE_PATH=/keyfile/
@@ -97,7 +95,7 @@ services:
         max-size: "5000k"
         max-file: "10"
     configs:
-      - cfg_rpc
+      - cfg_rpc_referral
       - cfg_referral
     networks:
       - d8x_backend
@@ -164,6 +162,10 @@ volumes:
     external: true
 configs:
   cfg_rpc:
+    external: true
+  cfg_rpc_referral:
+    external: true
+  cfg_rpc_history:
     external: true
   cfg_referral:
     external: true
