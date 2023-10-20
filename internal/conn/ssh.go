@@ -54,6 +54,36 @@ func NewSSHConnection(serverIp, user, idFilePath string) (SSHConnection, error) 
 	return &sshConnection{c: c}, nil
 }
 
+func NewSSHConnectionWithBastion(bastion *ssh.Client, serverIp, user, idFilePath string) (SSHConnection, error) {
+	pk, err := os.ReadFile(idFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	signer, err := ssh.ParsePrivateKey(pk)
+	if err != nil {
+		return nil, fmt.Errorf("parsing private key %s: %v", idFilePath, err)
+	}
+
+	config := &ssh.ClientConfig{
+		User:            user,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Timeout:         time.Second * 10,
+	}
+
+	targetConn, err := bastion.Dial("tcp", serverIp+":22")
+	if err != nil {
+		return nil, fmt.Errorf("dialing to target via bastion: %w", err)
+	}
+	a, b, c, err := ssh.NewClientConn(targetConn, ":22", config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &sshConnection{c: ssh.NewClient(a, b, c)}, nil
+}
+
 var _ (SSHConnection) = (*sshConnection)(nil)
 
 type sshConnection struct {

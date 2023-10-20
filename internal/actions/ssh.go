@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
@@ -16,13 +17,21 @@ import (
 // SSH establishes ssh connection to manager or broker servers and attaches ssh
 // session to current terminal
 func (c *Container) SSH(ctx *cli.Context) error {
-	serverName := ctx.Args().First()
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
 
+	serverName := ctx.Args().First()
+	ipManager, err := c.HostsCfg.GetMangerPublicIp()
+	if err != nil {
+		return fmt.Errorf("could not find manager ip address: %w", err)
+	}
 	ip := ""
-	var err error
+	isWorker := false
 	switch serverName {
 	case "manager":
-		ip, err = c.HostsCfg.GetMangerPublicIp()
+		ip = ipManager
 	case "broker":
 		ip, err = c.HostsCfg.GetBrokerPublicIp()
 	default:
@@ -36,6 +45,8 @@ func (c *Container) SSH(ctx *cli.Context) error {
 			if err != nil {
 				return fmt.Errorf("Incorrect worker name was passed. Accepted values are worker-1, worker-2, worker-3, worker-*...")
 			}
+
+			isWorker = true
 
 			if parsedWorkerNum <= len(ips) {
 				ip = ips[parsedWorkerNum-1]
@@ -54,8 +65,18 @@ func (c *Container) SSH(ctx *cli.Context) error {
 		fmt.Sprintf("Establishing ssh connection to %s at %s\n", serverName, ip),
 	))
 
-	// Get the private key
-	cn, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+	// Get the connection
+	var cn conn.SSHConnection
+	if !isWorker || cfg.ServerProvider == configs.D8XServerProviderLinode {
+		cn, err = conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+	} else {
+		// Workers are accessible through manager for non linode
+		managerConn, errMngr := conn.NewSSHConnection(ipManager, c.DefaultClusterUserName, c.SshKeyPath)
+		if err != nil {
+			return errMngr
+		}
+		cn, err = conn.NewSSHConnectionWithBastion(managerConn.GetClient(), ip, c.DefaultClusterUserName, c.SshKeyPath)
+	}
 	if err != nil {
 		return err
 	}

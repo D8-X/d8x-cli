@@ -22,6 +22,10 @@ var dockerStackName = "stack"
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
+	d8xCfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
 	// Copy embed files before starting
 	filesToCopy := []files.EmbedCopierOp{
 		// Trader backend configs
@@ -54,7 +58,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	sshConn, err := c.CreateSSHConn(
+	managerSSHConn, err := c.CreateSSHConn(
 		managerIp,
 		c.DefaultClusterUserName,
 		c.SshKeyPath,
@@ -64,7 +68,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 
 	// Stack might exist, prompt user to remove it
-	if _, err := sshConn.ExecCommand(
+	if _, err := managerSSHConn.ExecCommand(
 		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
 	); err == nil {
 		ok, err := c.TUI.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
@@ -73,7 +77,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 		if ok {
 			fmt.Println(styles.ItalicText.Render("Removing existing stack..."))
-			out, err := sshConn.ExecCommand(
+			out, err := managerSSHConn.ExecCommand(
 				fmt.Sprintf(`echo "%s"| sudo -S docker stack rm %s`, pwd, dockerStackName),
 			)
 			fmt.Println(string(out))
@@ -118,8 +122,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		cmd = cmd + cmdUfw
 		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
-	out, err := sshConn.ExecCommand(
-		fmt.Sprintf(cmd),
+	_, err = managerSSHConn.ExecCommand(
+		cmd,
 	)
 	if err != nil {
 		return fmt.Errorf("NFS preparation on manager failed : %w", err)
@@ -165,13 +169,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// }
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
-	if err := sshConn.CopyFilesOverSftp(
+	defer os.Remove(keyfileLocal)
+	if err := managerSSHConn.CopyFilesOverSftp(
 		copyList...,
 	); err != nil {
-		os.Remove(keyfileLocal)
 		return fmt.Errorf("copying configuration files to manager: %w", err)
 	} else {
-		os.Remove(keyfileLocal)
 		fmt.Println(styles.SuccessText.Render("configuration files copied to manager"))
 	}
 
@@ -180,8 +183,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mv ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
 	cmd = cmd + fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports \
 		&& systemctl restart nfs-kernel-server" `, pwd)
-	out, err = sshConn.ExecCommand(
-		fmt.Sprintf(cmd),
+	_, err = managerSSHConn.ExecCommand(
+		cmd,
 	)
 	if err != nil {
 		return fmt.Errorf("Error starting NFS server: %w", err)
@@ -190,16 +193,29 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general" `, pwd, ipMgrPriv)
 	for k, ip := range ipWorkersPriv {
 		fmt.Println(styles.ItalicText.Render("worker "), ip)
-		sshConnWorker, err := c.CreateSSHConn(
-			ipWorkers[k],
-			c.DefaultClusterUserName,
-			c.SshKeyPath,
+		var (
+			sshConnWorker conn.SSHConnection
+			err           error
 		)
+		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
+				managerSSHConn.GetClient(),
+				ipWorkers[k],
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		} else {
+			sshConnWorker, err = c.CreateSSHConn(
+				ipWorkers[k],
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		}
 		if err != nil {
 			return err
 		}
-		out, err = sshConnWorker.ExecCommand(
-			fmt.Sprintf(cmd),
+		_, err = sshConnWorker.ExecCommand(
+			cmd,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to mount nfs dir on worker: %w", err)
@@ -208,7 +224,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	// Create configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
-	out, err = sshConn.ExecCommand(
+	out, err := managerSSHConn.ExecCommand(
 		fmt.Sprintf(`echo '%s' | sudo -S bash -c "%s"`, pwd, strings.Join(dockerConfigsCMD, ";")),
 	)
 	fmt.Println(string(out))
@@ -222,9 +238,13 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	fmt.Printf("\nPrivate ip : %s\n", ipMgrPriv)
 	cmd = fmt.Sprintf(`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`, ipMgrPriv)
-	out, err = sshConn.ExecCommand(
-		fmt.Sprintf(cmd),
+	out, err = managerSSHConn.ExecCommand(
+		cmd,
 	)
+	fmt.Println(string(out))
+	if err != nil {
+		return err
+	}
 	// create volume on worker nodes
 
 	cmd = fmt.Sprintf(
@@ -238,22 +258,36 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		ipMgrPriv,
 	)
 	for _, ip := range ipWorkers {
-		sshConnWorker, err := c.CreateSSHConn(
-			ip,
-			c.DefaultClusterUserName,
-			c.SshKeyPath,
+		var (
+			sshConnWorker conn.SSHConnection
+			err           error
 		)
+		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
+				managerSSHConn.GetClient(),
+				ip,
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		} else {
+			sshConnWorker, err = c.CreateSSHConn(
+				ip,
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		}
 		if err != nil {
 			return err
 		}
-		out, err = sshConnWorker.ExecCommand(
-			fmt.Sprintf(cmdDir),
+		_, err = sshConnWorker.ExecCommand(
+			cmdDir,
 		)
+		fmt.Println(string(out))
 		if err != nil {
 			return fmt.Errorf("failed to create nfs dir on worker: %w", err)
 		}
-		out, err = sshConnWorker.ExecCommand(
-			fmt.Sprintf(cmd),
+		_, err = sshConnWorker.ExecCommand(
+			cmd,
 		)
 		fmt.Println(string(out))
 		if err != nil {
@@ -268,7 +302,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		pwd,
 		dockerStackName,
 	)
-	out, err = sshConn.ExecCommand(swarmDeployCMD)
+	out, err = managerSSHConn.ExecCommand(swarmDeployCMD)
 	fmt.Println(string(out))
 	if err != nil {
 		return fmt.Errorf("swarm deployment failed: %w", err)
