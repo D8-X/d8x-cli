@@ -133,12 +133,11 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
-		"docker config rm cfg_rpc cfg_rpc_referral cfg_rpc_history cfg_referral cfg_candles",
-		"docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1",
-		"docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1",
-		"docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1",
-		"docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1",
-		"docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1",
+		`docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1`,
+		`docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1`,
+		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
+		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
+		`docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
@@ -214,7 +213,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Create configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err = sshConn.ExecCommand(
-		fmt.Sprintf(`echo '%s' | sudo -S bash -c "%s"`, pwd, strings.Join(dockerConfigsCMD, ";")),
+		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + fmt.Sprintf(strings.Join(dockerConfigsCMD, ";")),
 	)
 	fmt.Println(string(out))
 	if err != nil {
