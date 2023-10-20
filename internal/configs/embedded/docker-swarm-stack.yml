@@ -35,6 +35,9 @@ services:
       - CORS_ON=${CORS_ON:-FALSE}
       - MAIN_API_PORT_HTTP=${MAIN_API_PORT_HTTP:-3002}
       - MAIN_API_PORT_WEBSOCKET=${MAIN_API_PORT_WEBSOCKET:-3002}
+      - CONFIG_PATH_RPC=/cfg_rpc
+    configs:
+      - cfg_rpc
     networks:
       - d8x_backend
     deploy:
