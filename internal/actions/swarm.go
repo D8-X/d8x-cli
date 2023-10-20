@@ -177,7 +177,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	// enable nfs server
 	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
+	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mv ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
 	cmd = cmd + fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports \
 		&& systemctl restart nfs-kernel-server" `, pwd)
 	out, err = sshConn.ExecCommand(
