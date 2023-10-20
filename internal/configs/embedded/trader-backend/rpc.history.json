@@ -12,5 +12,10 @@
     "chainId": 1442,
     "HTTP": ["https://rpc.public.zkevm-test.net"],
     "WS": []
+  },
+  {
+    "chainId": 1101,
+    "HTTP": ["https://zkevm-rpc.com"],
+    "WS": []
   }
 ]
