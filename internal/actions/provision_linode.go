@@ -241,7 +241,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 	l.LabelPrefix = label
 
 	// Broker-server
-	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker-server server?", true)
+	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker server?", true)
 	if err != nil {
 		return nil, err
 	}
