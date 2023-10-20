@@ -16,6 +16,17 @@
         src: ../nginx.server.conf
         dest: /etc/nginx/nginx.conf
         mode: "644"
+    - name: Configure nginx drop-in service directory
+      ansible.builtin.file:
+        path: /etc/systemd/system/nginx.service.d/
+        state: directory
+    - name: Configure nginx drop-in service file
+      ansible.builtin.copy:
+        content: |
+          [Service]
+          LimitNOFILE=262144:700000
+        dest: /etc/systemd/system/nginx.service.d/nofiles.conf
+        mode: "644"
     - name: Reload nginx
       ansible.builtin.systemd_service:
         state: reloaded

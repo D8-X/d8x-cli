@@ -326,7 +326,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		emailForCertbot = email
 	}
 
-	services, err := c.swarmNginxCollectData()
+	services, err := c.swarmNginxCollectData(d8xCfg)
 	if err != nil {
 		return err
 	}
@@ -450,14 +450,24 @@ var hostsTpl = []hostnameTuple{
 
 // swarmNginxCollectData collects hostnames information and prepares
 // nginx.configured.conf file. Returns list of hostnames provided by user
-func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
+func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTuple, error) {
 
 	hosts := make([]string, len(hostsTpl))
 	replacements := make([]files.ReplacementTuple, len(hostsTpl))
 	for i, h := range hostsTpl {
+
+		// When possible, find values from config for non-first time runs.
+		value := ""
+		if v, ok := cfg.Services[h.serviceName]; ok {
+			if v.HostName != "" {
+				value = v.HostName
+			}
+		}
+
 		fmt.Println(h.prompt)
 		input, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder(h.placeholder),
+			components.TextInputOptValue(value),
 		)
 		if err != nil {
 			return nil, err
@@ -485,7 +495,7 @@ func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 	}
 	// Restart this func
 	if !correct {
-		return c.swarmNginxCollectData()
+		return c.swarmNginxCollectData(cfg)
 	}
 
 	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))

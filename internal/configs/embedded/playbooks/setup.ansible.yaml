@@ -78,7 +78,6 @@
     - name: Enable ufw
       community.general.ufw:
         state: enabled
-
       when: setup_ufw
     # Installation of docker
     - name: Install essential packages
