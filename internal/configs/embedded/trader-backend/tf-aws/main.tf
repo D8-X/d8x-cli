@@ -171,7 +171,7 @@ resource "aws_instance" "manager" {
 
   subnet_id                   = aws_subnet.public_subnet.id
   associate_public_ip_address = true
-  security_groups             = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id]
+  security_groups             = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id, aws_security_group.nfs_access.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "manager")
@@ -221,7 +221,8 @@ resource "local_file" "hosts_cfg" {
 ${aws_instance.manager.public_ip} manager_private_ip=${aws_instance.manager.private_ip} hostname=manager-1
 
 [workers]
-%{for index, ip in aws_instance.nodes[*].private_ip}${ip} hostname=${format("worker-%02d", index + 1)} 
+%{for index, ip in aws_instance.nodes[*].private_ip~}
+${ip} worker_private_ip=${ip} hostname=${format("worker-%02d", index + 1)} 
 %{endfor~}
 
 [workers:vars]

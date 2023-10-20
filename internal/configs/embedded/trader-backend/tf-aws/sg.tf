@@ -105,3 +105,36 @@ resource "aws_security_group" "http_access" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+
+// nfs server access from nodes to manager
+resource "aws_security_group" "nfs_access" {
+  name_prefix = "d8x-cluster-nfs-sg"
+  vpc_id      = aws_vpc.d8x_cluster_vpc.id
+
+  tags = {
+    Name = "d8x-cluster-nfs-sg"
+  }
+
+  ingress {
+    cidr_blocks = local.subnets
+    from_port   = 2049
+    to_port     = 2049
+    protocol    = "tcp"
+  }
+
+  ingress {
+    cidr_blocks = local.subnets
+    from_port   = 2049
+    to_port     = 2049
+    protocol    = "udp"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
