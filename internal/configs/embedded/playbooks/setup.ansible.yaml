@@ -91,6 +91,7 @@
           - python3-pip
           - git
           - certbot
+          - nfs-common
         state: latest
         update_cache: true
     - name: Get Docker apt repo key
@@ -164,6 +165,12 @@
   vars:
     setup_ufw: "{{ no_ufw | default(false) | bool == false }}"
   tasks:
+    - name: Install nfs-kernel-server on manager
+      ansible.builtin.apt:
+        pkg:
+          - nfs-kernel-server
+        state: latest
+        update_cache: true
     - name: Install nginx on manager
       ansible.builtin.apt:
         pkg:

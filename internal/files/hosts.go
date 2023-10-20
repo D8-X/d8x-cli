@@ -11,7 +11,9 @@ import (
 type HostsFileInteractor interface {
 	GetBrokerPublicIp() (string, error)
 	GetMangerPublicIp() (string, error)
+	GetMangerPrivateIp() (string, error)
 	GetWorkerIps() ([]string, error)
+	GetWorkerPrivateIps() ([]string, error)
 }
 
 func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
@@ -50,11 +52,23 @@ func (f *fsHostFileInteractor) GetMangerPublicIp() (string, error) {
 	}
 	return f.cached.GetMangerPublicIp()
 }
+func (f *fsHostFileInteractor) GetMangerPrivateIp() (string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return "", err
+	}
+	return f.cached.GetMangerPrivateIp()
+}
 func (f *fsHostFileInteractor) GetWorkerIps() ([]string, error) {
 	if err := f.ensureFileLoaded(); err != nil {
 		return nil, err
 	}
 	return f.cached.GetWorkerIps()
+}
+func (f *fsHostFileInteractor) GetWorkerPrivateIps() ([]string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return nil, err
+	}
+	return f.cached.GetWorkerPrivateIps()
 }
 
 // HostsFileLoader attempts to load and parse give file as HostsFile (hosts.cfg)
@@ -99,6 +113,13 @@ func (h *HostsFile) GetBrokerPublicIp() (string, error) {
 
 }
 
+func (h *HostsFile) GetMangerPrivateIp() (string, error) {
+	ip, err := h.FindPrivateIps("manager")
+	if err != nil {
+		return "", fmt.Errorf("manager private ip was not found in hosts file: %w", err)
+	}
+	return ip[0], nil
+}
 func (h *HostsFile) GetMangerPublicIp() (string, error) {
 	ip, err := h.FindFirstIp("[managers]")
 	if err != nil {
@@ -110,7 +131,15 @@ func (h *HostsFile) GetMangerPublicIp() (string, error) {
 func (h *HostsFile) GetWorkerIps() ([]string, error) {
 	ip, err := h.FindAllIps("[workers]")
 	if err != nil {
-		return nil, fmt.Errorf("manager ip was not found in hosts file: %w", err)
+		return nil, fmt.Errorf("worker ip was not found in hosts file: %w", err)
+	}
+	return ip, nil
+}
+
+func (h *HostsFile) GetWorkerPrivateIps() ([]string, error) {
+	ip, err := h.FindPrivateIps("worker")
+	if err != nil {
+		return nil, fmt.Errorf("worker private ip was not found in hosts file: %w", err)
 	}
 	return ip, nil
 }
@@ -126,6 +155,20 @@ func (h *HostsFile) FindFirstIp(of string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+// FindPrivateIps returns the private ips of either nodeType=manager
+// or nodeType=worker
+func (h *HostsFile) FindPrivateIps(nodeType string) ([]string, error) {
+	var ret = []string{}
+	for _, l := range h.lines {
+		if strings.Contains(l, nodeType+"_private_ip") {
+			v := strings.Split(l, nodeType+"_private_ip=")[1]
+			v = strings.Split(v, " ")[0]
+			ret = append(ret, v)
+		}
+	}
+	return ret, nil
 }
 
 // FindAllIps returns all items in the next line matching of
