@@ -24,7 +24,7 @@
       ansible.builtin.copy:
         content: |
           [Service]
-          LimitNOFILE=262144:700000
+          LimitNOFILE=700000
         dest: /etc/systemd/system/nginx.service.d/nofiles.conf
         mode: "644"
     - name: Reload nginx
