@@ -60,8 +60,9 @@ services:
     command: redis-server --requirepass ${REDIS_PW}
     environment:
       - TZ=UTC
+      - REDIS_PASSWORD=${REDIS_PW}
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - app-net
     restart: on-failure
