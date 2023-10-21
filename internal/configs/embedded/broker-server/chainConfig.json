@@ -22,7 +22,7 @@
   {
     "chainId": 1101,
     "name": "zkEVM Mainnet",
-    "perpetualManagerProxyAddr": "",
+    "perpetualManagerProxyAddr": "0xaB7794EcD2c8e9Decc6B577864b40eBf9204720f",
     "multiPayCtrctAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",
     "allowedExecutors": [
       "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
