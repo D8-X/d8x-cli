@@ -24,8 +24,7 @@ Note that binary releases are provided only for Linux. To run D8X-CLI on other
 platforms you will need to [build it from source](#building-from-source). See
 FAQ supported platforms for details.
 
-## Usage
-### Before You Start The CLI
+## Before You Start The CLI
 * The CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
 * The CLI gives you the choice of using a cloud-provider database or an external database. 
 * With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
@@ -35,6 +34,12 @@ FAQ supported platforms for details.
 * Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
 * Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoint of the candles-service -- more details on configs will follow, this is a heads-up)
 
+## Configuration Files
+Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
+find out how to configure the system in the
+[README](README_CONFIG.md).
+
+## Usage
 ### Setup
 
 Performing a complete servers provisioning + configuration and services
@@ -61,6 +66,7 @@ in your current working directory:
   - id_ed25519 - ssh key used to access servers (added to each provisioned server)
   - id_ed25519.pub - public key of id_ed25519 
   - password.txt - default user password on all servers
+  - redis_broker_password.txt - password for redis used on the broker server
   - pg.crt - postgress database root CA certificate (downloaded from server provider)
   - aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
 	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
@@ -68,7 +74,7 @@ in your current working directory:
 Do not delete these files, as they are to establish connections to your servers
 when running individual `setup` subcommands.
 
-For Linode provider - you need to make sure to provision database instance by
+For Linode - you need to provision a database cluser and instance by
 yourself and provide the linode database instance id in the setup process. This
 step is manual due to the fact that database instance provisioning very slow on
 linode and usually takes around 30 minutes.
@@ -117,15 +123,12 @@ d8x setup broker-nginx
 Trader backend docker swarm deployment and nginx + certbot setup is analogous to
 broker-server deployment, but involves slightly more configuration files. Make
 sure to follow the setup instructions and modify the configuration files as well
-as `.env` file. Particularly important configuration file that you should
-supply with valid values is `live.rpc.json`. As the default values do not contain
-websockets rpc endpoints which are necessary to run the services.
+as `.env` file.
 
-Nginx + certbot setup is completely analogous to broker-server setup, but
+Nginx + certbot setup is completely analogous to the broker-server setup, but
 involves more domains for services.
 
-
-To run only trader backend swarm deployment:
+To run only the trader backend swarm deployment:
 ```bash
 d8x setup swarm-deploy
 ```
@@ -150,11 +153,6 @@ d8x tf-destroy
 ```
 
 **Note that this action is irreversible**
-
-## Configuration Files
-Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
-find out how to configure the system in the
-[README](README_CONFIG.md).
 
 ## FAQ
 
