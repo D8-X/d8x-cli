@@ -13,6 +13,15 @@ import (
 func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Running terraform destroy...")
 
+	ok, err := c.TUI.NewPrompt("Are you sure you want to run terraform destroy? This will destroy all the resources created by d8x-cli. This action is irreversible!", false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		fmt.Println("Not destroying...")
+		return nil
+	}
+
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
@@ -33,18 +42,12 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		if a == nil {
 			return fmt.Errorf("aws config is not defined")
 		}
-
 		authorizedKey, err := c.getPublicKey()
 		if err != nil {
 			return err
 		}
-
-		args = append(args,
-			"-var", fmt.Sprintf(`aws_access_key=%s`, a.AccesKey),
-			"-var", fmt.Sprintf(`aws_secret_key=%s`, a.SecretKey),
-			"-var", fmt.Sprintf(`region=%s`, a.Region),
-			"-var", fmt.Sprintf(`authorized_key=%s`, authorizedKey),
-		)
+		awsConfigurer := &awsConfigurer{D8XAWSConfig: *a, authorizedKey: authorizedKey}
+		args = append(args, awsConfigurer.generateVariables()...)
 
 	case configs.D8XServerProviderLinode:
 		args = append(args, "-var", `authorized_keys=[""]`)

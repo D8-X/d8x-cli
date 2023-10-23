@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -11,13 +12,23 @@ import (
 func (c *Container) Setup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Running full setup...")
 
-	// Clean up the config
-	if ok, err := c.TUI.NewPrompt("Do you want to start clean and flush all configs (recommended for first time setup)?", true); ok {
-		if err != nil {
-			return err
-		}
-		if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
-			return err
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	// Prompt to clean up config when it exists
+	if !cfg.IsEmpty() {
+		if ok, err := c.TUI.NewPrompt(
+			fmt.Sprintf("Existing configuration (%s) was found. Do you want to remove it? (Recommended for only fresh start)", cfg.ServerProvider),
+			false,
+		); ok {
+			if err != nil {
+				return err
+			}
+			if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
+				return err
+			}
 		}
 	}
 

@@ -36,81 +36,80 @@ services:
       - MAIN_API_PORT_HTTP=${MAIN_API_PORT_HTTP:-3002}
       - MAIN_API_PORT_WEBSOCKET=${MAIN_API_PORT_WEBSOCKET:-3002}
       - CONFIG_PATH_RPC=/cfg_rpc
-      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+    configs:
+      - cfg_rpc
     networks:
       - d8x_backend
     deploy:
       replicas: 2
-    configs:
-      - cfg_rpc
-      - cfg_referral
   history:
     image: ghcr.io/d8-x/d8x-trader-history:main
     environment:
-      - DATABASE_DSN_HISTORY=${DATABASE_DSN_HISTORY}
+      - DATABASE_DSN_HISTORY=${DATABASE_DSN}
       - HISTORY_API_PORT_HTTP=${HISTORY_API_PORT_HTTP:-3003}
       - SDK_CONFIG_NAME=${SDK_CONFIG_NAME}
       - CHAIN_ID=${CHAIN_ID}
       - CORS_ON=${CORS_ON:-FALSE}
-      - CONFIG_PATH_RPC=/cfg_rpc
+      - CONFIG_PATH_RPC=/cfg_rpc_history
       - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
     ports:
       - "${HISTORY_API_PORT_HTTP:-3003}:${HISTORY_API_PORT_HTTP:-3003}"
     logging:
       driver: "json-file"
       options:
-        max-size: "5000k"
-        max-file: "10"
+        max-size: "25m"
+        max-file: "20"
     deploy:
       replicas: 1
     configs:
-      - cfg_rpc
+      - cfg_rpc_history
       - cfg_referral
     networks:
       - d8x_backend
+
   referral:
-    image: ghcr.io/d8-x/d8x-trader-referral:main
+    image: ghcr.io/d8-x/d8x-referral-system:dev
     deploy:
-      # Restart 3 times with 30 seconds delay before giving up.
+      # Restart 5 times with 60 seconds delay before giving up.
       restart_policy:
         condition: any
-        delay: 30s
-        max_attempts: 3
+        delay: 60s
+        max_attempts: 5
         # Do not wait to verify restart
         window: 0s
     environment:
-      - DATABASE_DSN_REFERRAL=${DATABASE_DSN_REFERRAL}
-      - REFERRAL_API_PORT_HTTP=${REFERRAL_API_PORT_HTTP:-3004}
+      - DATABASE_DSN_HISTORY=${DATABASE_DSN}
       - BROKER_KEY=${BROKER_KEY}
-      - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
       - CHAIN_ID=${CHAIN_ID}
-      - CORS_ON=${CORS_ON:-FALSE}
-      - HISTORY_API_ENDPOINT="http://history:${HISTORY_API_PORT_HTTP:-3003}"
-      - CONFIG_PATH_RPC=/cfg_rpc
-      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
+      - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
+      - CONFIG_PATH=/cfg_referral
+      - RPC_URL_PATH=/cfg_rpc_referral
+      - API_BIND_ADDR=0.0.0.0
+      - API_PORT=8080
+      - KEYFILE_PATH=/keyfile/
     ports:
-      - "${REFERRAL_API_PORT_HTTP:-3004}:${REFERRAL_API_PORT_HTTP:-3004}"
+      - "${REFERRAL_API_PORT_HTTP:-3004}:8080"
     logging:
       driver: "json-file"
       options:
         max-size: "5000k"
         max-file: "10"
     configs:
-      - cfg_rpc
+      - cfg_rpc_referral
       - cfg_referral
-      - source: pg_ca
-        target: /pg.crt
     networks:
       - d8x_backend
+    volumes:
+      - nfsvol:/keyfile
 
   candles-pyth-client:
     image: ghcr.io/d8-x/d8x-candles-pyth-client:main
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
-      # Use different database tha
       - REDIS_DB_NUM=0
       - CONFIG_PATH=/cfg_candles
+      - NETWORK_NAME=${NETWORK_NAME}
     networks:
       - candles
       - d8x_backend
@@ -151,14 +150,25 @@ networks:
   d8x_backend:
     driver: overlay
     name: d8x_backend
+    ipam:
+      config:
+        - subnet: 172.16.2.0/24
   candles:
     driver: overlay
+    ipam:
+      config:
+        - subnet: 172.16.3.0/24
+volumes:
+  nfsvol:
+    external: true
 configs:
   cfg_rpc:
     external: true
-  cfg_referral:
+  cfg_rpc_referral:
     external: true
-  pg_ca:
+  cfg_rpc_history:
+    external: true
+  cfg_referral:
     external: true
   cfg_candles:
     external: true

@@ -72,16 +72,30 @@ resource "linode_database_access_controls" "pgdb" {
 # Geneate ansible inventory
 resource "local_file" "hosts_cfg" {
   depends_on = [linode_instance.manager, linode_instance.nodes]
-  content = templatefile("inventory.tpl",
-    {
-      manager_public_ip   = linode_instance.manager.ip_address
-      manager_private_ip  = linode_instance.manager.private_ip_address
-      workers_public_ips  = linode_instance.nodes.*.ip_address
-      workers_private_ips = linode_instance.nodes.*.private_ip_address
-      broker_public_ip    = var.create_broker_server ? linode_instance.broker_server[0].ip_address : ""
-      broker_private_ip   = var.create_broker_server ? linode_instance.broker_server[0].private_ip_address : ""
-    }
-  )
+  content    = <<EOF
+[managers]
+${linode_instance.manager.ip_address} manager_private_ip=${linode_instance.manager.private_ip_address} hostname=manager-1
+
+[workers]
+%{for index, ip in linode_instance.nodes.*.ip_address~}
+${ip} worker_private_ip=${linode_instance.nodes[index].private_ip_address} hostname=${format("worker-%02d", index + 1)}
+%{endfor~}
+
+%{if var.create_broker_server}
+[broker]
+${linode_instance.broker_server[0].ip_address} private_ip=${linode_instance.broker_server[0].private_ip_address}
+%{endif~}
+  EOF
+  # content = templatefile("inventory.tpl",
+  #   {
+  #     manager_public_ip   = linode_instance.manager.ip_address
+  #     manager_private_ip  = linode_instance.manager.private_ip_address
+  #     workers_public_ips  = linode_instance.nodes.*.ip_address
+  #     workers_private_ips = linode_instance.nodes.*.private_ip_address
+  #     broker_public_ip    = var.create_broker_server ? linode_instance.broker_server[0].ip_address : ""
+  #     broker_private_ip   = var.create_broker_server ? linode_instance.broker_server[0].private_ip_address : ""
+  #   }
+  # )
   filename = "hosts.cfg"
 }
 

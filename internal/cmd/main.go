@@ -27,40 +27,6 @@ const CmdName = "d8x"
 
 const CmdUsage = "D8X Backend management CLI tool"
 
-// MainDescription is the description text for d8x cli tool
-const MainDescription = `D8X Perpetual Exchange broker backend setup and management CLI tool 
-
-Running d8x without any subcommands or init command will perform initalization
-of ./.d8x-config directory (--config-directory), as well as prompt you to
-install any missing dependencies.
-
-D8X CLI relies on the following external tools: terraform, ansible. You can
-manually install them or let the cli attempt to perform the installation of
-these dependencies automatically. Note that for automatic installation you will
-need to have python3 and pip installed on your system
-
-For cluster provisioning and configuration, see the setup command and its 
-subcommands. Run d8x setup --help for more information.
-`
-
-const SetupDescription = `Command setup performs complete D8X cluster setup.
-
-Setup should be performed only once! Once cluster is provisioned and deployed,
-you should use one of the individual setup subcommands. Calling setup on
-provisioned cluster might result in data corruption: password.txt overwrites,
-ssh key overwrites, misconfiguration of servers, etc.
-
-In essence setup calls the following subcommands in sequence:
-	- provision
-	- configure
-	- broker-deploy
-	- broker-nginx
-	- swarm-deploy
-	- swarm-nginx
-
-See individual command's help for information how each step operates.
-`
-
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
 	container := actions.NewDefaultContainer()
@@ -97,14 +63,16 @@ func RunD8XCli() {
 				},
 				Subcommands: []*cli.Command{
 					{
-						Name:   "provision",
-						Usage:  "Provision server resources with terraform",
-						Action: container.Provision,
+						Name:        "provision",
+						Usage:       "Provision server resources with terraform",
+						Action:      container.Provision,
+						Description: ProvisionDescription,
 					},
 					{
-						Name:   "configure",
-						Usage:  "Configure servers with ansible",
-						Action: container.Configure,
+						Name:        "configure",
+						Usage:       "Configure servers with ansible",
+						Action:      container.Configure,
+						Description: ConfigureDescription,
 					},
 					{
 						Name:   "broker-deploy",
@@ -117,16 +85,23 @@ func RunD8XCli() {
 						Action: container.BrokerServerNginxCertbotSetup,
 					},
 					{
-						Name:   "swarm-deploy",
-						Usage:  "Deploy and configure d8x-trader-backend swarm cluster",
-						Action: container.SwarmDeploy,
+						Name:        "swarm-deploy",
+						Usage:       "Deploy and configure d8x-trader-backend swarm cluster",
+						Action:      container.SwarmDeploy,
+						Description: SwarmDeployDescription,
 					},
 					{
-						Name:   "swarm-nginx",
-						Usage:  "Configure and setup nginx + certbot for d8x-trader swarm deployment",
-						Action: container.SwarmNginx,
+						Name:        "swarm-nginx",
+						Usage:       "Configure and setup nginx + certbot for d8x-trader swarm deployment",
+						Action:      container.SwarmNginx,
+						Description: SwarmNginxDescription,
 					},
 				},
+			},
+			{
+				Name:   "update",
+				Usage:  "Update service with new image version",
+				Action: container.ServiceUpdate,
 			},
 			{
 				Name:   "health",
@@ -143,6 +118,11 @@ func RunD8XCli() {
 				Name:   "tf-destroy",
 				Usage:  "Run terraform destroy for current setup",
 				Action: container.TerraformDestroy,
+			},
+			{
+				Name:   "ssh",
+				Usage:  "Attach ssh session to one of your servers",
+				Action: container.SSH,
 			},
 		},
 		// Global flags accesible to all subcommands
@@ -188,7 +168,7 @@ func RunD8XCli() {
 			if ctx.Args().Len() == 0 {
 				return container.Init(ctx)
 			}
-			return fmt.Errorf("unknown command %s", ctx.Args().First())
+			return fmt.Errorf("unknown command %s, check --help for more info about available commands", ctx.Args().First())
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {

@@ -9,6 +9,12 @@
     default_user: "{{ default_user_name }}"
     default_user_pwd: "{{ default_user_password }}"
 
+    # Server providers such as AWS do not need ufw to be enabled, therfore, we
+    # will skip ufw setup when no_ufw is true
+    setup_ufw: "{{ no_ufw | default(false) | bool == false }}"
+
+    docker_ingress_subnet: "172.16.1.0/24"
+
   handlers:
     - name: Restart SSHD
       ansible.builtin.service:
@@ -16,7 +22,7 @@
         state: restarted
   tasks:
     - name: Wait for connection to server
-      wait_for_connection:
+      ansible.builtin.wait_for_connection:
         timeout: 360
     # Essentials, hostnames, users setup, ssh keys
     - name: Set hostname
@@ -36,7 +42,6 @@
         # user_public_key must be passed via --extra-vars
         key: "{{ user_public_key }}"
         user: "{{ default_user }}"
-
     - name: Setup sshd_config
       ansible.builtin.lineinfile:
         path: "/etc/ssh/sshd_config"
@@ -48,29 +53,32 @@
         - { key: "PasswordAuthentication", value: "no" }
       notify:
         - Restart SSHD
-
     # UFW configuration
     - name: Allow port 22 ufw
       community.general.ufw:
         rule: allow
         port: 22
+      when: setup_ufw
     # Docker swarm ports
     - name: Allow port 2377 ufw
       community.general.ufw:
         rule: allow
         port: 2377
+      when: setup_ufw
     - name: Allow port 7946 ufw
       community.general.ufw:
         rule: allow
         port: 7946
+      when: setup_ufw
     - name: Allow port 4789 ufw
       community.general.ufw:
         rule: allow
         port: 4789
+      when: setup_ufw
     - name: Enable ufw
       community.general.ufw:
         state: enabled
-
+      when: setup_ufw
     # Installation of docker
     - name: Install essential packages
       ansible.builtin.apt:
@@ -82,6 +90,7 @@
           - python3-pip
           - git
           - certbot
+          - nfs-common
         state: latest
         update_cache: true
     - name: Get Docker apt repo key
@@ -105,6 +114,12 @@
           - docker-buildx-plugin
           - docker-compose-plugin
         update_cache: true
+    - name: Add default user to docker group
+      ansible.builtin.user:
+        name: "{{ default_user }}"
+        groups:
+          - docker
+        append: true
     - name: Install docker pip module
       ansible.builtin.pip:
         name:
@@ -119,7 +134,14 @@
       register: swarm_result
       # Only one manager should run this, otherwsie register results in when condition output
       run_once: true
-
+    - name: Delete default ingress network
+      ansible.builtin.shell:
+        cmd: yes | docker network rm -f ingress
+      when: inventory_hostname in groups["managers"]
+    - name: Create ingress network
+      ansible.builtin.shell:
+        cmd: docker network create --driver overlay --ingress --subnet="{{ docker_ingress_subnet }}" ingress
+      when: inventory_hostname in groups["managers"]
     - name: Set manager availability to DRAIN
       when: inventory_hostname in groups["managers"]
       community.docker.docker_node:
@@ -139,6 +161,8 @@
     - broker
   name: Configure manager
   become: true
+  vars:
+    setup_ufw: "{{ no_ufw | default(false) | bool == false }}"
   tasks:
     - name: Install nginx on manager
       ansible.builtin.apt:
@@ -157,9 +181,23 @@
         rule: allow
         port: 80
         proto: tcp
+      when: setup_ufw
     - name: Allow port 443 ufw
       community.general.ufw:
         rule: allow
         port: 443
         proto: tcp
         state: reloaded
+      when: setup_ufw
+
+- hosts:
+    - managers
+  name: Install NFS server on manager
+  become: true
+  tasks:
+    - name: Install nfs-kernel-server on manager
+      ansible.builtin.apt:
+        pkg:
+          - nfs-kernel-server
+        state: latest
+        update_cache: true

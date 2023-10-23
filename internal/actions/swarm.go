@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -13,16 +14,27 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Stack name that will be used when creating/destroying or managing swarm
+// cluster deployment.
+// TODO - store this in config and make this configurable via flags
+var dockerStackName = "stack"
+
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
+	d8xCfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
 	// Copy embed files before starting
 	filesToCopy := []files.EmbedCopierOp{
 		// Trader backend configs
 		// Note that .env.example is not recognized in embed.FS
 		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
 		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
-		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
+		{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
+		{Src: "embedded/trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json", Overwrite: false},
+		{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 		// Candles configs
 		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
 		// Docker swarm file
@@ -48,7 +60,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	sshConn, err := c.CreateSSHConn(
+	managerSSHConn, err := c.CreateSSHConn(
 		managerIp,
 		c.DefaultClusterUserName,
 		c.SshKeyPath,
@@ -57,13 +69,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	// Stack name that will be used when creating/destroying or managing swarm
-	// cluster deployment.
-	// TODO - store this in config and make this configurable via flags
-	dockerStackName := "stack"
-
 	// Stack might exist, prompt user to remove it
-	if _, err := sshConn.ExecCommand(
+	if _, err := managerSSHConn.ExecCommand(
 		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
 	); err == nil {
 		ok, err := c.TUI.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
@@ -72,7 +79,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 		if ok {
 			fmt.Println(styles.ItalicText.Render("Removing existing stack..."))
-			out, err := sshConn.ExecCommand(
+			out, err := managerSSHConn.ExecCommand(
 				fmt.Sprintf(`echo "%s"| sudo -S docker stack rm %s`, pwd, dockerStackName),
 			)
 			fmt.Println(string(out))
@@ -82,39 +89,79 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 	}
 
+	fmt.Println("Enter your referral payment executor private key:")
+	pk, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
+	)
+	if err != nil {
+		return err
+	}
+	pk = strings.TrimPrefix(pk, "0x")
+	keyfileLocal := "./trader-backend/keyfile.txt"
+	// write keyfile
+	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
+		return fmt.Errorf("temp storage of keyfile failed: %w", err)
+	}
+
+	ipWorkers, err := c.HostsCfg.GetWorkerIps()
+	if err != nil {
+		return fmt.Errorf("finding worker ip addresses: %w", err)
+	}
+	ipMgrPriv, err := c.HostsCfg.GetMangerPrivateIp()
+	if err != nil {
+		return err
+	}
+	ipWorkersPriv, err := c.HostsCfg.GetWorkerPrivateIps()
+	if err != nil {
+		return err
+	}
+	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
+	cmd := fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir /var/nfs/general -p && chown nobody:nogroup /var/nfs/general" `, pwd)
+	configEtcExports := "#"
+	for _, ip := range ipWorkersPriv {
+		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "ufw allow from %s to any port nfs" `, pwd, ip)
+		cmd = cmd + cmdUfw
+		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
+	}
+	_, err = managerSSHConn.ExecCommand(
+		cmd,
+	)
+	if err != nil {
+		return fmt.Errorf("NFS preparation on manager failed : %w", err)
+	}
+	if err := c.FS.WriteFile("./trader-backend/exports", []byte(configEtcExports)); err != nil {
+		return fmt.Errorf("temp storage of /etc/exports file failed: %w", err)
+	}
+
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
-		"docker config rm cfg_rpc cfg_referral pg_ca cfg_candles",
-		"docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1",
-		"docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1",
-		"docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1",
+		`docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1`,
+		`docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1`,
+		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
+		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
+		`docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
 	copyList := []conn.SftpCopySrcDest{
 		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
 		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
-		{Src: "./trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json"},
+		{Src: "./trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json"},
+		{Src: "./trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json"},
+		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
+		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
+		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
 		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
-	// Include pg.cert
-	if _, err := c.FS.Stat(c.PgCrtPath); err == nil {
-		dockerConfigsCMD = append(
-			dockerConfigsCMD,
-			"docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1",
-		)
-		copyList = append(copyList,
-			conn.SftpCopySrcDest{Src: c.PgCrtPath, Dst: "./trader-backend/pg.crt"},
-		)
-	} else {
-		return fmt.Errorf(c.PgCrtPath + " was not found!")
-	}
+
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
-	if err := sshConn.CopyFilesOverSftp(
+	defer os.Remove(keyfileLocal)
+	if err := managerSSHConn.CopyFilesOverSftp(
 		copyList...,
 	); err != nil {
 		return fmt.Errorf("copying configuration files to manager: %w", err)
@@ -122,16 +169,122 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		fmt.Println(styles.SuccessText.Render("configuration files copied to manager"))
 	}
 
-	// Create configs
+	// enable nfs server
+	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
+	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mv ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
+	cmd = cmd + fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports \
+		&& systemctl restart nfs-kernel-server" `, pwd)
+	_, err = managerSSHConn.ExecCommand(
+		cmd,
+	)
+	if err != nil {
+		return fmt.Errorf("Error starting NFS server: %w", err)
+	}
+
+	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
+	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general" `, pwd, ipMgrPriv)
+	for k, ip := range ipWorkersPriv {
+		fmt.Println(styles.ItalicText.Render("worker "), ip)
+		var (
+			sshConnWorker conn.SSHConnection
+			err           error
+		)
+		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
+				managerSSHConn.GetClient(),
+				ipWorkers[k],
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		} else {
+			sshConnWorker, err = c.CreateSSHConn(
+				ipWorkers[k],
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		}
+		if err != nil {
+			return err
+		}
+		_, err = sshConnWorker.ExecCommand(
+			cmd,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to mount nfs dir on worker: %w", err)
+		}
+	}
+
+	// Recreate configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
-	out, err := sshConn.ExecCommand(
-		fmt.Sprintf(`echo '%s' | sudo -S bash -c "%s"`, pwd, strings.Join(dockerConfigsCMD, ";")),
+	out, err := managerSSHConn.ExecCommand(
+		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
 	)
 	fmt.Println(string(out))
 	if err != nil {
 		return fmt.Errorf("creating docker configs: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("docker configs were created on manager node!"))
+
+	// docker volumes
+	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
+
+	fmt.Printf("\nPrivate ip : %s\n", ipMgrPriv)
+	cmd = fmt.Sprintf(`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`, ipMgrPriv)
+	out, err = managerSSHConn.ExecCommand(
+		cmd,
+	)
+	if err != nil {
+		fmt.Println(string(out))
+		return err
+	}
+	// create volume on worker nodes
+
+	cmd = fmt.Sprintf(
+		`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`,
+		ipMgrPriv,
+	)
+	cmdDir := fmt.Sprintf(
+		`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general"`,
+		pwd,
+		ipMgrPriv,
+	)
+	for _, ip := range ipWorkers {
+		var (
+			sshConnWorker conn.SSHConnection
+			err           error
+		)
+		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
+				managerSSHConn.GetClient(),
+				ip,
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		} else {
+			sshConnWorker, err = c.CreateSSHConn(
+				ip,
+				c.DefaultClusterUserName,
+				c.SshKeyPath,
+			)
+		}
+		if err != nil {
+			return err
+		}
+		_, err = sshConnWorker.ExecCommand(
+			cmdDir,
+		)
+		if err != nil {
+			fmt.Println(string(out))
+			return fmt.Errorf("failed to create nfs dir on worker: %w", err)
+		}
+		_, err = sshConnWorker.ExecCommand(
+			cmd,
+		)
+		if err != nil {
+			fmt.Println(string(out))
+			return fmt.Errorf("creating volume on worker failed: %w", err)
+		}
+	}
 
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
@@ -140,7 +293,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		pwd,
 		dockerStackName,
 	)
-	out, err = sshConn.ExecCommand(swarmDeployCMD)
+	out, err = managerSSHConn.ExecCommand(swarmDeployCMD)
 	fmt.Println(string(out))
 	if err != nil {
 		return fmt.Errorf("swarm deployment failed: %w", err)
@@ -161,6 +314,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
 		files.EmbedCopierOp{Src: "embedded/nginx/nginx.conf", Dst: "./nginx/nginx.conf", Overwrite: true},
+		files.EmbedCopierOp{Src: "embedded/nginx/nginx.server.conf", Dst: "./nginx.server.conf", Overwrite: true},
 		files.EmbedCopierOp{Src: "embedded/playbooks/nginx.ansible.yaml", Dst: "./playbooks/nginx.ansible.yaml", Overwrite: true},
 	); err != nil {
 		return err
@@ -192,7 +346,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		emailForCertbot = email
 	}
 
-	services, err := c.swarmNginxCollectData()
+	services, err := c.swarmNginxCollectData(d8xCfg)
 	if err != nil {
 		return err
 	}
@@ -316,14 +470,24 @@ var hostsTpl = []hostnameTuple{
 
 // swarmNginxCollectData collects hostnames information and prepares
 // nginx.configured.conf file. Returns list of hostnames provided by user
-func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
+func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTuple, error) {
 
 	hosts := make([]string, len(hostsTpl))
 	replacements := make([]files.ReplacementTuple, len(hostsTpl))
 	for i, h := range hostsTpl {
+
+		// When possible, find values from config for non-first time runs.
+		value := ""
+		if v, ok := cfg.Services[h.serviceName]; ok {
+			if v.HostName != "" {
+				value = v.HostName
+			}
+		}
+
 		fmt.Println(h.prompt)
 		input, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder(h.placeholder),
+			components.TextInputOptValue(value),
 		)
 		if err != nil {
 			return nil, err
@@ -351,7 +515,7 @@ func (c *Container) swarmNginxCollectData() ([]hostnameTuple, error) {
 	}
 	// Restart this func
 	if !correct {
-		return c.swarmNginxCollectData()
+		return c.swarmNginxCollectData(cfg)
 	}
 
 	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))

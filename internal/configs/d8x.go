@@ -35,6 +35,10 @@ type D8XConfig struct {
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 }
 
+func (d *D8XConfig) IsEmpty() bool {
+	return d.ServerProvider == ""
+}
+
 // GetAnsibleUser returns the default sudo user for initial ansible
 // configuration step
 func (d *D8XConfig) GetAnsibleUser() string {
@@ -55,17 +59,24 @@ const (
 )
 
 type D8XLinodeConfig struct {
-	Token       string `json:"linode_token"`
-	DbId        string `json:"db_id"`
-	Region      string `json:"region"`
-	LabelPrefix string `json:"label_prefix"`
+	Token              string `json:"linode_token"`
+	DbId               string `json:"db_id"`
+	Region             string `json:"region"`
+	LabelPrefix        string `json:"label_prefix"`
+	SwarmWorkerSize    string `json:"swarm_worker_size"`
+	SwarmNodeSize      string `json:"swarm_node_size"`
+	BrokerServerSize   string `json:"broker_server_size"`
+	CreateBrokerServer bool   `json:"create_broker_server"`
 }
 
 type D8XAWSConfig struct {
-	AccesKey    string `json:"access_key"`
-	SecretKey   string `json:"secret_key"`
-	Region      string `json:"region"`
-	LabelPrefix string `json:"label_prefix"`
+	AccesKey               string `json:"access_key"`
+	SecretKey              string `json:"secret_key"`
+	Region                 string `json:"region"`
+	LabelPrefix            string `json:"label_prefix"`
+	RDSInstanceClass       string `json:"rds_instance_class"`
+	CreateBrokerServer     bool   `json:"create_broker_server"`
+	RDSCredentialsFilePath string `json:"rds_credentials_file_path"`
 }
 
 type D8XService struct {
@@ -89,6 +100,8 @@ type D8XConfigReadWriter interface {
 	// Read reads the config from underlying storagesystem. If config is not
 	// found, an empty D8XConfig is returned
 	Read() (*D8XConfig, error)
+
+	// Write writes given D8XConfig to underlying storage system
 	Write(*D8XConfig) error
 }
 
@@ -100,17 +113,23 @@ var _ (D8XConfigReadWriter) = (*d8xConfigFileReadWriter)(nil)
 
 type d8xConfigFileReadWriter struct {
 	filePath string
+
+	warningShown bool
 }
 
 func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
 	cfg := NewD8XConfig()
 	if contents, err := os.ReadFile(d.filePath); err != nil {
-		// Print error message to indicate empty config when not intended
-		fmt.Println(
-			styles.ErrorText.Render(
-				fmt.Sprintf("Config file was not found: %s", d.filePath),
-			),
-		)
+		// Print error message to indicate empty config when not intended. Only
+		// once in current session!
+		if !d.warningShown {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Config file was not found: %s", d.filePath),
+				),
+			)
+			d.warningShown = true
+		}
 		return cfg, nil
 	} else {
 		if err := json.Unmarshal(contents, cfg); err != nil {

@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"os"
 	"os/exec"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -64,15 +65,16 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"-i", "./hosts.cfg",
 		"-u", cfg.GetAnsibleUser(),
 		"./playbooks/setup.ansible.yaml",
-		"-vvv",
 	}
 
-	// For aws setup we need to use manager server as bastion/jump host
+	// For AWS, we don't want to setup UFW, since firewall is already handled by
+	// AWS itself
 	if cfg.ServerProvider == configs.D8XServerProviderAWS {
-		// args
+		args = append(args, "--extra-vars", "no_ufw=true")
 	}
 
 	cmd := exec.Command("ansible-playbook", args...)
+	cmd.Env = os.Environ()
 	connectCMDToCurrentTerm(cmd)
 
 	return c.RunCmd(cmd)
