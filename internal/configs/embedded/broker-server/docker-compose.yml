@@ -1,7 +1,7 @@
 version: "3"
 services:
   broker:
-    image: ghcr.io/d8-x/d8x-broker-server:dev
+    image: ghcr.io/d8-x/d8x-broker-server:main
     #build:
     #  context: .
     #  dockerfile: ./cmd/brokerapi/Dockerfile
@@ -31,7 +31,7 @@ services:
       - mydata:/keyfile
 
   executorws:
-    image: ghcr.io/d8-x/d8x-broker-exec-ws:dev
+    image: ghcr.io/d8-x/d8x-broker-exec-ws:main
     #build:
     #  context: .
     #  dockerfile: ./cmd/executorws/Dockerfile

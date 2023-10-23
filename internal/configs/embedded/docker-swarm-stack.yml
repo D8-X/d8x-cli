@@ -68,7 +68,7 @@ services:
       - d8x_backend
 
   referral:
-    image: ghcr.io/d8-x/d8x-referral-system:dev
+    image: ghcr.io/d8-x/d8x-referral-system:main
     deploy:
       # Restart 5 times with 60 seconds delay before giving up.
       restart_policy:
