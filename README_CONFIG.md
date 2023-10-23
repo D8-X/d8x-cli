@@ -5,33 +5,40 @@
   from the cluster management url
   (https://cloud.linode.com/databases/postgresql/THEID) or via `linode-cli`.
 - Decide on which of the available chains you will run the backend. For example zkEVM Testnet with chainId 1442.
-- Decide how to deal with the broker:
-  - Option 1 (recommended): A separate Broker Server that hosts the broker-key
-    a) You need to provide the broker key
-    b) You will need an additional private key, "the executor", for which the address
-    is whitelisted on the broker-server
-    under “allowedExecutors”.
-  - Option 2: No separate Broker Server, the broker-key is hosted on the servers that contain the
-    remaining services
-  - Option 3: No broker key and server. In this case you will not be able to set a broker specific fee
+- You will need an two private keys,
+  - "the executor", for which the address is whitelisted on the broker-server
+  under “allowedExecutors”.
+  - the broker key, which will be kept on the broker-server
 - Domain names: you will need to create A-name entries for different services
 
 # Broker-Server
 
 <details>
- <summary>chainConfig.sol</summary>
-  Edit the segment with the relevant chainId for your deployment.
+ <summary>chainConfig.json</summary>
+  Edit 'allowedExecutors' for the relevant chainId of your deployment.
  
  The entry `allowedExecutors` in `chainConfig.json` must contain the address that executes payments for the referral system,
- that is, `allowedExecutors` must contain the address that correspond to the private 
-key we set as `BROKER_KEY` in `trader-backend/.env`.
+ that is, `allowedExecutors` must contain the address that corresponds to the executor private key you enter during the setup process
 
-The provided entries should be fine for the following variables:
-
+Config file entries:
+  
 - `chainId` the chain id the entry refers to
 - `name` name of the configuration-entry (for readability of the config only)
-- `multiPayCtrctAddr` must be in line with the same entry in live.referralSettings.json
-- `perpetualManagerProxyAddr` the address of the perpetuals-contract
+- `multiPayCtrctAddr` use the pre-defined value. This is a smart contract that is used to execute referral payments.
+- `perpetualManagerProxyAddr` the address of the perpetuals-contract, use the pre-defined value
+
+</details>
+
+<details>
+ <summary>rpc.json</summary>
+  The broker server has very low on-chain activity, therefore defining only public RPC endpoints
+  is sufficient and this config file can remain unchanged as long as the desired chain is listed and the public
+  RPC is still current.
+
+  Config file entries:
+  
+- `chainId` the chain id the entry refers to
+- `HTTP` array with RPC endpoints
 
 </details>
 
