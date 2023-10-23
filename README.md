@@ -3,7 +3,8 @@
 D8X CLI is a tool which helps you to easiliy spin up d8x-trader-backend and
 other d8x broker services.
 
-Setup includes provisioning resources on supported cloud providers, configuring servers, deploying swarm cluster and individual services.
+Setup includes provisioning resources on supported cloud providers, configuring
+servers, deploying swarm cluster and individual services.
 
 
 
@@ -50,9 +51,9 @@ d8x setup
 ```
 
 The `setup` command is an aggregate of multiple individual subcommands such as
-`provision`, `configure`, `swarm-deploy`, etc. Setup will walk you through
-entire process of provisioning servers and deploying all the services. See `d8x
-setup --help` for more information and available `setup` subcommands.
+`provision`, `configure`, `swarm-deploy`, etc. Setup command will walk you
+through entire process of provisioning servers and deploying all the services.
+See `d8x setup --help` for more information and available `setup` subcommands.
 
 #### Provisioning and Configuration
 Setup will start with provisioning servers with terraform and configuring them
@@ -67,7 +68,7 @@ in your current working directory:
   - id_ed25519.pub - public key of id_ed25519 
   - password.txt - default user password on all servers
   - redis_broker_password.txt - password for redis used on the broker server
-  - pg.crt - postgress database root CA certificate (downloaded from server provider)
+  - pg.crt (deprecated) - postgress database root CA certificate (downloaded from server provider) 
   - aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
 	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
 
@@ -153,6 +154,25 @@ d8x tf-destroy
 ```
 
 **Note that this action is irreversible**
+
+
+### SSH into machines
+
+`d8x` cli can be used to quickly ssh into your provisioned machines.
+
+Use the following command to do so:
+
+```bash
+d8x ssh <machine-name>
+```
+
+here `<machine-name>` is one of `manager|broker|worker-x` where `x` is a number
+of a worker node.
+
+## Configuration Files
+Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
+find out how to configure the system in the
+[README](README_CONFIG.md).
 
 ## FAQ
 

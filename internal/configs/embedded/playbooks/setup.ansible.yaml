@@ -164,12 +164,6 @@
   vars:
     setup_ufw: "{{ no_ufw | default(false) | bool == false }}"
   tasks:
-    - name: Install nfs-kernel-server on manager
-      ansible.builtin.apt:
-        pkg:
-          - nfs-kernel-server
-        state: latest
-        update_cache: true
     - name: Install nginx on manager
       ansible.builtin.apt:
         pkg:
@@ -195,3 +189,15 @@
         proto: tcp
         state: reloaded
       when: setup_ufw
+
+- hosts:
+    - managers
+  name: Install NFS server on manager
+  become: true
+  tasks:
+    - name: Install nfs-kernel-server on manager
+      ansible.builtin.apt:
+        pkg:
+          - nfs-kernel-server
+        state: latest
+        update_cache: true

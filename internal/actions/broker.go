@@ -15,18 +15,23 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
+
 // BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
-	// Dest filenames, TODO - centralize this via flags
+	// Temp file path to store private key locally during the broker server
+	// deployment
+	var tmpPKFile = "./broker-server/keyfile.txt"
+
+	// Dest filenames for copying from embed. TODO - centralize this via flags
 	var (
 		chainConfig   = "./broker-server/chainConfig.json"
 		rpcConfig     = "./broker-server/rpc.json"
 		dockerCompose = "./broker-server/docker-compose.yml"
-		keyfile       = "./broker-server/keyfile.txt"
 	)
 	// Copy the config files and nudge user to review them
 	if err := c.EmbedCopier.Copy(
@@ -47,7 +52,19 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	c.TUI.NewConfirmation(
 		"Please review the configuration files and ensure values are correct before proceeding:" + "\n" +
-			styles.AlertImportant.Render(absChainConfig) + "\n" + styles.AlertImportant.Render(absRpcConfig),
+			styles.AlertImportant.Render(absChainConfig+"\n"+absRpcConfig),
+	)
+
+	// Generate and display broker-server redis password file
+	redisPw, err := c.generatePassword(16)
+	if err != nil {
+		return fmt.Errorf("generating redis password: %w", err)
+	}
+	if err := c.FS.WriteFile(BROKER_SERVER_REDIS_PWD_FILE, []byte(redisPw)); err != nil {
+		return fmt.Errorf("storing password in %s file: %w", BROKER_SERVER_REDIS_PWD_FILE, err)
+	}
+	fmt.Println(
+		styles.SuccessText.Render("REDIS Password for broker-server was stored in " + BROKER_SERVER_REDIS_PWD_FILE + " file"),
 	)
 
 	bsd := brokerServerDeployment{}
@@ -80,24 +97,11 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	bsd.brokerFeeTBPS = tbps
 
-	// redis password
-	redisPw, err := c.generatePassword(16)
-	if err != nil {
-		return fmt.Errorf("generating password: %w", err)
-	}
-	if c.FS == nil {
-		fmt.Println("redis password not stored: " + redisPw)
-	} else if err := c.FS.WriteFile("./redis_broker_password.txt", []byte(redisPw)); err != nil {
-		return fmt.Errorf("storing password in ./redis_broker_password.txt file: %w", err)
-	}
-	fmt.Println(
-		styles.SuccessText.Render("REDIS Password for broker-server was stored in ./redis_broker_password.txt file"),
-	)
-
-	// write keyfile
-	if err := c.FS.WriteFile(keyfile, []byte("0x"+pk)); err != nil {
+	// Temporarily store private key  in a file
+	if err := c.FS.WriteFile(tmpPKFile, []byte("0x"+pk)); err != nil {
 		return fmt.Errorf("temp storage of keyfile failed: %w", err)
 	}
+	defer os.Remove(tmpPKFile)
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
@@ -113,20 +117,16 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
 		conn.SftpCopySrcDest{Src: rpcConfig, Dst: "./broker/rpc.json"},
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
-		conn.SftpCopySrcDest{Src: keyfile, Dst: "./broker/keyfile.txt"},
+		conn.SftpCopySrcDest{Src: tmpPKFile, Dst: "./broker/keyfile.txt"},
 	); err != nil {
-		os.Remove(keyfile)
 		return err
 	}
-	os.Remove(keyfile)
 
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
 	cmd := "cd ./broker && docker volume create broker_mydata "
 	cmd = cmd + "&& docker run --rm -v $PWD:/source -v broker_mydata:/dest -w /source alpine cp ./keyfile.txt /dest"
-	out, err := sshClient.ExecCommand(
-		fmt.Sprintf(cmd),
-	)
+	out, err := sshClient.ExecCommand(cmd)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err
@@ -142,9 +142,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	fmt.Println(styles.ItalicText.Render("Cleaning up..."))
 	cmd = "cd ./broker && rm ./keyfile.txt"
-	out, err = sshClient.ExecCommand(
-		fmt.Sprintf(cmd),
-	)
+	out, err = sshClient.ExecCommand(cmd)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server cleanup ^^^"))
 		return err

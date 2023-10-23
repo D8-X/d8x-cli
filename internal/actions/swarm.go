@@ -157,20 +157,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
-	// Include pg.cert
-	// if _, err := c.FS.Stat(c.PgCrtPath); err == nil {
-	// 	dockerConfigsCMD = append(
-	// 		dockerConfigsCMD,
-	// 		"docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1",
-	// 	)
-	// 	copyList = append(copyList,
-	// 		conn.SftpCopySrcDest{Src: c.PgCrtPath, Dst: "./trader-backend/pg.crt"},
-	// 	)
-	// } else {
-	// 	fmt.Println(
-	// 		styles.ErrorText.Render(c.PgCrtPath + " was not found!"),
-	// 	)
-	// }
+
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
 	defer os.Remove(keyfileLocal)
@@ -193,7 +180,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("Error starting NFS server: %w", err)
 	}
-	fmt.Println(styles.ItalicText.Render("Mounting NFS directories..."))
+
+	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
 	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general" `, pwd, ipMgrPriv)
 	for k, ip := range ipWorkersPriv {
 		fmt.Println(styles.ItalicText.Render("worker "), ip)
@@ -226,10 +214,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 	}
 
-	// Create configs
+	// Recreate configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err := managerSSHConn.ExecCommand(
-		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + fmt.Sprintf(strings.Join(dockerConfigsCMD, ";")),
+		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
 	)
 	fmt.Println(string(out))
 	if err != nil {
@@ -245,15 +233,14 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	out, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
-	fmt.Println(string(out))
 	if err != nil {
+		fmt.Println(string(out))
 		return err
 	}
 	// create volume on worker nodes
 
 	cmd = fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c "docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol"`,
-		pwd,
+		`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`,
 		ipMgrPriv,
 	)
 	cmdDir := fmt.Sprintf(
@@ -286,15 +273,15 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		_, err = sshConnWorker.ExecCommand(
 			cmdDir,
 		)
-		fmt.Println(string(out))
 		if err != nil {
+			fmt.Println(string(out))
 			return fmt.Errorf("failed to create nfs dir on worker: %w", err)
 		}
 		_, err = sshConnWorker.ExecCommand(
 			cmd,
 		)
-		fmt.Println(string(out))
 		if err != nil {
+			fmt.Println(string(out))
 			return fmt.Errorf("creating volume on worker failed: %w", err)
 		}
 	}
