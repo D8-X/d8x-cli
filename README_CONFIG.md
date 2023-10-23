@@ -54,7 +54,7 @@ The file `docker-compose.yml` which is placed in the same folder should remain u
   The remaining entries can remain unchanged. This file has to be updated, as D8X governance deploys different perpetuals.
 </details>
 
-# Trader Backend
+# Trader Backend and Referral System
 The following files are located in the folder "trader-backend". Additionally, there is a file "exports" which should remain untouched.
 
 <details><summary>Environment file (.env).</summary>
