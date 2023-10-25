@@ -242,7 +242,7 @@ package actions
 // 					// Test if all required configs are created (including pg_cert)
 // 				ms.EXPECT().
 // 					ExecCommand(
-// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
+// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_prices;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
 // 					).
 // 					Return(nil, assert.AnError)
 
@@ -287,7 +287,7 @@ package actions
 // 					// Test if all required configs are created (including pg_cert)
 // 				ms.EXPECT().
 // 					ExecCommand(
-// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
+// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_prices;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
 // 					).
 // 					Return([]byte(""), nil)
 // 					// Deploy swarm cmd test
@@ -338,7 +338,7 @@ package actions
 // 					// Test if all required configs are created (including pg_cert)
 // 				ms.EXPECT().
 // 					ExecCommand(
-// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
+// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_prices;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
 // 					).
 // 					Return([]byte(""), nil)
 // 					// Deploy swarm cmd test

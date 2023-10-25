@@ -141,7 +141,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		`docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1`,
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
-		`docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1`,
+		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
