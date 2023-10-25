@@ -36,7 +36,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "embedded/trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json", Overwrite: false},
 		{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 		// Candles configs
-		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
+		{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
 		// Docker swarm file
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 	}
@@ -141,7 +141,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		`docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1`,
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
-		`docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1`,
+		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
@@ -153,7 +153,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
 		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
 		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
-		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
+		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
