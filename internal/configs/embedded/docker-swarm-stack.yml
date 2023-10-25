@@ -19,7 +19,7 @@ services:
       # Always run redis on the same node
       # - "node.hostname==worker-1"
   api:
-    image: ghcr.io/d8-x/d8x-trader-main:dev
+    image: ghcr.io/d8-x/d8x-trader-main:main
     ports:
       # REST API
       - ${MAIN_API_PORT_HTTP:-3001}:${MAIN_API_PORT_HTTP:-3001}
@@ -45,7 +45,7 @@ services:
     deploy:
       replicas: 2
   history:
-    image: ghcr.io/d8-x/d8x-trader-history:dev
+    image: ghcr.io/d8-x/d8x-trader-history:main
     environment:
       - DATABASE_DSN_HISTORY=${DATABASE_DSN}
       - HISTORY_API_PORT_HTTP=${HISTORY_API_PORT_HTTP:-3003}
@@ -105,7 +105,7 @@ services:
       - nfsvol:/keyfile
 
   candles-pyth-client:
-    image: ghcr.io/d8-x/d8x-candles-pyth-client:dev
+    image: ghcr.io/d8-x/d8x-candles-pyth-client:main
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
@@ -126,7 +126,7 @@ services:
 
   # Candles websockets server
   candles-ws-server:
-    image: ghcr.io/d8-x/d8x-candles-ws-server:dev
+    image: ghcr.io/d8-x/d8x-candles-ws-server:main
     ports:
       - 3005:8080
     environment:
