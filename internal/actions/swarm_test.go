@@ -23,7 +23,7 @@ package actions
 // 		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
 // 		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
 // 		{Src: "embedded/trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json", Overwrite: false},
-// 		{Src: "embedded/candles/live.config.json", Dst: "./candles/live.config.json", Overwrite: false},
+// 		{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
 // 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 // 	}
 
@@ -31,7 +31,7 @@ package actions
 // 		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
 // 		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
 // 		{Src: "./trader-backend/live.rpc.json", Dst: "./trader-backend/live.rpc.json"},
-// 		{Src: "./candles/live.config.json", Dst: "./candles/live.config.json"},
+// 		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
 // 		// Note we are renaming to docker-stack.yml on remote!
 // 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 
@@ -242,7 +242,7 @@ package actions
 // 					// Test if all required configs are created (including pg_cert)
 // 				ms.EXPECT().
 // 					ExecCommand(
-// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
+// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
 // 					).
 // 					Return(nil, assert.AnError)
 
@@ -287,7 +287,7 @@ package actions
 // 					// Test if all required configs are created (including pg_cert)
 // 				ms.EXPECT().
 // 					ExecCommand(
-// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
+// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
 // 					).
 // 					Return([]byte(""), nil)
 // 					// Deploy swarm cmd test
@@ -338,7 +338,7 @@ package actions
 // 					// Test if all required configs are created (including pg_cert)
 // 				ms.EXPECT().
 // 					ExecCommand(
-// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/live.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
+// 						`echo 'password' | sudo -S bash -c "docker config rm cfg_rpc cfg_referral pg_ca cfg_candles;docker config create cfg_rpc ./trader-backend/live.rpc.json >/dev/null 2>&1;docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1;docker config create cfg_candles ./candles/prices.config.json >/dev/null 2>&1;docker config create pg_ca ./trader-backend/pg.crt >/dev/null 2>&1"`,
 // 					).
 // 					Return([]byte(""), nil)
 // 					// Deploy swarm cmd test

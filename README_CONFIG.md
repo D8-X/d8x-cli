@@ -7,7 +7,7 @@
 - Decide on which of the available chains you will run the backend. For example zkEVM Testnet with chainId 1442.
 - You will need two private keys:
   - "the executor", for which the address is whitelisted on the broker-server
-  under “allowedExecutors”.
+    under “allowedExecutors”.
   - the broker key, which will be kept on the broker-server
 - Domain names: you will need to create A-name entries for different services
 - The configuration files listed below appear in your local directory from where you run the CLI-tool as you perform the setup
@@ -22,7 +22,7 @@
  that is, `allowedExecutors` must contain the address that corresponds to the executor private key you enter during the setup process
 
 Config file entries:
-  
+
 - `chainId` the chain id the entry refers to
 - `name` name of the configuration-entry (for readability of the config only)
 - `multiPayCtrctAddr` use the pre-defined value. This is a smart contract that is used to execute referral payments.
@@ -36,8 +36,8 @@ Config file entries:
   is sufficient and this config file can remain unchanged as long as the desired chain is listed and the public
   RPC is still current.
 
-  Config file entries:
-  
+Config file entries:
+
 - `chainId` the chain id the entry refers to
 - `HTTP` array with RPC endpoints
 
@@ -48,13 +48,14 @@ The file `docker-compose.yml` which is placed in the same folder should remain u
 # Candles
 
 <details>
-  <summary>live.config.json</summary>
+  <summary>prices.config.json</summary>
   Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). 
-  The service endpoint will have to be added to the configuration file for the variable priceServiceWSEndpoint. 
-  The remaining entries can remain unchanged. This file has to be updated, as D8X governance deploys different perpetuals.
+  The service endpoint will have to be added to the configuration file for the variable priceServiceWSEndpoints. 
+  The remaining entries can remain unchanged. This file has to be updated, when D8X governance deploys additional perpetuals.
 </details>
 
 # Trader Backend and Referral System
+
 The following files are located in the folder "trader-backend". Additionally, there is a file "exports" which should remain untouched.
 
 <details><summary>Environment file (.env).</summary>
@@ -106,12 +107,12 @@ Lines preceeded with `#` in this file, serve as comments.
   multiple RPCs for rpc.main.json (at least 3), 2 or more for history, 2 or more for referral -- for both "HTTP" and "WS". You only need to enter
   RPCs for the chain which is configured to be used.
 
-  Config file entries:
-  
+Config file entries:
+
 - `chainId` the chain id the entry refers to
 - `HTTP` array with RPC endpoints
 - `WS` array with websocket RPC endpoints
-  
+
 </details>
 
 <details>
@@ -135,19 +136,17 @@ Lines preceeded with `#` in this file, serve as comments.
       }
     ]
 
-
-    
     Config file entries:
-  
-  - `chainId`: the chain id the entry refers to
-  - `paymentMaxLookBackDays`: If no payment was processed, the maximal look-back time for trading fee rebates is 14 days. For example, fees paid 15 days ago will not be eligible for a rebate. This   setting is not of high importance and 14 is a good value.
-  - `paymentScheduleCron`: here you can schedule the rebate payments that will automatically be performed. 
-The syntax is the one used by the “cron”-scheduling system that you might be familiar with, see for example [crontab.guru](https://crontab.guru/)
-  - `multiPayContractAddr`: The address of the contract used for payment execution. Leave it unchanged.
-  - `tokenX`: Specify the token address that you as a broker want to use for the referrer cut. If you do not have a token, use the D8X token! Set the decimals according to the ERC-20 decimal convention. Most tokens use 18 decimals.
-      - `address`: address of the token
-      - `decimals`: number of decimals the token uses (the ERC-20 decimals value). Often 18.
-  - `referrerCutPercentForTokenXHolding`:  The broker can have their own token and allow a different rebate to referrers that do not use an agency. The more tokens that the referrer holds, the higher the rebate they get. Here is how to set this. For example, in the config below the referrer without tokens gets 0.2% rebate that they can re-distribute between them and a trader, and the referrer with 100 tokens gets 1.5% rebate. Note that the referrer can also be the trader, because creating referral codes is permissionless, so don’t be to generous especially for low token holdings. Here you define how much of tokenX the referrer needs to hold to get the specified rebate that they can partially hand over to their code users
-  - `brokerPayoutAddr`: we recommend you use a separate address that accrues the trading fees from the address that receives the fees after redistribution. Use this setting to determine the address that receives the net fees.
-    
+
+- `chainId`: the chain id the entry refers to
+- `paymentMaxLookBackDays`: If no payment was processed, the maximal look-back time for trading fee rebates is 14 days. For example, fees paid 15 days ago will not be eligible for a rebate. This setting is not of high importance and 14 is a good value.
+- `paymentScheduleCron`: here you can schedule the rebate payments that will automatically be performed.
+  The syntax is the one used by the “cron”-scheduling system that you might be familiar with, see for example [crontab.guru](https://crontab.guru/)
+- `multiPayContractAddr`: The address of the contract used for payment execution. Leave it unchanged.
+- `tokenX`: Specify the token address that you as a broker want to use for the referrer cut. If you do not have a token, use the D8X token! Set the decimals according to the ERC-20 decimal convention. Most tokens use 18 decimals.
+  - `address`: address of the token
+  - `decimals`: number of decimals the token uses (the ERC-20 decimals value). Often 18.
+- `referrerCutPercentForTokenXHolding`: The broker can have their own token and allow a different rebate to referrers that do not use an agency. The more tokens that the referrer holds, the higher the rebate they get. Here is how to set this. For example, in the config below the referrer without tokens gets 0.2% rebate that they can re-distribute between them and a trader, and the referrer with 100 tokens gets 1.5% rebate. Note that the referrer can also be the trader, because creating referral codes is permissionless, so don’t be to generous especially for low token holdings. Here you define how much of tokenX the referrer needs to hold to get the specified rebate that they can partially hand over to their code users
+- `brokerPayoutAddr`: we recommend you use a separate address that accrues the trading fees from the address that receives the fees after redistribution. Use this setting to determine the address that receives the net fees.
+
   </details>
