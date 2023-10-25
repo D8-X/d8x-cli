@@ -103,7 +103,7 @@ services:
       - nfsvol:/keyfile
 
   candles-pyth-client:
-    image: ghcr.io/d8-x/d8x-candles-pyth-client:main
+    image: ghcr.io/d8-x/d8x-candles-pyth-client:dev
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
@@ -124,7 +124,7 @@ services:
 
   # Candles websockets server
   candles-ws-server:
-    image: ghcr.io/d8-x/d8x-candles-ws-server:main
+    image: ghcr.io/d8-x/d8x-candles-ws-server:dev
     ports:
       - 3005:8080
     environment:
