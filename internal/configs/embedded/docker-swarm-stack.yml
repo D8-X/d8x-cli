@@ -19,7 +19,7 @@ services:
       # Always run redis on the same node
       # - "node.hostname==worker-1"
   api:
-    image: ghcr.io/d8-x/d8x-trader-main:main
+    image: ghcr.io/d8-x/d8x-trader-main:dev
     ports:
       # REST API
       - ${MAIN_API_PORT_HTTP:-3001}:${MAIN_API_PORT_HTTP:-3001}
@@ -45,7 +45,7 @@ services:
     deploy:
       replicas: 2
   history:
-    image: ghcr.io/d8-x/d8x-trader-history:main
+    image: ghcr.io/d8-x/d8x-trader-history:dev
     environment:
       - DATABASE_DSN_HISTORY=${DATABASE_DSN}
       - HISTORY_API_PORT_HTTP=${HISTORY_API_PORT_HTTP:-3003}
