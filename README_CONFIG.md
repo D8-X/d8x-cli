@@ -9,6 +9,7 @@
   - "the executor", for which the address is whitelisted on the broker-server
     under “allowedExecutors”.
   - the broker key, which will be kept on the broker-server
+  - both addresses need gas tokens and it's a good idea to monitor the balance
 - Domain names: you will need to create A-name entries for different services
 - The configuration files listed below appear in your local directory from where you run the CLI-tool as you perform the setup
 
