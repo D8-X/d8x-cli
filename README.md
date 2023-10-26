@@ -169,11 +169,6 @@ d8x ssh <machine-name>
 here `<machine-name>` is one of `manager|broker|worker-x` where `x` is a number
 of a worker node.
 
-## Configuration Files
-Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
-find out how to configure the system in the
-[README](README_CONFIG.md).
-
 ## FAQ
 
 <details>
