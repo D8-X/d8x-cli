@@ -1,4 +1,3 @@
-
 {
   "pythAPIEndpoint": "https://benchmarks.pyth.network/",
   "priceServiceWSEndpoints": ["wss://hermes-beta.pyth.network/ws", "wss://pyth-hermes.rpcpool.com:40443/ws"],
