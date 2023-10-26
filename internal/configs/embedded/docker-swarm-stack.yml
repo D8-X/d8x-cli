@@ -36,7 +36,7 @@ services:
       - MAIN_API_PORT_HTTP=${MAIN_API_PORT_HTTP:-3002}
       - MAIN_API_PORT_WEBSOCKET=${MAIN_API_PORT_WEBSOCKET:-3002}
       - CONFIG_PATH_RPC=/cfg_rpc
-      - CONFIG_PATH_prices=/cfg_prices
+      - CONFIG_PATH_PRICES=/cfg_prices
     configs:
       - cfg_rpc
       - cfg_prices
