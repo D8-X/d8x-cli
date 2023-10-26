@@ -33,7 +33,8 @@ FAQ supported platforms for details.
 * Have a broker key ready, and a broker executor key. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
 	* Fund the executor wallet with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance 
 * Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
-* Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoint of the candles-service -- more details on configs will follow, this is a heads-up)
+* You need to be able to access your Domain Name Service provider so you can create DNS records
+* Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service -- more details on configs will follow, this is a heads-up)
 
 ## Configuration Files
 Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
@@ -61,14 +62,13 @@ with ansible. Depending on your selected server provider, you will need to
 provide API tokens, access keys and other necessary information.
 
 After provisioning and configuration is done a couple of files will be created
-in your current working directory:
+in your current working directory, such as:
 
   - hosts.cfg - ansible inventory file
   - id_ed25519 - ssh key used to access servers (added to each provisioned server)
   - id_ed25519.pub - public key of id_ed25519 
   - password.txt - default user password on all servers
   - redis_broker_password.txt - password for redis used on the broker server
-  - pg.crt (deprecated) - postgress database root CA certificate (downloaded from server provider) 
   - aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
 	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
 
@@ -183,10 +183,28 @@ For example `d8x setup swarm-deploy` if the config is part of "trader-backend", 
 part of "broker-server"
 </details>
 
+<details>
+  <summary>Where can I find my Linode API Token?</summary>
 
+  You can generate one on the Linode website, see [the Linode guidance](https://www.linode.com/docs/products/tools/api/get-started/#get-an-access-token)
+
+</details>
 
 <details>
-  <summary>How do I update the server software images to a new version?</summary>
+  <summary>Where can I find my Linode database cluster ID?</summary>
+On the Linode website, navigate to your databases and click on the database cluster that you want to use for the backend. 
+The URL uses the format `https://cloud.linode.com/databases/postgresql/YOURDBID`, for example  `https://cloud.linode.com/databases/postgresql/29109`, hence the id is 29109.
+</details>
+
+<details>
+  <summary>I can't find databases on Linode, what shall I do?</summary>
+Linode currently disabled provisioning of new database clusters for some customers. However,
+you can use another PostgreSQL database from any provider, just select to _not_ use a Linode
+database in the CLI tool and you have to allow-list the 'manager's IP address (visible in hosts.cfg).
+</details>
+
+<details>
+  <summary>How do I update the swarm server software images to a new version?</summary>
 
   You login to the server where your software resides (e.g., the broker-server, or the
   swarm-manager for which you can get the ip with `d8x ip manager`).
