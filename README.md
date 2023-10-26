@@ -34,6 +34,26 @@ FAQ supported platforms for details.
 	* Fund the executor wallet with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance 
 * Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
 * You need to be able to access your Domain Name Service provider so you can create DNS records
+  Typically a config entry looks something like this:
+
+	|        Hostname        | Type |   TTL  |       Data      |
+	|:----------------------:|:----:|:------:|:---------------:|
+	| api.dev.yourdomain.com | A    | 1 hour | 139.144.112.122 |
+
+  <details>
+	  <summary>Recommended Domain Name Entries</summary>
+	  There are different REST APIs and WebSockets, which we map to the public IPs of the servers. 
+	  The services and example names for the backend are as follows:
+	  
+		* api.dev.yourdomain.com: main REST API points to “Swarm manager”
+		* ws.dev.yourdomain.com: main WebSocket points to “Swarm manager”
+		* history.dev.yourdomain.com: historical data REST API points to “Swarm manager”
+		* referral.dev.yourdomain.com: referral code REST API points to “Swarm manager”
+	  	* candles.dev.yourdomain.com: The Candle Server websocket points to “Swarm manager”
+	  	* broker.dev.yourdomain.com: The broker server has its own IP
+  
+	  Both IP addresses, for the manager and broker server, will be shown to you during the setup.
+  </details>
 * Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service -- more details on configs will follow, this is a heads-up)
 
 ## Configuration Files
@@ -192,10 +212,36 @@ The URL uses the format `https://cloud.linode.com/databases/postgresql/YOURDBID`
 </details>
 
 <details>
+  <summary>Do I need to backup the database?</summary>
+
+  Most of the data stored in either REDIS or PostgreSQL does not have to be persistent because it is gathered from the blockchain, including payment execution data. However, referral code information is broker specific and cannot be reconstructed from on-chain data. This should typically not be a large amount of data. The relevant tables are
+  - referral_code
+  - referral_code_usage
+  - referral_chain
+
+</details>
+
+<details>
   <summary>I can't find databases on Linode, what shall I do?</summary>
 Linode currently disabled provisioning of new database clusters for some customers. However,
 you can use another PostgreSQL database from any provider, just select to _not_ use a Linode
 database in the CLI tool and you have to allow-list the 'manager's IP address (visible in hosts.cfg).
+</details>
+<details>
+  <summary>How can I check system health?</summary>
+
+  The CLI has a basic feature `d8x health`. However, you can also check whether you obtain data
+  from the different services, for example:
+  
+	- main REST api: for example https://api.dev.yourdomain.com/exchange-info (for your url)
+	- Referral code REST api: https://referral.yourdomain.com/my-referral-codes?addr=0x015015028e98678d0e645ea4aebd25f744341a05
+	- Use a websocket tool (for example websocket-test-client for Chrome) and connect to the candle API
+	`wss://candles.yourdomain.com` and you should receive a response like `{"type":"connect","msg":"success","data":{}}`
+    - Send a btc subscription request `{"type": "subscribe", "topic": "btc-usd:1m",}`
+    and you should receive an update about every second.
+	- See whether Pyth candle-stick are up: 
+ 	https://web-api.pyth.network/history?symbol=FX.GBP/USD&range=1H&cluster=testnet - you should get a JSON response
+
 </details>
 
 <details>
