@@ -26,7 +26,7 @@ FAQ supported platforms for details.
 
 ## Before You Start The CLI
 
-- The CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
+- The D8X CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
 - You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
 - The CLI gives you the choice of using a cloud-provider database or an external database.
 - With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
