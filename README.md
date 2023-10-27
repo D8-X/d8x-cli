@@ -28,9 +28,13 @@ FAQ supported platforms for details.
 
 - The CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
 - The CLI gives you the choice of using a cloud-provider database or an external database.
-- With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config. \* Have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
-- Have a broker key ready, and a broker executor key. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
+- With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
+  - Have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
+- Have a broker key/address and a broker executor key/address ready. The broker address is the address of the Whitelabelling partner that is paid trader fees (that are then redistributed according to the [referral system](https://github.com/D8-X/referral-system)). The executor executes referral
+payments. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
   - Fund the executor wallet with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
+- Decide on the broker fee. The broker fee is paid from the trader to the broker and potentially to referrers. The broker fee is relative to the notional position size. The broker fee is entered in tenth of a basis point ("tbps"),
+  that is, the percentage multiplied by 1000, so that `0.06% = 6 bps = 60 tbps` or `0.10% = 10 bps = 100 tbps`
 - Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
 - You need to be able to access your Domain Name Service provider so you can create DNS records
   Typically a config entry looks something like this:
@@ -62,7 +66,7 @@ Configuration files are key and the most involved part to setup D8X Perpetuals B
 find out how to configure the system in the
 [README](README_CONFIG.md).
 
-## Usage
+## Usage Of The D8X CLI Tool
 
 ### Setup
 
@@ -238,20 +242,18 @@ database in the CLI tool and you have to allow-list the 'manager's IP address (v
 </details>
 <details>
   <summary>How can I check system health?</summary>
-
+<p>
 The CLI has a basic feature `d8x health`. However, you can also check whether you obtain data
 from the different services, for example:
-
+  
     - main REST api: for example https://api.dev.yourdomain.com/exchange-info (for your url)
     - Referral code REST api: https://referral.yourdomain.com/my-referral-codes?addr=0x015015028e98678d0e645ea4aebd25f744341a05
     - Use a websocket tool (for example websocket-test-client for Chrome) and connect to the candle API
     `wss://candles.yourdomain.com` and you should receive a response like `{"type":"connect","msg":"success","data":{}}`
     - Send a btc subscription request `{"type": "subscribe", "topic": "btc-usd:1m",}`
     and you should receive an update about every second.
-    - See whether Pyth candle-stick are up:
-
-https://web-api.pyth.network/history?symbol=FX.GBP/USD&range=1H&cluster=testnet - you should get a JSON response
-
+    - See whether Pyth candle-stick are up: https://web-api.pyth.network/history?symbol=FX.GBP/USD&range=1H&cluster=testnet - you should get a JSON response
+</p>
 </details>
 
 <details>
