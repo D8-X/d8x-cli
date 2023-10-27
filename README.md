@@ -1,6 +1,6 @@
 # D8X CLI
 
-D8X CLI is a tool which helps you to easiliy spin up d8x-trader-backend and
+D8X CLI helps you to easiliy spin up d8x-trader-backend and
 other d8x broker services.
 
 Setup includes provisioning resources on supported cloud providers, configuring
