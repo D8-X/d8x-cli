@@ -4,6 +4,8 @@ package components
 // component library.
 
 import (
+	"fmt"
+
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -31,7 +33,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "esc", "ctrl+c":
+		case "ctrl+c":
+			return exitModel{}, tea.Quit
+		case "q", "esc":
 			m.quitting = true
 			return m, tea.Quit
 		default:
@@ -50,6 +54,11 @@ func (m model) View() string {
 
 func newSpinner() error {
 	p := tea.NewProgram(initialModel())
-	_, err := p.Run()
+	out, err := p.Run()
+
+	if v, ok := out.(exitModel); ok {
+		return fmt.Errorf(v.Message())
+	}
+
 	return err
 }

@@ -13,6 +13,8 @@
     # will skip ufw setup when no_ufw is true
     setup_ufw: "{{ no_ufw | default(false) | bool == false }}"
 
+    # In order to prevent network clashses use different subnet from one used in
+    # terraform provisioning
     docker_ingress_subnet: "172.16.1.0/24"
 
   handlers:
