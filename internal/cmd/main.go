@@ -156,12 +156,6 @@ func RunD8XCli() {
 				Name:  "chdir",
 				Usage: "Change directory to provided one before executing anything",
 			},
-			&cli.StringFlag{
-				Name:        flags.PgCertPath,
-				Destination: &container.PgCrtPath,
-				Value:       "./pg.crt",
-				Usage:       "pg.crt certificate path",
-			},
 		},
 		Action: func(ctx *cli.Context) error {
 			// Disallow running d8x with incorrect subcommands
