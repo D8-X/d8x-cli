@@ -1,6 +1,8 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,8 +30,11 @@ func (m listModel) Init() tea.Cmd {
 func (m listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.String() == "ctrl+c" {
+			return exitModel{}, tea.Quit
+		}
 		// Return value on enter or exit
-		if msg.String() == "ctrl+c" || msg.Type == tea.KeyEnter {
+		if msg.Type == tea.KeyEnter {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
@@ -68,6 +73,11 @@ func newList(listItems []ListItem, listTitle string, opts ...ListOpt) (ListItem,
 	if err != nil {
 		return ListItem{}, err
 	}
+
+	if v, ok := mdl.(exitModel); ok {
+		return ListItem{}, fmt.Errorf(v.Message())
+	}
+
 	return mdl.(listModel).list.SelectedItem().(ListItem), nil
 }
 

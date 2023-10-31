@@ -29,6 +29,10 @@ func newInput(opts ...TextInputOpt) (string, error) {
 		return "", err
 	}
 
+	if v, ok := m.(exitModel); ok {
+		return "", fmt.Errorf(v.Message())
+	}
+
 	mdl = m.(inputModel)
 	returnValue := mdl.textInput.Value()
 	if mdl.masked {
@@ -63,8 +67,10 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
-		case tea.KeyEnter, tea.KeyCtrlC, tea.KeyEsc:
+		case tea.KeyEnter, tea.KeyEsc:
 			return m, tea.Quit
+		case tea.KeyCtrlC:
+			return exitModel{}, tea.Quit
 		}
 
 	// We handle errors just like any other message

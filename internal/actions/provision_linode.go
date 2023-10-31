@@ -1,8 +1,6 @@
 package actions
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -104,40 +102,6 @@ func (l linodeConfigurer) generateArgs() []string {
 	}
 
 	return args
-}
-
-// pullPgCert downloads the database cluster ca certificate. Certifi
-func (l linodeConfigurer) pullPgCert(c *http.Client, outFile string) error {
-	if l.DbId == "" {
-		return fmt.Errorf("linode db id was not provided")
-	}
-	endpoint := fmt.Sprintf("https://api.linode.com/v4/databases/postgresql/instances/%s/ssl", l.DbId)
-	data, err := fetchLinodeAPIRequest(c, endpoint, l.Token)
-	if err != nil {
-		return err
-	}
-
-	jsonData := map[string]string{}
-	if err := json.Unmarshal(data, &jsonData); err != nil {
-		return err
-	}
-
-	base64cert, ok := jsonData["ca_certificate"]
-	if !ok {
-		return fmt.Errorf("ca_certificate was not found in response")
-	}
-
-	pgCrtContent, err := base64.StdEncoding.DecodeString(base64cert)
-	if err != nil {
-		return err
-	}
-
-	// Write to file
-	if err := os.WriteFile(outFile, pgCrtContent, 0666); err != nil {
-		return fmt.Errorf("could not store %s: %w", outFile, err)
-	}
-
-	return nil
 }
 
 func getRegionItemByRegionId(regionId string) components.ListItem {
@@ -321,15 +285,6 @@ find the public ip addresses of your servers.
 }
 
 func (i linodeConfigurer) PostProvisioningAction(c *Container) error {
-	// Pull the cert for database
-	if err := i.pullPgCert(c.HttpClient, c.PgCrtPath); err != nil {
-		fmt.Println(
-			styles.ErrorText.Render(
-				fmt.Sprintf("pulling postgres car cert: %s", err.Error()),
-			),
-		)
-	}
-
 	// Show external db messages
 	i.noLinodeDbCheck(c)
 

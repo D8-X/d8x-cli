@@ -50,9 +50,6 @@ type Container struct {
 
 	HostsCfg files.HostsFileInteractor
 
-	// pg.crt path, defaults to ./pg.crt
-	PgCrtPath string
-
 	// Default http client use for http interactions
 	HttpClient *http.Client
 

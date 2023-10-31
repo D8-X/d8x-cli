@@ -54,7 +54,6 @@ Files created by setup and it's subcommands:
 	- id_ed25519 - ssh key used to access servers (added to each provisioned server)
 	- id_ed25519.pub - public key of id_ed25519 
 	- password.txt - default user password on all servers
-	- pg.crt - postgress database root CA certificate (downloaded from server provider)
 	- aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
 	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
 `
