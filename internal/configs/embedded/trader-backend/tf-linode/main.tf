@@ -17,11 +17,6 @@ resource "linode_instance" "manager" {
   image           = "linode/ubuntu22.04"
   booted          = true
   authorized_keys = var.authorized_keys
-
-  #   interface {
-  #     purpose = "vlan"
-  #     label   = "d8x-cluster-vlan"
-  #   }
 }
 
 resource "linode_instance" "nodes" {
@@ -34,12 +29,6 @@ resource "linode_instance" "nodes" {
   image           = "linode/ubuntu22.04"
   booted          = true
   authorized_keys = var.authorized_keys
-
-  #   interface {
-  #     purpose = "vlan"
-  #     label   = "d8x-cluster-vlan"
-  #   }
-
 }
 
 resource "linode_instance" "broker_server" {
@@ -51,12 +40,6 @@ resource "linode_instance" "broker_server" {
   image           = "linode/ubuntu22.04"
   booted          = true
   authorized_keys = var.authorized_keys
-
-  #   interface {
-  #     purpose = "vlan"
-  #     label   = "d8x-cluster-vlan"
-  #   }
-
 }
 
 # Set up ip permissions for cluster nodes for managed db if cluster id is
@@ -86,21 +69,8 @@ ${ip} worker_private_ip=${linode_instance.nodes[index].private_ip_address} hostn
 ${linode_instance.broker_server[0].ip_address} private_ip=${linode_instance.broker_server[0].private_ip_address}
 %{endif~}
   EOF
-  # content = templatefile("inventory.tpl",
-  #   {
-  #     manager_public_ip   = linode_instance.manager.ip_address
-  #     manager_private_ip  = linode_instance.manager.private_ip_address
-  #     workers_public_ips  = linode_instance.nodes.*.ip_address
-  #     workers_private_ips = linode_instance.nodes.*.private_ip_address
-  #     broker_public_ip    = var.create_broker_server ? linode_instance.broker_server[0].ip_address : ""
-  #     broker_private_ip   = var.create_broker_server ? linode_instance.broker_server[0].private_ip_address : ""
-  #   }
-  # )
+
   filename = "hosts.cfg"
 }
 
 
-# resource "local_file" "pg.cert" {
-#     depends_on = [ linode_database_access_controls.pgdb ]
-#     content = linode_database_access_controls.pgdb.
-# }

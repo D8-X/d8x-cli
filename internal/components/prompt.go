@@ -9,13 +9,18 @@ import (
 )
 
 func newPrompt(question string, confirmed bool) (bool, error) {
-	out, err := tea.NewProgram(promptModel{
+	p := tea.NewProgram(promptModel{
 		question:  question,
 		confirmed: confirmed,
-	}).Run()
+	})
+	out, err := p.Run()
 
 	if err != nil {
 		return false, err
+	}
+
+	if v, ok := out.(exitModel); ok {
+		return false, fmt.Errorf(v.Message())
 	}
 
 	result := out.(promptModel)
@@ -56,7 +61,9 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q", "enter":
+		case "ctrl+c":
+			return exitModel{}, tea.Quit
+		case "q", "enter":
 			return m, tea.Quit
 		case "right", "left":
 			m.confirmed = !m.confirmed

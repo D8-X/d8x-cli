@@ -3,9 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -50,9 +48,6 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 }
 
 func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
-	// Pull sslrootcert for pg instance
-	a.pullRDSCaCert(c.PgCrtPath)
-
 	fmt.Println(styles.AlertImportant.Render("Important RDS instance information"))
 	confirmText := `AWS RDS Postgres database credentials are stored in %s file. Please make sure you use these
 credentials from this file when providing DATABASE_DSN value in .env.`
@@ -81,31 +76,6 @@ credentials from this file when providing DATABASE_DSN value in .env.`
 func (a *awsConfigurer) putManagerToKnownHosts(managerIpAddress string) error {
 	cmd := exec.Command("bash", "-c", fmt.Sprintf("ssh-keyscan -H %s >> ~/.ssh/known_hosts", managerIpAddress))
 	return cmd.Run()
-}
-
-// pullRDSCaCert pulls RDS CA cert from AWS
-func (a *awsConfigurer) pullRDSCaCert(pgCertPath string) error {
-	url :=
-		fmt.Sprintf(
-			"https://truststore.pki.rds.amazonaws.com/%[1]s/%[1]s-bundle.pem",
-			a.Region,
-		)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return fmt.Errorf("downloading RDS CA cert: %w", err)
-	}
-	defer resp.Body.Close()
-
-	pemString, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-
-	if err := os.WriteFile(pgCertPath, pemString, 0666); err != nil {
-		return fmt.Errorf("could not write RDS CA cert: %w", err)
-	}
-	return nil
 }
 
 // generateTerraformCommand generates terraform apply command for aws provider

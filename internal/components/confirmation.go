@@ -8,9 +8,14 @@ import (
 )
 
 func newConfirmation(text string) error {
-	_, err := tea.NewProgram(confirmModel{
+	p := tea.NewProgram(confirmModel{
 		text: text,
-	}).Run()
+	})
+
+	mdl, err := p.Run()
+	if v, ok := mdl.(exitModel); ok {
+		return fmt.Errorf(v.Message())
+	}
 
 	return err
 }
@@ -37,8 +42,10 @@ func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "enter":
+		case "enter":
 			return m, tea.Quit
+		case "ctrl+c":
+			return exitModel{}, tea.Quit
 		}
 	}
 	return m, nil
