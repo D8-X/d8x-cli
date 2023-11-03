@@ -26,7 +26,8 @@ FAQ supported platforms for details.
 
 ## Before You Start The CLI
 
-- The CLI is built for Linux. The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
+- The CLI is built for Linux and can also work on Mac (see FAQ).
+- The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
 - You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
 - The CLI gives you the choice of using a cloud-provider database or an external database.
 - With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
@@ -293,10 +294,11 @@ docker service update --image "ghcr.io/d8-x/d8x-trader-main:dev@sha256:aea8e56d6
 <details>
   <summary>Supported platforms</summary>
 
-D8X-CLI is tested and runs natively on Linux. MacOS might work, but you will
-need to manually install ansible and terraform on your system.
+D8X-CLI is tested and runs natively on Linux. The CLI also runs on MacOS. For MacOS you
+need to build the application on your own (pay attention at the Go version), and you
+need to manually install ansible and terraform.
 
-D8X-CLI is not tested on Windows and will most probably not work, we would
+D8X-CLI is not tested on Windows and will probably not work, we would
 recommend using WSL2 to run D8X-CLI on Windows.
 
 </details>
