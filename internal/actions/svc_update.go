@@ -22,24 +22,57 @@ type DokcerStackFileServices struct {
 }
 
 func (c *Container) ServiceUpdate(ctx *cli.Context) error {
-	styles.ItalicText.Render("Updating swarm services...")
+	styles.PrintCommandTitle("Updating swarm services...")
 
-	services, err := configs.GetDockerStackServicesMap(true)
+	// Swarm services
+	services, err := configs.GetSwarmDockerServices(true)
 	if err != nil {
 		return err
 	}
-
-	selection := []string{}
+	swarmSelection := []string{}
 	for svc := range services {
-		selection = append(selection, svc)
+		swarmSelection = append(swarmSelection, svc)
 	}
-	sort.Slice(selection, func(i, j int) bool {
-		return selection[i] < selection[j]
+	sort.Slice(swarmSelection, func(i, j int) bool {
+		return swarmSelection[i] < swarmSelection[j]
 	})
-	selectedServicesToUpdate, err := c.TUI.NewSelection(selection, components.SelectionOptRequireSelection())
+
+	// Broker-server services
+	brokerServices, err := configs.GetBrokerServerComposeServices(true)
 	if err != nil {
 		return err
 	}
+	brokerServerSelection := []string{}
+	for svc := range brokerServices {
+		brokerServerSelection = append(brokerServerSelection, svc)
+	}
+	sort.Slice(brokerServerSelection, func(i, j int) bool {
+		return brokerServerSelection[i] < brokerServerSelection[j]
+	})
+
+	fmt.Println("Select swarm services to update")
+	selectedSwarmServicesToUpdate, err := c.TUI.NewSelection(swarmSelection)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Select broker-server services to update")
+	selectedBrokerServicesToUpdate, err := c.TUI.NewSelection(brokerServerSelection)
+	if err != nil {
+		return err
+	}
+
+	if err := c.updateSwarmServices(selectedSwarmServicesToUpdate, services); err != nil {
+		return nil
+	}
+	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerServices); err != nil {
+		return nil
+	}
+
+	return nil
+}
+
+func (c *Container) updateSwarmServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -50,8 +83,9 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		return err
 	}
 
-	for _, svcToUpdate := range selectedServicesToUpdate {
+	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
 		fmt.Printf("Updating service %s\n", svcToUpdate)
+
 		img := services[svcToUpdate].Image
 		tags, err := getTags(img)
 		if err != nil {
@@ -91,6 +125,78 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 					fmt.Sprintf("Service %s updated successfully\n", svcToUpdate),
 				),
 			)
+		}
+	}
+
+	return nil
+}
+
+// updateBrokerServerServices performs broker-server services update on broker
+// server. Broker-server update involves  uploading the key to a new volume.
+func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+	// See broker.go for broker server setup
+	brokerDir := "./broker"
+
+	ipBroker, err := c.HostsCfg.GetBrokerPublicIp()
+	if err != nil {
+		return err
+	}
+	sshConn, err := conn.NewSSHConnection(ipBroker, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return err
+	}
+
+	// Ask for private key
+	fmt.Println("Enter your broker private key:")
+	pk, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
+	)
+	if err != nil {
+		return err
+	}
+	pkFull := "0x" + pk
+	fmt.Print(pkFull)
+
+	// Always remove keyfile.txt from broker dir
+
+	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
+		fmt.Printf("Updating service %s\n to latest version", svcToUpdate)
+
+		// For service broker - we need to recreate the volume with keyfile
+		if svcToUpdate == "broker" {
+			// Single command to do it all:
+			// Stop broker service
+			// Remove the keyfile volume
+			// Upload the private key to keyfile.txt
+			// Recreate the volume and
+			cmd := "cd %s && docker compose down --rmi all %s && docker volume rm %s" + brokerDir
+			cmd = fmt.Sprintf(cmd, brokerDir, svcToUpdate, BROKER_KEY_VOL_NAME)
+			out, err := sshConn.ExecCommand(cmd)
+			if err != nil {
+				fmt.Println(string(out))
+				return fmt.Errorf("preparing docker volume for keyfile: %w", err)
+			}
+			out, err = c.brokerServerKeyVolSetup(sshConn, pkFull)
+			if err != nil {
+				fmt.Println(string(out))
+				return fmt.Errorf("creating docker volume with keyfile: %w", err)
+			}
+		}
+
+		out, err := sshConn.ExecCommand(
+			fmt.Sprintf(
+				`cd %s && docker compose down --rmi all %[2]s && docker compose up %[2]s`,
+				brokerDir,
+				svcToUpdate,
+			),
+		)
+
+		if err != nil {
+			fmt.Println(string(out))
+			return err
+		} else {
+			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Broker-server service %s updated to latest version", svcToUpdate)))
 		}
 	}
 
