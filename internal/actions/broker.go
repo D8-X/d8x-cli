@@ -145,15 +145,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err
 	}
-	fmt.Println(styles.ItalicText.Render("Cleaning up..."))
-	cmd = "cd ./broker && rm ./keyfile.txt"
-	out, err = sshClient.ExecCommand(cmd)
-	if err != nil {
-		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server cleanup ^^^"))
-		return err
-	} else {
-		fmt.Println(styles.SuccessText.Render("broker-server deployed!"))
-	}
 
 	// Store broker server setup details except pk
 	cfg.BrokerServerConfig = &configs.D8XBrokerServerConfig{
@@ -335,7 +326,11 @@ func (c *Container) brokerServerKeyVolSetup(sshClient conn.SSHConnection, pk str
 	pk = "0x" + strings.TrimPrefix(pk, "0x")
 
 	cmd := fmt.Sprintf("cd ./broker && docker volume create %s", BROKER_KEY_VOL_NAME)
-	cmd = fmt.Sprintf("%s && echo '%s' > ./keyfile.txt", cmd, pk)
+	cmd = fmt.Sprintf("%s && echo -n '%s' > ./keyfile.txt", cmd, pk)
 	cmd = fmt.Sprintf("%s && docker run --rm -v $PWD:/source -v %s:/dest -w /source alpine cp ./keyfile.txt /dest", cmd, BROKER_KEY_VOL_NAME)
+
+	// Remove keyfile once volume is created
+	cmd = fmt.Sprintf("%s && rm ./keyfile.txt", cmd)
+
 	return sshClient.ExecCommand(cmd)
 }

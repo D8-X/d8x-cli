@@ -134,6 +134,11 @@ func (c *Container) updateSwarmServices(selectedSwarmServicesToUpdate []string, 
 // updateBrokerServerServices performs broker-server services update on broker
 // server. Broker-server update involves  uploading the key to a new volume.
 func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
 	// See broker.go for broker server setup
 	brokerDir := "./broker"
 
@@ -155,29 +160,61 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 	if err != nil {
 		return err
 	}
-	pkFull := "0x" + pk
-	fmt.Print(pkFull)
 
-	// Always remove keyfile.txt from broker dir
+	// Check if we have broker services configuration information and prompt
+	// user to enter it otherwise
+	redisPassword := ""
+	feeTBPS := ""
+	if cfg.BrokerServerConfig == nil {
+		fmt.Println(styles.ErrorText.Render("Broker server configuration not found"))
+		fmt.Println("Enter your broker redis password:")
+		pwd, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
+		)
+		if err != nil {
+			return err
+		}
+		redisPassword = pwd
+
+		fmt.Println("Enter your broker fee tbps value:")
+		fee, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("60"),
+		)
+		if err != nil {
+			return err
+		}
+		feeTBPS = fee
+
+		// Store these in the config
+		cfg.BrokerServerConfig = &configs.D8XBrokerServerConfig{
+			FeeTBPS:       feeTBPS,
+			RedisPassword: redisPassword,
+		}
+		if err := c.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
+	} else {
+		redisPassword = cfg.BrokerServerConfig.RedisPassword
+		feeTBPS = cfg.BrokerServerConfig.FeeTBPS
+	}
+
+	fmt.Printf("Using BROKER_FEE_TBPS=%s REDIS_PW=%s\n", feeTBPS, redisPassword)
 
 	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
-		fmt.Printf("Updating service %s\n to latest version", svcToUpdate)
+		fmt.Printf("Updating service %s to latest version\n", svcToUpdate)
 
 		// For service broker - we need to recreate the volume with keyfile
 		if svcToUpdate == "broker" {
-			// Single command to do it all:
 			// Stop broker service
 			// Remove the keyfile volume
-			// Upload the private key to keyfile.txt
-			// Recreate the volume and
-			cmd := "cd %s && docker compose down --rmi all %s && docker volume rm %s" + brokerDir
+			cmd := "cd %s && docker compose down --rmi all %s && docker volume rm %s"
 			cmd = fmt.Sprintf(cmd, brokerDir, svcToUpdate, BROKER_KEY_VOL_NAME)
 			out, err := sshConn.ExecCommand(cmd)
 			if err != nil {
 				fmt.Println(string(out))
 				return fmt.Errorf("preparing docker volume for keyfile: %w", err)
 			}
-			out, err = c.brokerServerKeyVolSetup(sshConn, pkFull)
+			out, err = c.brokerServerKeyVolSetup(sshConn, pk)
 			if err != nil {
 				fmt.Println(string(out))
 				return fmt.Errorf("creating docker volume with keyfile: %w", err)
@@ -186,9 +223,12 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 
 		out, err := sshConn.ExecCommand(
 			fmt.Sprintf(
-				`cd %s && docker compose down --rmi all %[2]s && docker compose up %[2]s`,
+				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up %[2]s -d`,
 				brokerDir,
 				svcToUpdate,
+
+				feeTBPS,
+				redisPassword,
 			),
 		)
 
