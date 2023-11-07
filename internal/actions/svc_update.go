@@ -62,7 +62,7 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		return err
 	}
 
-	if err := c.updateSwarmServices(selectedSwarmServicesToUpdate, services); err != nil {
+	if err := c.updateSwarmServices(ctx, selectedSwarmServicesToUpdate, services); err != nil {
 		return nil
 	}
 	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerServices); err != nil {
@@ -72,8 +72,12 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	return nil
 }
 
-func (c *Container) updateSwarmServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
 
+	password, err := c.GetPassword(ctx)
+	if err != nil {
+		return err
+	}
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return err
@@ -102,6 +106,35 @@ func (c *Container) updateSwarmServices(selectedSwarmServicesToUpdate []string, 
 		)
 		if err != nil {
 			return err
+		}
+
+		// For referral system - we need to update the referral executor private
+		// key, since the new version will have different encryption key and
+		// keyfile.txt will be reencrypted
+		// var oldKeyfile string = ""
+		if svcToUpdate == "referral" {
+
+			// Store old key just in case
+			_, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S cat /var/nfs/general/keyfile.txt`, password))
+			if err != nil {
+				return err
+			}
+
+			fmt.Println("Enter your referral payment executor private key:")
+			executorkey, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+				components.TextInputOptMasked(),
+			)
+			if err != nil {
+				return err
+			}
+			executorkey = "0x" + strings.TrimPrefix(executorkey, "0x")
+			// Write new keyfile
+			out, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S echo '%s' /var/nfs/general/keyfile.txt`, password, executorkey))
+			if err != nil {
+				fmt.Println(string(out))
+				return fmt.Errorf("updating executor private key file: %w", err)
+			}
 		}
 
 		// Append stack name for service
@@ -134,6 +167,10 @@ func (c *Container) updateSwarmServices(selectedSwarmServicesToUpdate []string, 
 // updateBrokerServerServices performs broker-server services update on broker
 // server. Broker-server update involves  uploading the key to a new volume.
 func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+	if len(selectedSwarmServicesToUpdate) == 0 {
+		return nil
+	}
+
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
