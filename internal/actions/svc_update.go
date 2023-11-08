@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -69,7 +70,8 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		return nil
 	}
 
-	return nil
+	// Run the healthchecks
+	return c.HealthCheck(ctx)
 }
 
 func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
@@ -114,6 +116,18 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		// var oldKeyfile string = ""
 		if svcToUpdate == "referral" {
 
+			// Remove existing referral service
+			fmt.Println("Scaling down referral service")
+			if out, err := sshConn.ExecCommand(
+				fmt.Sprintf("docker service scale %s_%s=0", dockerStackName, svcToUpdate),
+			); err != nil {
+				fmt.Println(string(out))
+				fmt.Println(styles.ErrorText.Render(
+					fmt.Sprintf("removing referral service: %v\n", err),
+				))
+				continue
+			}
+
 			// Store old key just in case
 			_, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S cat /var/nfs/general/keyfile.txt`, password))
 			if err != nil {
@@ -129,8 +143,9 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 				return err
 			}
 			executorkey = "0x" + strings.TrimPrefix(executorkey, "0x")
+
 			// Write new keyfile
-			out, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S echo '%s' /var/nfs/general/keyfile.txt`, password, executorkey))
+			out, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S bash -c "echo -n '%s' > /var/nfs/general/keyfile.txt"`, password, executorkey))
 			if err != nil {
 				fmt.Println(string(out))
 				return fmt.Errorf("updating executor private key file: %w", err)
@@ -142,23 +157,48 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 		fmt.Printf("Updating %s to %s\n", svcToUpdate, imgToUse)
 
-		out, err := sshConn.ExecCommand(
-			fmt.Sprintf(`docker service update --image %s %s`, imgToUse, svcStackName),
-		)
-		fmt.Println(string(out))
-		if err != nil {
-			fmt.Println(
-				styles.ErrorText.Render(
-					fmt.Sprintf("Could not update service %s: %s\n", svcToUpdate, err.Error()),
-				),
+		t := time.NewTimer(time.Minute * 2)
+		done := make(chan struct{})
+		go func() {
+			out, err := sshConn.ExecCommand(
+				fmt.Sprintf(`docker service update --image %s %s`, imgToUse, svcStackName),
 			)
-		} else {
-			fmt.Println(
-				styles.SuccessText.Render(
-					fmt.Sprintf("Service %s updated successfully\n", svcToUpdate),
-				),
-			)
+			fmt.Println(string(out))
+			if err != nil {
+				fmt.Println(
+					styles.ErrorText.Render(
+						fmt.Sprintf("Could not update service %s: %s\n", svcToUpdate, err.Error()),
+					),
+				)
+			} else {
+				fmt.Println(
+					styles.SuccessText.Render(
+						fmt.Sprintf("Service %s updated successfully\n", svcToUpdate),
+					),
+				)
+			}
+
+			// Scale back the referral service
+			if svcToUpdate == "referral" {
+				if out, err := sshConn.ExecCommand(
+					fmt.Sprintf("docker service scale %s_%s=1", dockerStackName, svcToUpdate),
+				); err != nil {
+					fmt.Println(string(out))
+					fmt.Println(styles.ErrorText.Render(
+						fmt.Sprintf("scaling referral service: %v\n", err),
+					))
+				}
+			}
+
+			done <- struct{}{}
+		}()
+
+		select {
+		case <-t.C:
+			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Service %s update timed out\n", svcToUpdate)))
+		case <-done:
 		}
+
 	}
 
 	return nil
