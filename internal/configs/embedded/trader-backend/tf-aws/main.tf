@@ -119,6 +119,12 @@ resource "aws_instance" "manager" {
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "manager")
   }
+
+
+  # Set 30 GB for worker nodes
+  root_block_device {
+    volume_size = 30
+  }
 }
 
 resource "aws_instance" "broker_server" {
@@ -148,6 +154,11 @@ resource "aws_instance" "nodes" {
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "worker-${count.index + 1}")
+  }
+
+  # Set 25 GB for worker nodes
+  root_block_device {
+    volume_size = 25
   }
 }
 
