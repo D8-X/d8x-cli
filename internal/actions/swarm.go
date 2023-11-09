@@ -131,6 +131,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 		// Docker swarm file
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
+		// Prometheus config
+		{Src: "embedded/prometheus.yml", Dst: "./prometheus.yml", Overwrite: true},
 	}
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
@@ -304,6 +306,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
 		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
+
+		`docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
@@ -319,6 +323,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
+		// Prometheus config
+		{Src: "./prometheus.yml", Dst: "./prometheus.yml"},
 	}
 
 	// Copy files to remote

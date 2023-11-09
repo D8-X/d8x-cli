@@ -148,6 +148,33 @@ services:
       - cfg_prices
     deploy:
       replicas: 1
+  prometheus:
+    image: prom/prometheus:v2.47.2
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - "node.hostname==manager"
+    ports:
+      - 9090:9090
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    deploy:
+      mode: global
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
+    volumes:
+      - /var/lib/docker:/var/lib/docker:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run
+      - /sys:/sys:ro
 
 networks:
   d8x_backend:
@@ -165,6 +192,8 @@ volumes:
   nfsvol:
     external: true
 configs:
+  prometheus_config:
+    external: true
   cfg_rpc:
     external: true
   cfg_rpc_referral:
