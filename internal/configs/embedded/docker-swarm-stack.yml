@@ -154,7 +154,7 @@ services:
       replicas: 1
       placement:
         constraints:
-          - "node.hostname==manager"
+          - "node.hostname==manager-1"
     ports:
       - 9090:9090
     configs:
@@ -175,6 +175,7 @@ services:
       - /:/rootfs:ro
       - /var/run:/var/run
       - /sys:/sys:ro
+      - /dev/disk/:/dev/disk:ro
 
 networks:
   d8x_backend:
