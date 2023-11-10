@@ -148,21 +148,22 @@ services:
       - cfg_prices
     deploy:
       replicas: 1
-  prometheus:
-    image: prom/prometheus:v2.47.2
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - "node.hostname==manager-1"
-    ports:
-      - 9090:9090
-    configs:
-      - source: prometheus_config
-        target: /etc/prometheus/prometheus.yml
+  # prometheus:
+  #   image: prom/prometheus:v2.47.2
+  #   deploy:
+  #     replicas: 1
+  #     placement:
+  #       constraints:
+  #         - "node.hostname==worker-04"
+  #   ports:
+  #     - 9090:9090
+  #   configs:
+  #     - source: prometheus_config
+  #       target: /etc/prometheus/prometheus.yml
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.2
+    hostname: "{{ .Node.Hostname }}"
     deploy:
       mode: global
     ports:
@@ -176,6 +177,14 @@ services:
       - /var/run:/var/run
       - /sys:/sys:ro
       - /dev/disk/:/dev/disk:ro
+  # grafana:
+  #  image: grafana/grafana
+  #  ports:
+  #     - 0.0.0.0:80:3000
+  #  volumes:
+  #     - grafana:/var/lib/grafana
+  #  deploy:
+  #      replicas: 1
 
 networks:
   d8x_backend:

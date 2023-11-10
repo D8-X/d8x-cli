@@ -248,6 +248,11 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
+	// Create prometheus instance on manager
+	if err := c.deployPrometheus(managerSSHConn); err != nil {
+		fmt.Printf(styles.ErrorText.Render("Error deploying prometheus: %s\n"), err)
+	}
+
 	// Stack might exist, prompt user to remove it
 	if _, err := managerSSHConn.ExecCommand(
 		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
@@ -298,6 +303,13 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("temp storage of /etc/exports file failed: %w", err)
 	}
 
+	managedConfigNames := []string{
+		"cfg_rpc",
+		"cfg_rpc_referral",
+		"cfg_rpc_history",
+		"cfg_referral",
+		"cfg_prices",
+	}
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
@@ -307,7 +319,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
 		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
 
-		`docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
+		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
@@ -323,8 +335,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
-		// Prometheus config
-		{Src: "./prometheus.yml", Dst: "./prometheus.yml"},
 	}
 
 	// Copy files to remote
@@ -386,7 +396,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Recreate configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err := managerSSHConn.ExecCommand(
-		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
+		"echo -e '" + strings.Join(managedConfigNames, "\n") + `' | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
 	)
 	fmt.Println(string(out))
 	if err != nil {
@@ -646,4 +656,51 @@ var hostsTpl = []hostnameTuple{
 		find:        "%candles_ws%",
 		serviceName: configs.D8XServiceCandlesWs,
 	},
+}
+
+// deployPrometheus copies prometheus config and redeploys prometheus service.
+// Prometheus deployment is separated from main swarm deployment because we want
+// to run it on manager, and it is set to drainer availability by default (in
+// ansible setup)
+func (c *Container) deployPrometheus(manager conn.SSHConnection) error {
+	fmt.Println("Deploying prometheus on manager...")
+
+	if err := manager.CopyFilesOverSftp(
+		conn.SftpCopySrcDest{Src: "./prometheus.yml", Dst: "./prometheus.yml"},
+	); err != nil {
+		return fmt.Errorf("copying prometheus config to manager: %w", err)
+	}
+
+	// Toggle manager availability for this deployment
+	if out, err := manager.ExecCommand("docker node update --availability active manager-1"); err != nil {
+		fmt.Println(string(out))
+		return fmt.Errorf("setting manager-1 availability to active: %w", err)
+	}
+	defer func() {
+		if out, err := manager.ExecCommand("docker node update --availability pause manager-1"); err != nil {
+			fmt.Println(string(out))
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("setting manager-1 availability to active: %s", err.Error()),
+				),
+			)
+		}
+	}()
+
+	// Re-Create prometheus_config and recreate the service
+	cmd := `docker service rm prometheus; docker config rm prometheus_config; docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1; docker service create --name prometheus --constraint 'node.hostname==manager-1' --mount type=bind,src='/var/run/docker.sock,dst=/var/run/docker.sock' --config 'source=prometheus_config,target=/etc/prometheus/prometheus.yml' --publish 9090:9090 prom/prometheus:v2.47.2`
+	// And grafana
+	// cmd += ";docker service rm grafana; docker service create --name grafana --publish 8080:8080 grafana/grafana"
+	if out, err := manager.ExecCommand(cmd); err != nil {
+		fmt.Println(string(out))
+		fmt.Println(
+			styles.ErrorText.Render(
+				fmt.Sprintf("setting manager-1 availability to active: %s", err.Error()),
+			),
+		)
+	} else {
+		fmt.Println("Prometheus service deployed")
+	}
+
+	return nil
 }
