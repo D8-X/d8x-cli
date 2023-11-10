@@ -29,10 +29,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	// Temp file path to store private key locally during the broker server
-	// deployment
-	// var tmpPKFile = "./broker-server/keyfile.txt"
-
 	// Dest filenames for copying from embed. TODO - centralize this via flags
 	var (
 		chainConfig   = "./broker-server/chainConfig.json"
@@ -101,12 +97,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	bsd.brokerFeeTBPS = tbps
 
-	// Temporarily store private key  in a file
-	// if err := c.FS.WriteFile(tmpPKFile, []byte(pk)); err != nil {
-	// 	return fmt.Errorf("temp storage of keyfile failed: %w", err)
-	// }
-	// defer os.Remove(tmpPKFile)
-
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
 	sshClient, err := c.CreateSSHConn(
@@ -121,7 +111,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
 		conn.SftpCopySrcDest{Src: rpcConfig, Dst: "./broker/rpc.json"},
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
-		// conn.SftpCopySrcDest{Src: tmpPKFile, Dst: "./broker/keyfile.txt"},
 	); err != nil {
 		return err
 	}
