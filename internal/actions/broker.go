@@ -2,7 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -17,15 +16,18 @@ import (
 
 const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
+const BROKER_KEY_VOL_NAME = "keyvol"
+
 // BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
-	// Temp file path to store private key locally during the broker server
-	// deployment
-	var tmpPKFile = "./broker-server/keyfile.txt"
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
 
 	// Dest filenames for copying from embed. TODO - centralize this via flags
 	var (
@@ -84,8 +86,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	pk = strings.TrimPrefix(pk, "0x")
-	bsd.brokerKey = pk
 
 	fmt.Println("Enter your broker fee tbps value:")
 	tbps, err := c.TUI.NewInput(
@@ -96,12 +96,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 	bsd.brokerFeeTBPS = tbps
-
-	// Temporarily store private key  in a file
-	if err := c.FS.WriteFile(tmpPKFile, []byte("0x"+pk)); err != nil {
-		return fmt.Errorf("temp storage of keyfile failed: %w", err)
-	}
-	defer os.Remove(tmpPKFile)
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
@@ -117,22 +111,22 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
 		conn.SftpCopySrcDest{Src: rpcConfig, Dst: "./broker/rpc.json"},
 		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
-		conn.SftpCopySrcDest{Src: tmpPKFile, Dst: "./broker/keyfile.txt"},
 	); err != nil {
 		return err
 	}
 
-	// Exec broker-server deployment cmd
+	// Prepare the volume with unencrypted keyfile for storing private key which
+	// will be encrypted on broker-server startup
 	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-	cmd := "cd ./broker && docker volume create broker_mydata "
-	cmd = cmd + "&& docker run --rm -v $PWD:/source -v broker_mydata:/dest -w /source alpine cp ./keyfile.txt /dest"
-	out, err := sshClient.ExecCommand(cmd)
+	out, err := c.brokerServerKeyVolSetup(sshClient, pk)
 	if err != nil {
-		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
+		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server volume deployment ^^^"))
 		return err
 	}
+
+	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd = "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
+	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
 	out, err = sshClient.ExecCommand(
 		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw),
 	)
@@ -140,14 +134,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err
 	}
-	fmt.Println(styles.ItalicText.Render("Cleaning up..."))
-	cmd = "cd ./broker && rm ./keyfile.txt"
-	out, err = sshClient.ExecCommand(cmd)
-	if err != nil {
-		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server cleanup ^^^"))
+
+	// Store broker server setup details except pk
+	cfg.BrokerServerConfig = &configs.D8XBrokerServerConfig{
+		FeeTBPS:       bsd.brokerFeeTBPS,
+		RedisPassword: redisPw,
+	}
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return err
-	} else {
-		fmt.Println(styles.SuccessText.Render("broker-server deployed!"))
 	}
 
 	return nil
@@ -307,8 +301,25 @@ func (c *Container) certbotNginxSetup(sshConn conn.SSHConnection, userSudoPasswo
 }
 
 type brokerServerDeployment struct {
-	brokerKey     string
 	brokerFeeTBPS string
 
 	brokerServerIpAddr string
+}
+
+// brokerServerKeyVolSetup creates a ./broker/keyfile.txt file with private key
+// on server and sets up a docker volume with the keyfile.txt file. This
+// BROKER_KEY_VOL_NAME is later attached to broker service and encrypted on
+// startup.
+func (c *Container) brokerServerKeyVolSetup(sshClient conn.SSHConnection, pk string) ([]byte, error) {
+	// Prepend 0x prefix for pk
+	pk = "0x" + strings.TrimPrefix(pk, "0x")
+
+	cmd := fmt.Sprintf("cd ./broker && docker volume create %s", BROKER_KEY_VOL_NAME)
+	cmd = fmt.Sprintf("%s && echo -n '%s' > ./keyfile.txt", cmd, pk)
+	cmd = fmt.Sprintf("%s && docker run --rm -v $PWD:/source -v %s:/dest -w /source alpine cp ./keyfile.txt /dest", cmd, BROKER_KEY_VOL_NAME)
+
+	// Remove keyfile once volume is created
+	cmd = fmt.Sprintf("%s && rm ./keyfile.txt", cmd)
+
+	return sshClient.ExecCommand(cmd)
 }

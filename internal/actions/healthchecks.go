@@ -21,6 +21,8 @@ import (
 const MaxRequestWaitTime = time.Second * 60
 
 func (c *Container) HealthCheck(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Performing health checks...")
+
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err

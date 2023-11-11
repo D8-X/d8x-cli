@@ -151,6 +151,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "./trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json"},
 		{Src: "./trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json"},
 		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
+		// Keyfile contains unencrypted private key
 		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
 		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
 		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
