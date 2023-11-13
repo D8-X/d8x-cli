@@ -133,7 +133,10 @@ func (conn *sshConnection) ExecCommandPiped(cmd string) error {
 
 	go func() {
 		for {
-			io.Copy(os.Stdout, out)
+			n, err := io.Copy(os.Stdout, out)
+			if err != nil || n == 0 {
+				return
+			}
 		}
 	}()
 
