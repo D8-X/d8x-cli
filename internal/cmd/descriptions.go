@@ -89,3 +89,5 @@ backup any data if needed.
 const SwarmNginxDescription = `Command swarm-nginx performs nginx + certbot setup for d8x trader backend docker swarm deployment on manager node.`
 
 const ConfigureDescription = `Command configure performs configuration of provisioned resources with ansible.`
+
+const DeployMetricsDescription = `Command metrics-deploy configures and deploys prometheus and grafana instances on manager node. `

@@ -110,6 +110,11 @@ func (conn *sshConnection) ExecCommand(cmd string) ([]byte, error) {
 
 // SSHExecCommandPiped connects stdin/out/err
 func (conn *sshConnection) ExecCommandPiped(cmd string) error {
+	// Print out the cmd for debugging
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		fmt.Printf("[CMD]: %s\n", cmd)
+	}
+
 	s, err := conn.c.NewSession()
 	if err != nil {
 		return err

@@ -1,0 +1,39 @@
+services:
+  prometheus: 
+    image: prom/prometheus:v2.47.2
+    ports:
+      - 4001:9090
+    deploy:
+      placement:
+        constraints:
+          - "node.hostname==manager-1"
+    configs:  
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus_data_vol:/prometheus
+    networks:
+      - metrics_net
+  grafana: 
+    image: grafana/grafana
+    ports:
+      - 4002:3000
+    deploy:
+      placement:
+        constraints:
+          - "node.hostname==manager-1"
+    volumes:  
+      - ./grafana/datasource-prometheus.yml:/etc/grafana/provisioning/datasources/prometheus.yml
+      # - ./grafana/:/etc/grafana/provisioning/prometheus.yml
+
+    networks:
+      - metrics_net
+configs:
+  prometheus_config:
+    external: true
+volumes:  
+  prometheus_data_vol:  
+    external: true
+networks:
+  metrics_net:
+    driver: overlay

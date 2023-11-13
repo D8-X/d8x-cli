@@ -131,8 +131,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 		// Docker swarm file
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
-		// Prometheus config
-		{Src: "embedded/prometheus.yml", Dst: "./prometheus.yml", Overwrite: true},
 	}
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
@@ -248,11 +246,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	// Create prometheus instance on manager
-	if err := c.deployPrometheus(managerSSHConn); err != nil {
-		fmt.Printf(styles.ErrorText.Render("Error deploying prometheus: %s\n"), err)
-	}
-
 	// Stack might exist, prompt user to remove it
 	if _, err := managerSSHConn.ExecCommand(
 		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
@@ -264,7 +257,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		if ok {
 			fmt.Println(styles.ItalicText.Render("Removing existing stack..."))
 			out, err := managerSSHConn.ExecCommand(
-				fmt.Sprintf(`echo "%s"| sudo -S docker stack rm %s`, pwd, dockerStackName),
+				fmt.Sprintf(`docker stack rm %s`, dockerStackName),
 			)
 			fmt.Println(string(out))
 			if err != nil {

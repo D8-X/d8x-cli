@@ -99,6 +99,12 @@ func RunD8XCli() {
 						Action:      container.SwarmNginx,
 						Description: SwarmNginxDescription,
 					},
+					{
+						Name:        "metrics-deploy",
+						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
+						Action:      container.DeployMetrics,
+						Description: DeployMetricsDescription,
+					},
 				},
 			},
 			{

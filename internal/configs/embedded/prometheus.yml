@@ -3,9 +3,10 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
     - targets: ['localhost:9090']
-  - job_name: 'swarm-service'
-    dns_sd_configs:
-      - names:
-          - 'tasks.cadvisor'
-        type: 'SRV'
-        port: 8080
+  - job_name: 'swarm-nodes-cadvisor'
+    static_configs:
+      - targets:
+        - '10.0.1.31:8080'
+        - '10.0.1.245:8080'
+        - '10.0.1.39:8080'
+        - '10.0.1.26:8080'
