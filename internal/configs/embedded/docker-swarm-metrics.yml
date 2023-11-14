@@ -23,9 +23,14 @@ services:
         constraints:
           - "node.hostname==manager-1"
     volumes:  
+      # Default prometheus service data source
       - ./grafana/datasource-prometheus.yml:/etc/grafana/provisioning/datasources/prometheus.yml
-      # - ./grafana/:/etc/grafana/provisioning/prometheus.yml
-
+      # Dashboards config
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+      # Default dashboard
+      - ./grafana/chart.json:/var/lib/grafana/dashboards/chart.json
+      # Persistence for grafana
+      - 'grafana_data:/var/lib/grafana'
     networks:
       - metrics_net
 configs:
@@ -34,6 +39,7 @@ configs:
 volumes:  
   prometheus_data_vol:  
     external: true
+  grafana_data:
 networks:
   metrics_net:
     driver: overlay

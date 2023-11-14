@@ -9,3 +9,5 @@ datasources:
     isDefault: true
     version: 1
     editable: true
+    # Make sure this matches uid's in charts
+    uid: PBFA97CFB590B2093

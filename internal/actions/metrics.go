@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -9,6 +10,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
+	"gopkg.in/yaml.v2"
 )
 
 // Stack name for metrics services deployed on manager
@@ -42,10 +44,27 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		{Src: "embedded/prometheus.yml", Dst: "./prometheus.yml", Overwrite: true},
 
 		// All things grafana
-		{Src: "embedded/grafana/datasource-prometheus.yml", Dst: "./grafana/datasource-prometheus.yml", Overwrite: true},
+		{Src: "embedded/grafana", Dst: "./grafana", Overwrite: true, Dir: true},
 	}
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
+	}
+
+	// Configure the ip addresses of prometheus targets
+	workerIPs, err := c.HostsCfg.GetWorkerPrivateIps()
+	if err != nil {
+		return err
+	}
+	prometheusYaml, err := os.ReadFile("./prometheus.yml")
+	if err != nil {
+		return err
+	}
+	if prometheusWithTargets, err := c.processPrometheusYaml(prometheusYaml, workerIPs); err != nil {
+		return err
+	} else {
+		if err := os.WriteFile("./prometheus.yml", prometheusWithTargets, 0666); err != nil {
+			return err
+		}
 	}
 
 	if err := manager.CopyFilesOverSftp(
@@ -53,6 +72,8 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		conn.SftpCopySrcDest{Src: "./docker-swarm-metrics.yml", Dst: "./docker-swarm-metrics.yml"},
 
 		conn.SftpCopySrcDest{Src: "./grafana/datasource-prometheus.yml", Dst: "./grafana/datasource-prometheus.yml"},
+		conn.SftpCopySrcDest{Src: "./grafana/chart.json", Dst: "./grafana/chart.json"},
+		conn.SftpCopySrcDest{Src: "./grafana/dashboards.yml", Dst: "./grafana/dashboards.yml"},
 	); err != nil {
 		return fmt.Errorf("copying prometheus config to manager: %w", err)
 	}
@@ -97,4 +118,23 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []string) ([]byte, error) {
+	CADVISOR_PORT := "8080"
+
+	mp := map[any]any{}
+	if err := yaml.Unmarshal(promYamlContents, &mp); err != nil {
+		return nil, err
+	}
+
+	// We want to edit targets and remarshall the yaml
+	targets := make([]string, len(workers))
+	for i, w := range workers {
+		targets[i] = w + ":" + CADVISOR_PORT
+	}
+	// This is horrible, but it works if we don't change our default prometheus config
+	mp["scrape_configs"].([]any)[0].(map[any]any)["static_configs"].([]any)[0].(map[any]any)["targets"] = targets
+
+	return yaml.Marshal(mp)
 }

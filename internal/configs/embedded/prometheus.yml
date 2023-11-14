@@ -1,12 +1,10 @@
 scrape_configs:
+  # Always make sure swarm-nodes-cadvisor job is first as we manually set up the
+  # targets in metrics.go
+  - job_name: 'swarm-nodes-cadvisor'
+    static_configs:
+      - targets:
   # Make Prometheus scrape itself for metrics.
   - job_name: 'prometheus'
     static_configs:
     - targets: ['localhost:9090']
-  - job_name: 'swarm-nodes-cadvisor'
-    static_configs:
-      - targets:
-        - '10.0.1.31:8080'
-        - '10.0.1.245:8080'
-        - '10.0.1.39:8080'
-        - '10.0.1.26:8080'

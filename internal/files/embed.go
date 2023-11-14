@@ -2,8 +2,10 @@ package files
 
 import (
 	"embed"
+	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 )
 
@@ -16,6 +18,8 @@ type EmbedCopierOp struct {
 	Dst string
 	// Overwrite determines whether existing file should be overwritten
 	Overwrite bool
+	// Whether the src and dst is a directory and should copy all contents
+	Dir bool
 }
 
 // EmbedFileCopier handles copying of embed files to local fs
@@ -26,7 +30,8 @@ type EmbedFileCopier interface {
 	// contains a nested dir which is not available - it will be created too.
 	CopyMultiToDest(fs embed.FS, destPath string, embedPaths ...string) error
 
-	// Copy simply performs copy operations
+	// Copy simply performs copy operations. If Any of given operations include
+	// Dir=true, all files from given operation's  Src will be copied to Dst
 	Copy(fs embed.FS, operations ...EmbedCopierOp) error
 }
 
@@ -53,24 +58,50 @@ func (e *embedFileCopier) CopyMultiToDest(efs embed.FS, destPath string, embedPa
 }
 
 func (e *embedFileCopier) Copy(fs embed.FS, operations ...EmbedCopierOp) error {
-	for _, op := range operations {
-		if !op.Overwrite {
-			if _, err := os.Stat(op.Dst); err == nil {
+	copyFunc := func(src, dst string, overWrite bool, fs embed.FS) error {
+		if !overWrite {
+			if _, err := os.Stat(dst); err == nil {
 				// File exists, skip
-				continue
+				return nil
 			}
 		}
 
-		if err := e.ensureNestedDirsPresent(op.Dst); err != nil {
+		if err := e.ensureNestedDirsPresent(dst); err != nil {
 			return err
 		}
 
-		outFile, err := os.OpenFile(op.Dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+		outFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 		if err != nil {
 			return err
 		}
-		if err := copyEmbedFilesToDest(outFile, fs, op.Src); err != nil {
+		if err := copyEmbedFilesToDest(outFile, fs, src); err != nil {
 			return err
+		}
+		return nil
+	}
+
+	for _, op := range operations {
+		if op.Dir {
+			entries, err := fs.ReadDir(op.Src)
+			if err != nil {
+				return fmt.Errorf("reading embedded fs: %w", err)
+			}
+
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				src := path.Join(op.Src, entry.Name())
+				dst := path.Join(op.Dst, entry.Name())
+				if err := copyFunc(src, dst, op.Overwrite, fs); err != nil {
+					return err
+				}
+			}
+
+		} else {
+			if err := copyFunc(op.Src, op.Dst, op.Overwrite, fs); err != nil {
+				return err
+			}
 		}
 	}
 
