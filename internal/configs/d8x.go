@@ -33,6 +33,8 @@ type D8XConfig struct {
 
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
+
+	BrokerServerConfig *D8XBrokerServerConfig `json:"broker_server_config"`
 }
 
 func (d *D8XConfig) IsEmpty() bool {
@@ -86,6 +88,11 @@ type D8XService struct {
 	UsesHTTPS bool `json:"https"`
 	// User specified domain name
 	HostName string `json:"hostname"`
+}
+
+type D8XBrokerServerConfig struct {
+	FeeTBPS       string `json:"fee_tbps"`
+	RedisPassword string `json:"redis_password"`
 }
 
 func NewD8XConfig() *D8XConfig {

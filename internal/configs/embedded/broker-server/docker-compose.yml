@@ -28,7 +28,7 @@ services:
       - chain_config
       - rpc_config
     volumes:
-      - mydata:/keyfile
+      - keyvol:/keyfile
 
   executorws:
     image: ghcr.io/d8-x/d8x-broker-exec-ws:main
@@ -81,4 +81,5 @@ configs:
     file: ./rpc.json
 
 volumes:
-  mydata:
+  keyvol:
+    external: true

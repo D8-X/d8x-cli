@@ -91,6 +91,7 @@ Lines preceeded with `#` in this file, serve as comments.
   # Main postgres database dsn string
   DATABASE_DSN="postgresql://linpostgres:wwiadrqFFo-ybqLJ4AdZw@lin-31888-14129-pgsql-primary-private.servers.linodedb.net:5432/history"
   ```
+  On AWS, replace the database name with 'postgres', unless you manually added a database that you would like to use.
   Use the private host address (to do so deploy the database in the same region as the other servers).
 - Remote Broker address. Set the URL that you choose to deploy the broker-server to, for example:
   ```

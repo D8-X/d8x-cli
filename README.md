@@ -6,6 +6,15 @@ other d8x broker services.
 Setup includes provisioning resources on supported cloud providers, configuring
 servers, deploying swarm cluster and individual services.
 
+
+
+## Using A Release
+
+When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
+extract the d8x binary and place it in your `PATH`.
+
+To run D8X-CLI on MacOS you will need to build it from source.
+
 ## Building From Source
 
 ```bash
@@ -14,30 +23,22 @@ sudo mv d8x /usr/bin/d8x
 ```
 
 Check out the `d8x help` command.
-
-## Using A Release
-
-Head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
-extract the d8x binary and place it in your `PATH`.
-
-Note that binary releases are provided only for Linux. To run D8X-CLI on other
-platforms you will need to [build it from source](#building-from-source). See
-FAQ supported platforms for details.
-
 ## Before You Start The CLI
 
-- The CLI is built for Linux and can also work on Mac (see FAQ).
-- The CLI allows to deploy on Linode and AWS. Linode is thoroughly tested, AWS less so.
+- The CLI is built for Linux and can also work on MacOS (see also FAQ). For MacOS you
+need to build this Go-CLI application on your own (pay attention at the Go version), and you
+need to manually install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pipx-install) and [terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
+- The CLI allows to deploy on Linode and AWS.
 - You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
-- The CLI gives you the choice of using a cloud-provider database or an external database.
-- With Linode, or when using an externally managed Postgres database, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
-  - Have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
+- With Linode, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
+  - The CLI will give you the choice of using a database from the cloud-provider of your choice, or a Linode database.   
+  - When using a Linode database cluster, have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
 - Have a broker key/address and a broker executor key/address ready. The broker address is the address of the Whitelabelling partner that is paid trader fees (that are then redistributed according to the [referral system](https://github.com/D8-X/referral-system)). The executor executes referral
 payments. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
-  - Fund the executor wallet with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
+  - Fund the executor and broker wallets with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
 - Decide on the broker fee. The broker fee is paid from the trader to the broker and potentially to referrers. The broker fee is relative to the notional position size. The broker fee is entered in tenth of a basis point ("tbps"),
   that is, the percentage multiplied by 1000, so that `0.06% = 6 bps = 60 tbps` or `0.10% = 10 bps = 100 tbps`
-- Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM
+- Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM. Feel free to contact us for recommendations.
 - You need to be able to access your Domain Name Service provider so you can create DNS records
   Typically a config entry looks something like this:
 
@@ -54,13 +55,22 @@ payments. The address belonging to the executor will need to be entered as 'allo
   	* ws.dev.yourdomain.com: main WebSocket points to “Swarm manager”
   	* history.dev.yourdomain.com: historical data REST API points to “Swarm manager”
   	* referral.dev.yourdomain.com: referral code REST API points to “Swarm manager”
-    	* candles.dev.yourdomain.com: The Candle Server websocket points to “Swarm manager”
-    	* broker.dev.yourdomain.com: The broker server has its own IP
+    * candles.dev.yourdomain.com: The Candle Server websocket points to “Swarm manager”
+    * broker.dev.yourdomain.com: The broker server has its own IP
 
   Both IP addresses, for the manager and broker server, will be shown to you during the setup.
   </details>
 
-- Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service -- more details on configs will follow, this is a heads-up)
+- Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). Feel free to contact us for recommendations.
+The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service -- more details on configs will follow, this is a heads-up)
+
+## Setup Procedure
+
+In most cases you can just run the setup
+```bash
+d8x setup
+```
+and edit the configuration files when prompted by the CLI. 
 
 ## Configuration Files
 
@@ -69,6 +79,9 @@ find out how to configure the system in the
 [README](README_CONFIG.md).
 
 ## Usage Of The D8X CLI Tool
+
+Here are more details and options on the CLI tool. As noted above, running `d8x setup` is the only
+command you need for the initial setup.
 
 ### Setup
 
