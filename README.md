@@ -387,3 +387,21 @@ D8X-CLI is not tested on Windows and will probably not work, we would
 recommend using WSL2 to run D8X-CLI on Windows.
 
 </details>
+
+
+# Metrics
+
+Metrics is advanced feature and is not required to run the trader backend.
+However, we do recommend to deploy metrics stack in order to be able to monitor
+resource usage of deployed services.
+
+Metrics stack will be deployed automatically when running `d8x setup` command.
+Or you can manually deploy metrics via `d8x setup metrics-deploy` command.
+
+## Ports
+
+Grafana and Prometheus are deployed on manager node. 
+
+- Prometheus is deployed on port `4001`
+- Grafana is deployed on port `4002`
+

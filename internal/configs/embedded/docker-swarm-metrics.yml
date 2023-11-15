@@ -43,3 +43,6 @@ volumes:
 networks:
   metrics_net:
     driver: overlay
+    ipam:
+      config:
+        - subnet: 172.16.4.0/24

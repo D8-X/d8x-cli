@@ -64,9 +64,15 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
-	// Deploy metrics stack
-	if err := c.DeployMetrics(ctx); err != nil {
+	// Deploy metrics stack if user wants to
+	deployMetrics, err := c.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
+	if err != nil {
 		return err
+	}
+	if deployMetrics {
+		if err := c.DeployMetrics(ctx); err != nil {
+			return err
+		}
 	}
 
 	if c.Input.setup.deployBroker {
