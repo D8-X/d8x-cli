@@ -179,6 +179,9 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
+		fmt.Println(
+			styles.ErrorText.Render("Broker server ip address was not found. Did you provision broker server?"),
+		)
 		return err
 	}
 
