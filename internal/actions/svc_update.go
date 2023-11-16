@@ -168,7 +168,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 			err := sshConn.ExecCommandPiped(
 				fmt.Sprintf(`docker service update --image %s %s`, imgToUse, svcStackName),
 			)
-			// fmt.Println(string(out))
 			if err != nil {
 				fmt.Println(
 					styles.ErrorText.Render(
