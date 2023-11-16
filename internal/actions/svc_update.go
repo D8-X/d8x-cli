@@ -302,7 +302,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 			}
 		}
 
-		out, err := sshConn.ExecCommand(
+		if err := sshConn.ExecCommandPiped(
 			fmt.Sprintf(
 				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up %[2]s -d`,
 				brokerDir,
@@ -311,10 +311,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 				feeTBPS,
 				redisPassword,
 			),
-		)
-
-		if err != nil {
-			fmt.Println(string(out))
+		); err != nil {
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Broker-server service %s updated to latest version", svcToUpdate)))
