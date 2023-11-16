@@ -93,6 +93,7 @@ func LoadHostsFileFromFS(file string) (*HostsFile, error) {
 	return &HostsFile{
 		lines:    lines,
 		numLines: len(lines),
+		fileName: file,
 	}, nil
 }
 
@@ -100,6 +101,7 @@ func LoadHostsFileFromFS(file string) (*HostsFile, error) {
 type HostsFile struct {
 	lines    []string
 	numLines int
+	fileName string
 }
 
 // GetBrokerPublicIp gets the first broker server entry from hosts.cfg and
@@ -154,7 +156,7 @@ func (h *HostsFile) FindFirstIp(of string) (string, error) {
 			}
 		}
 	}
-	return "", nil
+	return "", fmt.Errorf("could not find line %s in hosts.cfg file", of)
 }
 
 // FindPrivateIps returns the private ips of either nodeType=manager

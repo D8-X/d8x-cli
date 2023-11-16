@@ -29,6 +29,18 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
+	bsd := brokerServerDeployment{}
+
+	// Check for broker ip address
+	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
+	if err != nil {
+		fmt.Println(
+			styles.ErrorText.Render("Broker server ip address was not found. Did you provision broker server?"),
+		)
+		return err
+	}
+	bsd.brokerServerIpAddr = brokerIpAddr
+
 	// Dest filenames for copying from embed. TODO - centralize this via flags
 	var (
 		chainConfig   = "./broker-server/chainConfig.json"
@@ -68,14 +80,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	fmt.Println(
 		styles.SuccessText.Render("REDIS Password for broker-server was stored in " + BROKER_SERVER_REDIS_PWD_FILE + " file"),
 	)
-
-	bsd := brokerServerDeployment{}
-
-	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
-	if err != nil {
-		return err
-	}
-	bsd.brokerServerIpAddr = brokerIpAddr
 
 	// Collect required information
 	fmt.Println("Enter your broker private key:")
@@ -175,6 +179,9 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
+		fmt.Println(
+			styles.ErrorText.Render("Broker server ip address was not found. Did you provision broker server?"),
+		)
 		return err
 	}
 
