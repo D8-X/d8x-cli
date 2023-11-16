@@ -99,9 +99,15 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 			continue
 		}
 
-		fmt.Printf("Available tags: %s\n", strings.Join(tags, ", "))
+		fmt.Printf("Available tags: %s\n\n", strings.Join(tags, ", "))
 
-		fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to:\n")
+		fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
+		info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
+		fmt.Println(styles.GrayText.Render(info))
+		info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
+		fmt.Println(styles.GrayText.Render(info))
+
+		fmt.Println("Enter image to update to:")
 		imgToUse, err := c.TUI.NewInput(
 			components.TextInputOptValue(img),
 			components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
@@ -118,10 +124,9 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 			// Remove existing referral service
 			fmt.Println("Scaling down referral service")
-			if out, err := sshConn.ExecCommand(
+			if err := sshConn.ExecCommandPiped(
 				fmt.Sprintf("docker service scale %s_%s=0", dockerStackName, svcToUpdate),
 			); err != nil {
-				fmt.Println(string(out))
 				fmt.Println(styles.ErrorText.Render(
 					fmt.Sprintf("removing referral service: %v\n", err),
 				))
@@ -160,10 +165,9 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		t := time.NewTimer(time.Minute * 2)
 		done := make(chan struct{})
 		go func() {
-			out, err := sshConn.ExecCommand(
+			err := sshConn.ExecCommandPiped(
 				fmt.Sprintf(`docker service update --image %s %s`, imgToUse, svcStackName),
 			)
-			fmt.Println(string(out))
 			if err != nil {
 				fmt.Println(
 					styles.ErrorText.Render(
@@ -180,10 +184,9 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 			// Scale back the referral service
 			if svcToUpdate == "referral" {
-				if out, err := sshConn.ExecCommand(
+				if err := sshConn.ExecCommandPiped(
 					fmt.Sprintf("docker service scale %s_%s=1", dockerStackName, svcToUpdate),
 				); err != nil {
-					fmt.Println(string(out))
 					fmt.Println(styles.ErrorText.Render(
 						fmt.Sprintf("scaling referral service: %v\n", err),
 					))
@@ -298,7 +301,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 			}
 		}
 
-		out, err := sshConn.ExecCommand(
+		if err := sshConn.ExecCommandPiped(
 			fmt.Sprintf(
 				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up %[2]s -d`,
 				brokerDir,
@@ -307,10 +310,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 				feeTBPS,
 				redisPassword,
 			),
-		)
-
-		if err != nil {
-			fmt.Println(string(out))
+		); err != nil {
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Broker-server service %s updated to latest version", svcToUpdate)))

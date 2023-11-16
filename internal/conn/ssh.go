@@ -2,6 +2,7 @@ package conn
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -113,6 +114,7 @@ func (conn *sshConnection) ExecCommandPiped(cmd string) error {
 	if err != nil {
 		return err
 	}
+	defer s.Close()
 
 	if err := s.RequestPty("xterm", 80, 80,
 		ssh.TerminalModes{
@@ -124,18 +126,22 @@ func (conn *sshConnection) ExecCommandPiped(cmd string) error {
 		return err
 	}
 
-	s.Stdin = os.Stdin
-	s.Stdout = os.Stdout
-	s.Stderr = os.Stderr
-	if err := s.Shell(); err != nil {
-		return err
+	out, err := s.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("retrieving remote stdout: %w", err)
 	}
 
-	if _, err := os.Stdin.Read([]byte(cmd)); err != nil {
-		return err
-	}
+	go func() {
+		for {
+			n, err := io.Copy(os.Stdout, out)
+			if err != nil || n == 0 {
+				return
+			}
+		}
+	}()
 
-	return s.Close()
+	return s.Run(cmd)
+
 }
 
 func (conn *sshConnection) CopyFilesOverSftp(srcDst ...SftpCopySrcDest) error {

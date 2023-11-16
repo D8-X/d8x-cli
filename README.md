@@ -291,6 +291,39 @@ via `d8x setup broker-deploy`
 <details>
   <summary>How do I update the swarm server software images to a new version?</summary>
 
+**Via CLI**
+
+You can update services running in docker swarm and broker server by using the
+`d8x update` command. Command `update` will walk you through the update process.
+You will be prompted to select which services you want to update in the swarm
+cluster and then in the broker server.
+
+For swarm services, you will need to  provide a fully qualified url of docker
+image for the service to update to.
+
+Example:
+
+Let's say our main `api` service is running as
+`ghcr.io/d8-x/d8x-trader-main:main` image in our swarm setup. Now, if you want
+to update service `api` to the latest version of
+`ghcr.io/d8-x/d8x-trader-main:main` (`main` tag), simply updating to use
+`ghcr.io/d8-x/d8x-trader-main:main` image will not work. This is because swarm
+nodes will see that this image with main tag is already downloaded and even
+though there is a newer version of `main` image in container registry, it will
+not pull it (because the tag is the same). In order to force the upate of a
+specific tag that is already available and running in swarm, you have to specify
+the sha hash of the image. For example
+`ghcr.io/d8-x/d8x-trader-main:main@sha256:2ce51e825a559029f47e73a73531d8a0b10191c6bc16950649036edf20ea8c35`
+
+For broker server services, update will attempt to update services to the latest
+version available. This is because broker services are running in docker compose
+and the `update` command simply removes old containers and images and pulls new
+ones.
+
+
+
+**Manually**
+
 You login to the server where your software resides (e.g., the broker-server, or the
 swarm-manager for which you can get the ip with `d8x ip manager`).
 
