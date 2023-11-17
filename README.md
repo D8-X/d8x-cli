@@ -30,9 +30,12 @@ need to build this Go-CLI application on your own (pay attention at the Go versi
 need to manually install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pipx-install) and [terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 - The CLI allows to deploy on Linode and AWS.
 - You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
-- With Linode, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
-  - The CLI will give you the choice of using a database from the cloud-provider of your choice, or a Linode database.   
+- With Linode, please setup a database cluster manually and create a database.
+  - Any name for the db is fine. The db is called 'history' in our pre-defined config.
+  - We recommend a small database with high availability and Postgres >=14.x 
+  - Alternatively, you can choose any database from a cloud-provider of your choice -- you will need to handle the access restrictions yourself.   
   - When using a Linode database cluster, have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
+  - With AWS a database cluster is setup by the CLI. 
 - Have a broker key/address and a broker executor key/address ready. The broker address is the address of the Whitelabelling partner that is paid trader fees (that are then redistributed according to the [referral system](https://github.com/D8-X/referral-system)). The executor executes referral
 payments. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
   - Fund the executor and broker wallets with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
