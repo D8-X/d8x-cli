@@ -1,9 +1,11 @@
 package actions
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -95,4 +97,40 @@ func connectCMDToCurrentTerm(c *exec.Cmd) {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+}
+
+// GetChainId attempts to retrieve the chain id from config, if that is not
+// possible, prompts use to enter it and stores the value in config
+func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return 0, err
+	}
+
+	if cfg.ChainId != 0 {
+		info := fmt.Sprintf("Currently using chain id: %d. Change chain id?", cfg.ChainId)
+		change, err := c.TUI.NewPrompt(info, false)
+		if err != nil {
+			return 0, err
+		}
+		if !change {
+			return cfg.ChainId, nil
+		}
+	}
+
+	fmt.Println("Enter chain id:")
+	chainId, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("1442"),
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	chainIdUint, err := strconv.Atoi(chainId)
+	if err != nil {
+		return 0, err
+	}
+
+	cfg.ChainId = uint(chainIdUint)
+	return cfg.ChainId, c.ConfigRWriter.Write(cfg)
 }

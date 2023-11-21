@@ -81,7 +81,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 }
 
 func (c *Container) generatePassword(n int) (string, error) {
-	set := "@#%^*_+1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	set := "#%^_+1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	l := len(set)
 	pwd := ""
 

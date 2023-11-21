@@ -166,7 +166,7 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
-			// Create d8x.conf config read writer. We can only do this here,
+			// Create d8x.conf.json config read writer. We can only do this here,
 			// because config directory is not know when initializing containter
 			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
 				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
