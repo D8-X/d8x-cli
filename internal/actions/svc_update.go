@@ -245,7 +245,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 	// user to enter it otherwise
 	redisPassword := ""
 	feeTBPS := ""
-	if cfg.BrokerServerConfig == nil {
+	if !cfg.BrokerDeployed {
 		fmt.Println(styles.ErrorText.Render("Broker server configuration not found"))
 		fmt.Println("Enter your broker redis password:")
 		pwd, err := c.TUI.NewInput(
@@ -266,7 +266,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		feeTBPS = fee
 
 		// Store these in the config
-		cfg.BrokerServerConfig = &configs.D8XBrokerServerConfig{
+		cfg.BrokerServerConfig = configs.D8XBrokerServerConfig{
 			FeeTBPS:       feeTBPS,
 			RedisPassword: redisPassword,
 		}

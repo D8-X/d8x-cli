@@ -67,6 +67,12 @@ type Container struct {
 
 	// RunCmd runs the provided command
 	RunCmd func(*exec.Cmd) error
+
+	// Cached parsed chain.json contents
+	cachedChainJson ChainJson
+
+	// Whether user was already asked to set up the chain id in current session
+	chainIdAlreadyEntered bool
 }
 
 func NewDefaultContainer() *Container {
@@ -102,12 +108,18 @@ func connectCMDToCurrentTerm(c *exec.Cmd) {
 // GetChainId attempts to retrieve the chain id from config, if that is not
 // possible, prompts use to enter it and stores the value in config
 func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
+	// TODO read chain id from flags
+
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return 0, err
 	}
 
 	if cfg.ChainId != 0 {
+		if c.chainIdAlreadyEntered {
+			return cfg.ChainId, nil
+		}
+
 		info := fmt.Sprintf("Currently using chain id: %d. Change chain id?", cfg.ChainId)
 		change, err := c.TUI.NewPrompt(info, false)
 		if err != nil {
@@ -131,6 +143,7 @@ func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
 		return 0, err
 	}
 
+	c.chainIdAlreadyEntered = true
 	cfg.ChainId = uint(chainIdUint)
 	return cfg.ChainId, c.ConfigRWriter.Write(cfg)
 }

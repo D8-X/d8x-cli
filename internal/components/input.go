@@ -52,6 +52,8 @@ type inputModel struct {
 
 	// Whether the displayed value should be masked
 	masked bool
+
+	ending string
 	// The actual value of text input, if masked is true, the value in textInput
 	// will be masked and this value will represent the actual value.
 	value string
@@ -145,4 +147,18 @@ func (t testInputOptMasked) Apply(s *inputModel) {
 
 func TextInputOptMasked() TextInputOpt {
 	return testInputOptMasked{}
+}
+
+var _ TextInputOpt = (*testInputOptEnding)(nil)
+
+type testInputOptEnding struct {
+	val string
+}
+
+func (t testInputOptEnding) Apply(s *inputModel) {
+	s.ending = t.val
+}
+
+func TextInputOptEnding(value string) TextInputOpt {
+	return testInputOptEnding{val: value}
 }

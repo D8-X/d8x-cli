@@ -34,7 +34,12 @@ type D8XConfig struct {
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
-	BrokerServerConfig *D8XBrokerServerConfig `json:"broker_server_config"`
+	// Whether broker server is deployed
+	BrokerDeployed bool `json:"broker_deployed""`
+
+	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
+
+	ReferralConfig ReferralConfig `json:"referral_config"`
 
 	// Chain id of all services
 	ChainId uint `json:"chain_id"`
@@ -51,6 +56,11 @@ type D8XConfig struct {
 
 	// Database dsn string
 	DatabaseDSN string `json:"database_dsn"`
+}
+
+type ReferralConfig struct {
+	// ExecutorAddress     string `json:"executor_address"`
+	BrokerPayoutAddress string `json:"broker_payout_address"`
 }
 
 func (d *D8XConfig) IsEmpty() bool {
@@ -109,6 +119,8 @@ type D8XService struct {
 type D8XBrokerServerConfig struct {
 	FeeTBPS       string `json:"fee_tbps"`
 	RedisPassword string `json:"redis_password"`
+	// Executor address must match the provided Executor private key in swarm setup
+	ExecutorAddress string `json:"executor_address"`
 }
 
 func NewD8XConfig() *D8XConfig {

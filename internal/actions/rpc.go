@@ -14,6 +14,15 @@ import (
 	"github.com/D8-X/d8x-cli/internal/configs"
 )
 
+type ChainJsonEntry struct {
+	SDKNetwork            string `json:"sdkNetwork"`
+	PriceFeedNetwork      string `json:"priceFeedNetwork"`
+	DefaultPythWSEndpoint string `json:"priceServiceWSEndpoint"`
+}
+
+// trader-backend/chain.json structure. This must always contain "default" key.
+type ChainJson map[string]ChainJsonEntry
+
 // RPCUrlCollector collects RPC urls from the user
 func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
 	transportUpper := strings.ToUpper(rpcTransport)
@@ -104,24 +113,65 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// getChainSDKName retrieves the SDK compatible NETWORK_NAME
-func (c *Container) getChainSDKName(chainId uint) string {
-	switch chainId {
-	case 1442:
-		return "zkevmTestnet"
-	case 1101:
-		return "mainnet"
-	case 80001:
-		return "mumbai"
-	default:
-		return "testnet"
+// loadChainJson loads the chain.json file from the embedded configs and caches
+// it on Container instance.
+func (c *Container) loadChainJson() error {
+	if c.cachedChainJson == nil {
+		contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
+		if err != nil {
+			return err
+		}
+
+		chainJson := ChainJson{}
+		if err := json.Unmarshal(contents, &chainJson); err != nil {
+			return fmt.Errorf("unmarshalling chain.json: %w", err)
+		}
+
+		c.cachedChainJson = chainJson
 	}
+
+	return nil
+}
+
+// getChainSDKName retrieves the SDK compatible SDK_CONFIG_NAME
+func (c *Container) getChainSDKName(chainId string) string {
+	c.loadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].SDKNetwork
+	}
+	return chainJson.SDKNetwork
+}
+
+// getChainPriceFeedName retrieves the python compatible NETWORK_NAME
+func (c *Container) getChainPriceFeedName(chainId string) string {
+	c.loadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].PriceFeedNetwork
+	}
+	return chainJson.PriceFeedNetwork
+}
+
+// getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
+// chain.json config
+func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
+	c.loadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].DefaultPythWSEndpoint
+	}
+	return chainJson.DefaultPythWSEndpoint
 }
 
 type RPCConfigEntry struct {
 	ChainId  uint     `json:"chainId"`
 	HttpRpcs []string `json:"HTTP"`
-	WsRpcs   []string `json:"WS"`
+	// WsRpcs is optional and can be a nil
+	WsRpcs []string `json:"WS,omitempty"`
 }
 
 // editRpcConfigUrls updates rpc config file for given chainId with wsRpcs and
@@ -149,8 +199,11 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 	for i, entry := range rpcConfig {
 		if entry.ChainId == chainId {
 			// Append existing urls to our new entry
-			entry.HttpRpcs = append(entry.HttpRpcs, newEntry.HttpRpcs...)
-			entry.WsRpcs = append(entry.WsRpcs, newEntry.WsRpcs...)
+			entry.HttpRpcs = slices.Compact(append(entry.HttpRpcs, newEntry.HttpRpcs...))
+
+			if newEntry.WsRpcs != nil {
+				entry.WsRpcs = slices.Compact(append(entry.WsRpcs, newEntry.WsRpcs...))
+			}
 
 			rpcConfig[i] = entry
 			found = true
@@ -170,7 +223,6 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 }
 
 func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func() ([]string, []string) {
-
 	numHttpAvailable := len(cfg.HttpRpcList[chainId])
 	numWsAvailable := len(cfg.WsRpcList[chainId])
 
@@ -190,14 +242,19 @@ func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func()
 		httpRpcs := []string{}
 		wsRpcs := []string{}
 
-		// Take at least 2 enties for http or more if possible
+		// Take at least 2 enties for http or more if possible (or if not
+		// possible - at lease numWs/Http)
 		amountHttp := 2
 		amountWs := 1
 		if amountHttp < numHttpAvailable {
 			amountHttp = int(math.Ceil(float64(numHttpAvailable) / float64(3)))
+		} else {
+			amountHttp = numHttpAvailable
 		}
 		if amountWs < numWsAvailable {
 			amountWs = int(math.Ceil(float64(numWsAvailable) / float64(3)))
+		} else {
+			amountWs = numWsAvailable
 		}
 
 		for i := 0; i < amountHttp; i++ {

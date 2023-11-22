@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -67,6 +68,13 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 		cfg.SwarmRedisPassword = password
 	}
 
+	// Collect broker payout address
+	if err := c.CollecteBrokerPayoutAddress(cfg); err != nil {
+		fmt.Println(
+			styles.ErrorText.Render(err.Error()),
+		)
+	}
+
 	// Collect broker http endpoint
 	changeRemoteBrokerHTTP := true
 	if cfg.SwarmRemoteBrokerHTTPUrl != "" {
@@ -90,6 +98,38 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 	}
 
 	return c.ConfigRWriter.Write(cfg)
+}
+
+func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
+	// Collect referrral broker payout address
+	changeReferralPayoutAddress := true
+	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
+		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
+		if ok, err := c.TUI.NewPrompt("Do you want to change broker payout address?", false); err != nil {
+			return err
+		} else if !ok {
+			changeReferralPayoutAddress = false
+		}
+	}
+	if changeReferralPayoutAddress {
+		fmt.Println("Enter broker payout address:")
+		brokerPayoutAddress, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
+			components.TextInputOptValue(cfg.ReferralConfig.BrokerPayoutAddress),
+		)
+		if err != nil {
+			return err
+		}
+
+		// Validate the address
+		if !ValidWalletAddress(brokerPayoutAddress) {
+			return fmt.Errorf("invalid address provided, please set the brokerPayoutAddr in live.referralSettings.json")
+		}
+		cfg.ReferralConfig.BrokerPayoutAddress = brokerPayoutAddress
+
+		return c.ConfigRWriter.Write(cfg)
+	}
+	return nil
 }
 
 func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
@@ -151,8 +191,8 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 
 	// We assume that all cfg values are present at this point
 	findReplaceOrCreateEnvs := map[string]string{
-		"NETWORK_NAME":       c.getChainSDKName(cfg.ChainId),
-		"SDK_CONFIG_NAME":    c.getChainSDKName(cfg.ChainId),
+		"NETWORK_NAME":       c.getChainPriceFeedName(strconv.Itoa(int(cfg.ChainId))),
+		"SDK_CONFIG_NAME":    c.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
 		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
 		"REDIS_PASSWORD":     cfg.SwarmRedisPassword,
 		"REMOTE_BROKER_HTTP": cfg.SwarmRemoteBrokerHTTPUrl,
@@ -186,6 +226,57 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 	return c.FS.WriteFile(envPath, []byte(strings.Join(envFileLines, "\n")))
 }
 
+// UpdateReferralSettings updates given referralSettingsPath json file with
+// referral broker payout address from config.
+func (c *Container) UpdateReferralSettings(referralSettingsPath string, cfg *configs.D8XConfig) error {
+	contents, err := os.ReadFile(referralSettingsPath)
+	if err != nil {
+		return err
+	}
+
+	referralSettings := []map[string]any{}
+
+	if err := json.Unmarshal(contents, &referralSettings); err != nil {
+		return err
+	}
+
+	for i, refSetting := range referralSettings {
+		if int(refSetting["chainId"].(float64)) == int(cfg.ChainId) {
+			refSetting["brokerPayoutAddr"] = cfg.ReferralConfig.BrokerPayoutAddress
+			referralSettings[i] = refSetting
+			break
+		}
+	}
+
+	out, err := json.MarshalIndent(referralSettings, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(referralSettingsPath, out, 0644)
+}
+
+func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, priceServiceWSEndpoints []string) error {
+	contents, err := os.ReadFile(candlesPriceConfigPath)
+	if err != nil {
+		return err
+	}
+
+	pricesConf := map[string]any{}
+
+	if err := json.Unmarshal(contents, &pricesConf); err != nil {
+		return err
+	}
+	pricesConf["priceServiceWSEndpoints"] = priceServiceWSEndpoints
+
+	out, err := json.MarshalIndent(pricesConf, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(candlesPriceConfigPath, out, 0644)
+}
+
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
@@ -193,7 +284,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	d8xCfg, err := c.ConfigRWriter.Read()
+	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -216,26 +307,48 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 
 	// Update .env file
-	if err := c.EditSwarmEnv("./trader-backend/.env", d8xCfg); err != nil {
+	if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
 		return fmt.Errorf("editing .env file: %w", err)
 	}
 
-	// Update rpcconfigs.
-	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(d8xCfg.ChainId)), d8xCfg)
+	// Update rpcconfigs
+	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
 	for _, rpconfigFilePath := range []string{
 		"./trader-backend/rpc.main.json",
 		"./trader-backend/rpc.history.json",
 		"./trader-backend/rpc.referral.json",
 	} {
 		httpRpcs, wsRpcs := httpWsGetter()
-		fmt.Printf("Updating %s config. HTTP RPCs: %+v, WS RPCs: %+v\n", rpconfigFilePath, httpRpcs, wsRpcs)
-		if err := c.editRpcConfigUrls(rpconfigFilePath, d8xCfg.ChainId, wsRpcs, httpRpcs); err != nil {
+		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
 			fmt.Println(
 				styles.ErrorText.Render(
 					fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
 				),
 			)
 		}
+	}
+
+	// Update referralSettings
+	if err := c.UpdateReferralSettings("./trader-backend/live.referralSettings.json", cfg); err != nil {
+		return fmt.Errorf("updating referralSettings.json: %w", err)
+	}
+
+	// Update the candles/prices.config.json. Make sure the default pyth.hermes
+	// entry is always the last one
+	addAnohter, err := c.TUI.NewPrompt("Add additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+	if err != nil {
+		return err
+	}
+	priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
+	if addAnohter {
+		fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
+		c.TUI.NewInput(
+			components.TextInputOptPlaceholder("wss://pyth-ws.devnet.solana.com"),
+		)
+	}
+	if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints); err != nil {
+		return err
 	}
 
 	fmt.Println(styles.AlertImportant.Render("Please edit your .env and configuration files before proceeding."))
@@ -292,6 +405,24 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if addr, err := PrivateKeyToAddress(pk); err != nil {
+		return fmt.Errorf("ivalid private key: %w", err)
+	} else {
+		fmt.Printf("Provided payment executor address: %s\n", addr.String())
+
+		// Check if user provided broker allowed executor address matches and
+		// report if not
+		if cfg.BrokerDeployed {
+			if !strings.EqualFold(addr.String(), cfg.BrokerServerConfig.ExecutorAddress) {
+				fmt.Println(
+					styles.ErrorText.Render(
+						"provided payment executor address does not match the one provided in broker setup",
+					),
+				)
+			}
+		}
+	}
+
 	pk = strings.TrimPrefix(pk, "0x")
 	keyfileLocal := "./trader-backend/keyfile.txt"
 	// write keyfile
@@ -385,7 +516,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			sshConnWorker conn.SSHConnection
 			err           error
 		)
-		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+		if cfg.ServerProvider == configs.D8XServerProviderAWS {
 			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
 				ipWorkers[k],
@@ -449,7 +580,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			sshConnWorker conn.SSHConnection
 			err           error
 		)
-		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+		if cfg.ServerProvider == configs.D8XServerProviderAWS {
 			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
 				ip,

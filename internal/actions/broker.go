@@ -1,9 +1,12 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -18,11 +21,92 @@ const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
+func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
+	// Make sure chain id is present in config
+	chainId, err := c.GetChainId(ctx)
+	if err != nil {
+		return err
+	}
+	chainIdStr := strconv.Itoa(int(chainId))
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	// Collect HTTP rpc endpoints
+	if err := c.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
+		return err
+	}
+
+	// Collect broker executor wallet address
+	changeExecutorAddress := true
+	if cfg.BrokerServerConfig.ExecutorAddress != "" {
+		fmt.Printf("Found broker executor address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
+		if ok, err := c.TUI.NewPrompt("Do you want to change broker executor address?", false); err != nil {
+			return err
+		} else if !ok {
+			changeExecutorAddress = false
+		}
+	}
+	if changeExecutorAddress {
+		fmt.Println("Enter broker executor address:")
+		brokerExecutorAddress, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
+			components.TextInputOptValue(cfg.BrokerServerConfig.ExecutorAddress),
+		)
+		if err != nil {
+			return err
+		}
+
+		// Validate the address
+		if !ValidWalletAddress(brokerExecutorAddress) {
+			fmt.Println(styles.ErrorText.Render("invalid address provided, please set the allowedExecutors value in chainConfig.json"))
+		} else {
+			cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
+		}
+	}
+
+	return nil
+}
+
+func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *configs.D8XConfig) error {
+	contents, err := os.ReadFile(chainConfigPath)
+	if err != nil {
+		return err
+	}
+
+	chainConfig := []map[string]any{}
+
+	if err := json.Unmarshal(contents, &chainConfig); err != nil {
+		return err
+	}
+
+	for i, conf := range chainConfig {
+		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
+			conf["brokerPayoutAddr"] = []string{cfg.BrokerServerConfig.ExecutorAddress}
+			chainConfig[i] = conf
+			break
+		}
+	}
+
+	out, err := json.MarshalIndent(chainConfig, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(chainConfigPath, out, 0644)
+}
+
 // BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
+
+	if err := c.CollectBrokerInputs(ctx); err != nil {
+		return err
+	}
 
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
@@ -56,6 +140,25 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	); err != nil {
 		return err
 	}
+
+	// Upate rpc.json config
+	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
+	rpconfigFilePath := "./broker-server/rpc.json"
+	httpRpcs, _ := httpWsGetter()
+	fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+	if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
+		fmt.Println(
+			styles.ErrorText.Render(
+				fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+			),
+		)
+	}
+
+	// Update chainConfig.json
+	if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
+		return err
+	}
+
 	absChainConfig, err := filepath.Abs(chainConfig)
 	if err != nil {
 		return err
@@ -90,16 +193,25 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if addr, err := PrivateKeyToAddress(pk); err != nil {
+		return fmt.Errorf("ivalid private key: %w", err)
+	} else {
+		fmt.Printf("Provided broker address: %s\n\n", addr.String())
+	}
 
-	fmt.Println("Enter your broker fee tbps value:")
-	tbps, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("60"),
-		components.TextInputOptValue("60"),
+	fmt.Println("Enter your broker fee percentage (%) value:")
+	feePercentage, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("0.06"),
+		components.TextInputOptValue("0.06"),
 	)
 	if err != nil {
 		return err
 	}
-	bsd.brokerFeeTBPS = tbps
+	if tbpsFromPercentage, err := convertPercentToTBPS(feePercentage); err != nil {
+		return fmt.Errorf("invalid tbps value: %w", err)
+	} else {
+		bsd.brokerFeeTBPS = tbpsFromPercentage
+	}
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
@@ -140,13 +252,16 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 
 	// Store broker server setup details except pk
-	cfg.BrokerServerConfig = &configs.D8XBrokerServerConfig{
+	cfg.BrokerServerConfig = configs.D8XBrokerServerConfig{
 		FeeTBPS:       bsd.brokerFeeTBPS,
 		RedisPassword: redisPw,
 	}
+	cfg.BrokerDeployed = true
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return err
 	}
+
+	fmt.Println(styles.SuccessText.Render("Broker server deployment done!"))
 
 	return nil
 }
@@ -329,4 +444,40 @@ func (c *Container) brokerServerKeyVolSetup(sshClient conn.SSHConnection, pk str
 	cmd = fmt.Sprintf("%s && rm ./keyfile.txt", cmd)
 
 	return sshClient.ExecCommand(cmd)
+}
+
+func convertPercentToTBPS(p string) (string, error) {
+	// Allow to enter 0
+	if p == "0" {
+		return "0", nil
+	}
+
+	// For floating point - allow only point as separator
+	if strings.Contains(p, ",") {
+		return "", fmt.Errorf("invalid percent value, use dot '.' instead of comma ',': %s", p)
+	}
+
+	// Max 3 digits in the decimal fraction
+	if strings.Contains(p, ".") {
+		wholeDec := strings.Split(p, ".")
+
+		if len(wholeDec) != 2 {
+			return "", fmt.Errorf("invalid percent value: %s", p)
+		}
+
+		if len(wholeDec[1]) > 3 {
+			return "", fmt.Errorf("invalid percent value, max 3 digits in the decimal fraction: %s", p)
+		}
+	}
+
+	// Convert to float and multiply by 1000 to get TBPS
+	parsedFloat, err := strconv.ParseFloat(p, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid percent value: %w", err)
+	}
+
+	tbps := parsedFloat * 1000
+
+	return strconv.FormatFloat(tbps, 'f', 0, 64), nil
+
 }
