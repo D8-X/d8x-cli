@@ -8,21 +8,6 @@ servers, deploying swarm cluster and individual services.
 
 
 
-## Using A Release
-
-When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
-extract the d8x binary and place it in your `PATH`.
-
-To run D8X-CLI on MacOS you will need to build it from source.
-
-## Building From Source
-
-```bash
-go build -o d8x ./main.go
-sudo mv d8x /usr/bin/d8x
-```
-
-Check out the `d8x help` command.
 ## Before You Start The CLI
 
 - The CLI is built for Linux and can also work on MacOS (see also FAQ). For MacOS you
@@ -30,12 +15,21 @@ need to build this Go-CLI application on your own (pay attention at the Go versi
 need to manually install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pipx-install) and [terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 - The CLI allows to deploy on Linode and AWS.
 - You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
-- With Linode, please setup a database cluster manually and create a database.
+- With Linode,
+  <details><summary>please setup a database cluster manually and create a database.</summary>
+    
   - Any name for the db is fine. The db is called 'history' in our pre-defined config.
-  - We recommend a small database with high availability and Postgres >=14.x 
-  - Alternatively, you can choose any database from a cloud-provider of your choice -- you will need to handle the access restrictions yourself.   
+    
+  - We recommend a small database with high availability and Postgres >=14.x
+    
+  - Alternatively, you can choose any database from a cloud-provider of your choice -- you will need to handle the access restrictions yourself.
+    
   - When using a Linode database cluster, have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
-  - With AWS a database cluster is setup by the CLI. 
+    
+  - With AWS a database cluster is setup by the CLI.
+    
+  </details>
+  
 - Have a broker key/address and a broker executor key/address ready. The broker address is the address of the Whitelabelling partner that is paid trader fees (that are then redistributed according to the [referral system](https://github.com/D8-X/referral-system)). The executor executes referral
 payments. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
   - Fund the executor and broker wallets with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
@@ -69,11 +63,41 @@ The service endpoint will have to be added to the configuration file (variable p
 
 ## Setup Procedure
 
-In most cases you can just run the setup
+### Using A Release
+
+When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
+extract the d8x binary.
+
+To run D8X-CLI on MacOS you will need to build it from source.
+
+### Building From Source
+* checkout the repository and navigate into the folder d8x-cli
+* build
 ```bash
-d8x setup
+go build -o d8x ./main.go
 ```
-and edit the configuration files when prompted by the CLI. 
+* now you have a binary file 'd8x'.
+* create a folder somewhere and copy the binary file to this folder, for example:
+  ```
+  mkdir ~/d8x-deployment
+  mv ./d8x ~/d8x-deployment
+  ```
+
+### Starting Setup
+* copy the binary into a 'deployment folder' of your choice and navigate to this folder, for example:
+  ```
+  cd ~/d8x-deployment
+  mkdir ./deploy
+  cd deploy
+  ```
+* Now you can start the CLI from folder ~/d8x-deployment/deploy, for example:
+  ```
+  ../d8x help
+  ```
+* Run the setup with
+```bash
+../d8x setup
+```
 
 ## Configuration Files
 
