@@ -5,7 +5,7 @@
     "paymentScheduleCron": "0 14 * * 2",
     "multiPayContractAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
     "tokenX": {
-      "address": "",
+      "address": "0xE05b86C761C70BEaB72fBFE919e5260e956cAB99",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
