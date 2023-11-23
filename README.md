@@ -90,7 +90,7 @@ go build -o d8x ./main.go
   mkdir ./deploy
   cd deploy
   ```
-* Now you can start the CLI from folder ~/d8x-deployment/deploy, for example:
+* Now you can start the CLI from folder ~/d8x-deployment/deploy (if the binary is in ~/d8x-deployment/), for example:
   ```
   ../d8x help
   ```
