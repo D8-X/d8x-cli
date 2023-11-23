@@ -35,7 +35,7 @@ type D8XConfig struct {
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
 	// Whether broker server is deployed
-	BrokerDeployed bool `json:"broker_deployed""`
+	BrokerDeployed bool `json:"broker_deployed"`
 
 	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
 

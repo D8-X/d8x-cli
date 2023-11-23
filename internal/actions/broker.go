@@ -68,7 +68,7 @@ func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
 		}
 	}
 
-	return nil
+	return c.ConfigRWriter.Write(cfg)
 }
 
 func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *configs.D8XConfig) error {
@@ -85,11 +85,18 @@ func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *con
 
 	for i, conf := range chainConfig {
 		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
+			executors := []string{cfg.BrokerServerConfig.ExecutorAddress}
 			// Make sure we don't overwrite existing allowedExecutors
-			if v, ok := conf["allowedExecutors"].([]string); ok {
-				v = slices.Compact(append(v, cfg.BrokerServerConfig.ExecutorAddress))
-				conf["allowedExecutors"] = v
+			v, ok := conf["allowedExecutors"].([]any)
+			if ok {
+				for _, executorAddr := range v {
+					if a, ok2 := executorAddr.(string); ok2 {
+						executors = append(executors, a)
+					}
+				}
 			}
+			executors = slices.Compact(executors)
+			conf["allowedExecutors"] = executors
 
 			chainConfig[i] = conf
 			break
@@ -161,6 +168,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 
 	// Update chainConfig.json
+	fmt.Printf("Updating %s config...\n", chainConfig)
 	if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
 		return err
 	}

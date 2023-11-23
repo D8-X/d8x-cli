@@ -102,10 +102,7 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 	changeReferralPayoutAddress := true
 	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
 		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
-		infoText := fmt.Sprintf("Do you want to change broker payout address (live.referralSettings.json)?\n%s",
-			styles.GrayText.Render("See config README for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md"),
-		)
-		if ok, err := c.TUI.NewPrompt(infoText, false); err != nil {
+		if ok, err := c.TUI.NewPrompt("Do you want to change broker payout address?", false); err != nil {
 			return err
 		} else if !ok {
 			changeReferralPayoutAddress = false
@@ -113,6 +110,8 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 	}
 	if changeReferralPayoutAddress {
 		fmt.Println("Enter broker payout address:")
+		fmt.Println(styles.GrayText.Render("See config README (live.referralSettings.json) for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md\n"))
+
 		brokerPayoutAddress, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
 			components.TextInputOptValue(cfg.ReferralConfig.BrokerPayoutAddress),
