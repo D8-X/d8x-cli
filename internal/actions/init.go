@@ -149,7 +149,7 @@ func (c *Container) installAnsible() error {
 	// Attempt to install pipx
 	if c.findInPath("pipx") != nil {
 		fmt.Println(styles.ItalicText.Render("Installing pipx"))
-		cmd := exec.Command("python3", expandCMD("-m pip install pipx")...)
+		cmd := exec.Command("python3", expandCMD("-m pip install pipx passlib")...)
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
 		err := cmd.Run()

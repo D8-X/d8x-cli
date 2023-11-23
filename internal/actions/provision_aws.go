@@ -48,15 +48,6 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 }
 
 func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
-	fmt.Println(styles.AlertImportant.Render("Important RDS instance information"))
-	confirmText := `AWS RDS Postgres database credentials are stored in %s file. Please make sure you use these
-credentials from this file when providing DATABASE_DSN value in .env.`
-	confirmText = fmt.Sprintf(confirmText, RDS_CREDS_FILE)
-	fmt.Println(strings.ReplaceAll(confirmText, "\n", " "))
-	if err := c.TUI.NewConfirmation(""); err != nil {
-		return err
-	}
-
 	// Attempt to update known_hosts with manager's host key
 	managerIp, _ := c.HostsCfg.GetMangerPublicIp()
 	if err := a.putManagerToKnownHosts(managerIp); err != nil {
