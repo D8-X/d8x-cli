@@ -5,7 +5,7 @@
     "paymentScheduleCron": "0 14 * * 2",
     "multiPayContractAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
     "tokenX": {
-      "address": "0xE05b86C761C70BEaB72fBFE919e5260e956cAB99",
+      "address": "",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
@@ -14,7 +14,7 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": ""
   },
   {
     "chainId": 1101,
@@ -31,6 +31,6 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": ""
   }
 ]

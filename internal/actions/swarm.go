@@ -25,13 +25,12 @@ var dockerStackName = "stack"
 // automatically added to the configuration files. Collected info is: chain ids,
 // rpc urls.
 func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
-
-	cfg, err := c.ConfigRWriter.Read()
+	chainId, err := c.GetChainId(ctx)
 	if err != nil {
 		return err
 	}
 
-	chainId, err := c.GetChainId(ctx)
+	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -70,9 +69,7 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 
 	// Collect broker payout address
 	if err := c.CollecteBrokerPayoutAddress(cfg); err != nil {
-		fmt.Println(
-			styles.ErrorText.Render(err.Error()),
-		)
+		return err
 	}
 
 	// Collect broker http endpoint
@@ -105,7 +102,10 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 	changeReferralPayoutAddress := true
 	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
 		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
-		if ok, err := c.TUI.NewPrompt("Do you want to change broker payout address?", false); err != nil {
+		infoText := fmt.Sprintf("Do you want to change broker payout address (live.referralSettings.json)?\n%s",
+			styles.GrayText.Render("See config README for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md"),
+		)
+		if ok, err := c.TUI.NewPrompt(infoText, false); err != nil {
 			return err
 		} else if !ok {
 			changeReferralPayoutAddress = false
@@ -135,7 +135,7 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	change := true
 	if cfg.DatabaseDSN != "" {
-		info := fmt.Sprintf("Found DATABASE_DSN=%s Do you want to update it?", cfg.DatabaseDSN)
+		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want to update it?", cfg.DatabaseDSN)
 		ok, err := c.TUI.NewPrompt(info, false)
 		if err != nil {
 			return err
@@ -299,6 +299,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 		// Candles configs
 		{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
+
+		// All configs below should not be interesting for the user - hence we
+		// will be overwriting them and not showing in the information text.
+
 		// Docker swarm file
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 	}
@@ -336,24 +340,60 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	// Update the candles/prices.config.json. Make sure the default pyth.hermes
 	// entry is always the last one
-	addAnohter, err := c.TUI.NewPrompt("Add additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+	addAnohter, err := c.TUI.NewPrompt("\nAdd additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
 	if err != nil {
 		return err
 	}
 	priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
 	if addAnohter {
 		fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
-		c.TUI.NewInput(
-			components.TextInputOptPlaceholder("wss://pyth-ws.devnet.solana.com"),
+		additioanalWsEndpoint, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
 		)
+		if err != nil {
+			return err
+		}
+		priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
 	}
 	if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints); err != nil {
 		return err
 	}
 
-	fmt.Println(styles.AlertImportant.Render("Please edit your .env and configuration files before proceeding."))
+	// Collect and temporarily store referral payment executor private key
+	fmt.Println("Enter your referral payment executor private key:")
+	pk, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
+	)
+	if err != nil {
+		return err
+	}
+	if addr, err := PrivateKeyToAddress(pk); err != nil {
+		return fmt.Errorf("ivalid private key: %w", err)
+	} else {
+		fmt.Printf("Provided payment executor address: %s\n", addr.String())
+
+		// Check if user provided broker allowed executor address matches and
+		// report if not
+		if cfg.BrokerDeployed {
+			if !strings.EqualFold(addr.String(), cfg.BrokerServerConfig.ExecutorAddress) {
+				fmt.Println(
+					styles.ErrorText.Render(
+						"provided payment executor address does not match the one provided in broker setup",
+					),
+				)
+			}
+		}
+	}
+	pk = strings.TrimPrefix(pk, "0x")
+	keyfileLocal := "./trader-backend/keyfile.txt"
+	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
+		return fmt.Errorf("temp storage of keyfile failed: %w", err)
+	}
+
+	fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
 	fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-	for _, f := range filesToCopy {
+	for _, f := range filesToCopy[:6] {
 		fmt.Println(f.Dst)
 	}
 	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...")
@@ -395,39 +435,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 				return fmt.Errorf("removing existing stack: %w", err)
 			}
 		}
-	}
-
-	fmt.Println("Enter your referral payment executor private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
-	if err != nil {
-		return err
-	}
-	if addr, err := PrivateKeyToAddress(pk); err != nil {
-		return fmt.Errorf("ivalid private key: %w", err)
-	} else {
-		fmt.Printf("Provided payment executor address: %s\n", addr.String())
-
-		// Check if user provided broker allowed executor address matches and
-		// report if not
-		if cfg.BrokerDeployed {
-			if !strings.EqualFold(addr.String(), cfg.BrokerServerConfig.ExecutorAddress) {
-				fmt.Println(
-					styles.ErrorText.Render(
-						"provided payment executor address does not match the one provided in broker setup",
-					),
-				)
-			}
-		}
-	}
-
-	pk = strings.TrimPrefix(pk, "0x")
-	keyfileLocal := "./trader-backend/keyfile.txt"
-	// write keyfile
-	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
-		return fmt.Errorf("temp storage of keyfile failed: %w", err)
 	}
 
 	ipWorkers, err := c.HostsCfg.GetWorkerIps()

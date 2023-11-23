@@ -35,7 +35,7 @@ func newInput(opts ...TextInputOpt) (string, error) {
 
 	mdl = m.(inputModel)
 	returnValue := mdl.textInput.Value()
-	if mdl.masked {
+	if mdl.masked || mdl.ending != "" {
 		returnValue = mdl.value
 	}
 
@@ -94,6 +94,15 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			masked += "*"
 		}
 		m.textInput.SetValue(masked)
+
+	} else if m.ending != "" {
+		// Additional ending text which is not included in the output value
+		m.textInput.SetValue(m.value)
+		m.textInput, cmd = m.textInput.Update(msg)
+		m.value = m.textInput.Value()
+
+		// Add ending
+		m.textInput.SetValue(m.value + m.ending)
 
 	} else {
 		m.textInput, cmd = m.textInput.Update(msg)

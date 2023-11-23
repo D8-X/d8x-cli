@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -84,7 +85,12 @@ func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *con
 
 	for i, conf := range chainConfig {
 		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
-			conf["brokerPayoutAddr"] = []string{cfg.BrokerServerConfig.ExecutorAddress}
+			// Make sure we don't overwrite existing allowedExecutors
+			if v, ok := conf["allowedExecutors"].([]string); ok {
+				v = slices.Compact(append(v, cfg.BrokerServerConfig.ExecutorAddress))
+				conf["allowedExecutors"] = v
+			}
+
 			chainConfig[i] = conf
 			break
 		}
@@ -203,6 +209,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	feePercentage, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("0.06"),
 		components.TextInputOptValue("0.06"),
+		components.TextInputOptEnding("%"),
 	)
 	if err != nil {
 		return err

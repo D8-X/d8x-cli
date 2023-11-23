@@ -36,7 +36,7 @@ func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast
 		if err != nil {
 			return nil, err
 		}
-		endpoints = append(endpoints, endpoint)
+		endpoints = append(endpoints, strings.TrimSpace(endpoint))
 		if len(endpoints) >= requireAtLeast {
 			recommendedText := "We recommend having at least " + strconv.Itoa(recommended) + " RPCs. "
 			if len(endpoints) >= recommended {
@@ -170,8 +170,9 @@ func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
 type RPCConfigEntry struct {
 	ChainId  uint     `json:"chainId"`
 	HttpRpcs []string `json:"HTTP"`
-	// WsRpcs is optional and can be a nil
-	WsRpcs []string `json:"WS,omitempty"`
+	// WsRpcs is optional and can be a nil, in that case we will set it to empty
+	// slice
+	WsRpcs []string `json:"WS"`
 }
 
 // editRpcConfigUrls updates rpc config file for given chainId with wsRpcs and
@@ -203,6 +204,11 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 
 			if newEntry.WsRpcs != nil {
 				entry.WsRpcs = slices.Compact(append(entry.WsRpcs, newEntry.WsRpcs...))
+			}
+
+			// Prevent nulls in output json
+			if entry.WsRpcs == nil {
+				entry.WsRpcs = []string{}
 			}
 
 			rpcConfig[i] = entry

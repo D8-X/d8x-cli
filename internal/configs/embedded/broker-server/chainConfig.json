@@ -4,29 +4,20 @@
     "name": "Mumbai",
     "perpetualManagerProxyAddr": "0xCdd7C9e07689d1B3D558A714fAa5Cc4B6bA654bD",
     "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
-    "allowedExecutors": [
-      "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
-      "0xDa47a0CAc77D50114F2725D06a2Ce887cF9f4D98"
-    ]
+    "allowedExecutors": []
   },
   {
     "chainId": 1442,
     "name": "zkEVM Testnet",
     "perpetualManagerProxyAddr": "0x0e23619704556945B1C7CB550Dee6D428f7d2E2B",
     "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
-    "allowedExecutors": [
-      "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
-      "0xDa47a0CAc77D50114F2725D06a2Ce887cF9f4D98"
-    ]
+    "allowedExecutors": []
   },
   {
     "chainId": 1101,
     "name": "zkEVM Mainnet",
     "perpetualManagerProxyAddr": "0xaB7794EcD2c8e9Decc6B577864b40eBf9204720f",
     "multiPayCtrctAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",
-    "allowedExecutors": [
-      "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05",
-      "0xDa47a0CAc77D50114F2725D06a2Ce887cF9f4D98"
-    ]
+    "allowedExecutors": []
   }
 ]
