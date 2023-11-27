@@ -30,72 +30,37 @@ servers, deploying swarm cluster and individual services.
 
   </details>
 - Get access to your domain name server, you will have to create A-name entries once you have the IP addresses of the servers available
-- You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. Setup the CLI as directed below.
-
-## Before You Start The CLI
-
-- The CLI is built for Linux and can also work on MacOS (see also FAQ). For MacOS you
-need to build this Go-CLI application on your own (pay attention at the Go version), and you
-need to manually install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pipx-install) and [terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
-- The CLI allows to deploy on Linode and AWS.
-- You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
-- With Linode,
-  <details><summary>please setup a database cluster manually and create a database.</summary>
-    
-  - Any name for the db is fine. The db is called 'history' in our pre-defined config.
-    
-  - We recommend a small database with high availability and Postgres >=14.x
-    
-  - Alternatively, you can choose any database from a cloud-provider of your choice -- you will need to handle the access restrictions yourself.
-    
-  - When using a Linode database cluster, have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
-    
-  - With AWS a database cluster is setup by the CLI.
-    
-  </details>
-  
-- Have a broker key/address and a broker executor key/address ready. The broker address is the address of the Whitelabelling partner that is paid trader fees (that are then redistributed according to the [referral system](https://github.com/D8-X/referral-system)). The executor executes referral
-payments. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
-  - Fund the executor and broker wallets with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
-- Decide on the broker fee. The broker fee is paid from the trader to the broker and potentially to referrers. The broker fee is relative to the notional position size. The broker fee is entered in tenth of a basis point ("tbps"),
-  that is, the percentage multiplied by 1000, so that `0.06% = 6 bps = 60 tbps` or `0.10% = 10 bps = 100 tbps`
-- Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM. Feel free to contact us for recommendations.
-- You need to be able to access your Domain Name Service provider so you can create DNS records
   Typically a config entry looks something like this:
 
   |        Hostname        | Type |  TTL   |      Data       |
   | :--------------------: | :--: | :----: | :-------------: |
   | api.dev.yourdomain.com |  A   | 1 hour | 139.144.112.122 |
+- Decide what default broker fee you will charge the traders
+- You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. Install the CLI as directed below.
 
-  <details>
-    <summary>Recommended Domain Name Entries</summary>
-    There are different REST APIs and WebSockets, which we map to the public IPs of the servers. 
-    The services and example names for the backend are as follows:
-    
-  	* api.dev.yourdomain.com: main REST API points to “Swarm manager”
-  	* ws.dev.yourdomain.com: main WebSocket points to “Swarm manager”
-  	* history.dev.yourdomain.com: historical data REST API points to “Swarm manager”
-  	* referral.dev.yourdomain.com: referral code REST API points to “Swarm manager”
-    * candles.dev.yourdomain.com: The Candle Server websocket points to “Swarm manager”
-    * broker.dev.yourdomain.com: The broker server has its own IP
-
-  Both IP addresses, for the manager and broker server, will be shown to you during the setup.
-  </details>
-
-- Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). Feel free to contact us for recommendations.
-The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service -- more details on configs will follow, this is a heads-up)
-
-## Setup Procedure
-
-### Using A Release
+# CLI Installation
 
 When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
 extract the d8x binary.
 
 To run D8X-CLI on MacOS you will need to build it from source.
 
+### When using Mac
+Install ansible, terraform, and go
+```
+brew update
+brew install ansible
+brew install terraform
+brew install go
+```
+
 ### Building From Source
-* checkout the repository and navigate into the folder d8x-cli
+* ensure you have go >=1.20, for example
+  ```
+  $ go version
+    go version go1.21.4 linux/amd64
+  ```
+* checkout the repository into a local folder of your choice and navigate into the folder d8x-cli
 * build
 ```bash
 go build -o d8x ./main.go
@@ -107,7 +72,7 @@ go build -o d8x ./main.go
   mv ./d8x ~/d8x-deployment
   ```
 
-### Starting Setup
+# Starting D8X Setup
 * copy the binary into a 'deployment folder' of your choice and navigate to this folder, for example:
   ```
   cd ~/d8x-deployment
@@ -123,10 +88,17 @@ go build -o d8x ./main.go
 ../d8x setup
 ```
 
+
+## Post-Flight Checklist
+- Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). Feel free to contact us for recommendations.
+The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service or prompt in CLI)
+- When using an external database with Linode: consider whitelisting the IP addresses of the manager/nodes and blocking other IPs
+
+
 ## Configuration Files
 
-Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
-find out how to configure the system in the
+Configuration files are key to setup D8X Perpetuals Backend. Although the CLI guides you through the config,
+here you can find out details about the configuration
 [README](README_CONFIG.md).
 
 ## Usage Of The D8X CLI Tool
