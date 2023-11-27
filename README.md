@@ -153,7 +153,8 @@ linode and usually takes around 30 minutes.
 has disabled option to create new managed databases. Therefore, you might need
 to use external Postgres database which you can either provision yourself or use
 an external database provider. Don't forget to update your database's security
-policies to allow access from all of the provisioned servers ip addresses.
+policies to allow access from all of the provisioned servers ip addresses. You
+can find more information how to do the external database setup in [this document](./docs/AIVEN_SETUP.md).
 
 For AWS provider - RDS Postgres instance will be provisioned automatically. You
 will be able to automatically create new databases for history and referral
