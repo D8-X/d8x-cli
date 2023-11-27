@@ -7,6 +7,16 @@ Setup includes provisioning resources on supported cloud providers, configuring
 servers, deploying swarm cluster and individual services.
 
 
+## Checklist
+
+- Create a Quicknode account that allows for several nodes (choose the 49$/month plan) using [this link](https://www.quicknode.com/signup). In a second step, we suggest you onboard Quicknode through us. Any potential kickback that we get will directly go to you if you subscribe   using [this template](https://quiknode.typeform.com/to/efkXcHuc).
+- Create 5 RPC endpoints on Quicknode for Polygon zkEVM testnet (chain id 1442) and 5 RPC endpoints for Polygon zkEVM mainnet (chain id 1101)
+- Create 3 private keys, one we call "broker key" the other one we call "executor key", and the last one we call "payment key"
+- Fund the 3 corresponding addresses with ETH on testnet (1442) and mainnet (1101)
+- Decide on whether you will deploy the backend on Linode or AWS
+- Linode users need an external database cluster. We recommend you create a free PostgreSQL cluster on [Aiven](https://aiven.io/postgresql). Do not restrict IP addresses initially (skip the step when prompted).
+- Get access to your domain name server, you will have to create A-name entries once you have the IP addresses of the servers available
+- You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. When running on Mac, additional installations are required
 
 ## Before You Start The CLI
 
