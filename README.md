@@ -13,8 +13,22 @@ servers, deploying swarm cluster and individual services.
 - Create 5 RPC endpoints on Quicknode for Polygon zkEVM testnet (chain id 1442) and 5 RPC endpoints for Polygon zkEVM mainnet (chain id 1101)
 - Create 3 private keys, one we call "broker key" the other one we call "executor key", and the last one we call "payment key"
 - Fund the 3 corresponding addresses with ETH on testnet (1442) and mainnet (1101)
-- Decide on whether you will deploy the backend on Linode or AWS
-- Linode users need an external database cluster. We recommend you create a free PostgreSQL cluster on [Aiven](https://aiven.io/postgresql). Do not restrict IP addresses initially (skip the step when prompted).
+- Decide on whether you will deploy the backend on Linode or AWS.
+  - If on Linode, create an API token. On the Linode website after logging in, click on your profile name (top right) and select [API Tokens](https://cloud.linode.com/profile/tokens), click on 'create personal access token' and follow the instructions. You will need the API key in the CLI.
+  - If on AWS, ..
+- Linode users need an external database cluster. 
+  <details>
+    <summary>We recommend you create a free PostgreSQL cluster on <a href='https://aiven.io/postgresql'>Aiven</a></summary>
+    
+    - sign up a user on Aiven <a href='https://console.aiven.io/signup'>here</a>. Choose the 'business' option.
+    - you will be forwarded to the "Services" page. Choose PosgreSQL, then 'free plan' and choose a region close to the region you plan to deploy your hardware, as the name choose anything you like (d8xcluster if unsure), and click "create free service"
+    - You will see connection details. Click "skip this step"
+    - You will be able to restrict IP addresses on the next screen: click skip this step (we can restrict later)
+    - Now you have a database cluster available. Navigate on the left bar to 'Databases' and click on the right upper corner on 'Create database'. Create one database 'd8x_1442' (add database). Create another database called 'd8x_1101'. You should see now three databases listed: d8x_1442, d8x_1101, and defaultdb.
+    - Navigate to 'Overview' on the left sidebar. You can see 'Service URI'. This will be the "DSN-string" that yo will have to provide to the CLI, replacing 'defaultdb' with 'd8x_1101' for mainnet and 'd8x_1442' for testnet, for example:
+      `postgres://avnadmin:AVNS_TOAs8gaRaajKBWBckzsq@d8xcluster-pudgybear-5e36.a.aivencloud.com:11437/defaultdb?sslmode=require` -> you replace defaultdb by d8x_1101: `postgres://avnadmin:AVNS_TOAs8gasa#jKBWBckzsq@d8xcluster-pudgybear-5e36.a.aivencloud.com:11437/d8x_1101?sslmode=require` to get the DNS string that you will be prompted for when setting up mainnet
+
+  </details>
 - Get access to your domain name server, you will have to create A-name entries once you have the IP addresses of the servers available
 - You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. When running on Mac, additional installations are required
 
