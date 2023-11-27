@@ -36,7 +36,7 @@ func (c *Container) Init(ctx *cli.Context) error {
 	// MACOS
 	if strings.Contains(runtime.GOOS, "darwin") {
 		if !tfFound || !ansibleFound {
-			return c.macosInit()
+			return fmt.Errorf("ansible or terraform is not installed on the system")
 		}
 		return nil
 	}
@@ -207,34 +207,4 @@ func (c *Container) MakeConfigDir() error {
 	}
 
 	return nil
-}
-
-func (c *Container) macosInit() error {
-	contents := `brew update
-brew install ansible
-brew install terraform`
-
-	f, err := os.CreateTemp("", "d8x-installation-XXXX.sh")
-	if err != nil {
-		return fmt.Errorf("creating temporary file for terraform script: %w", err)
-	}
-	defer f.Close()
-	defer func() {
-		os.Remove(f.Name())
-	}()
-	if err := f.Chmod(0700); err != nil {
-		return fmt.Errorf("creating temporary file for terraform script: %w", err)
-	}
-	_, err = f.Write([]byte(contents))
-	if err != nil {
-		return fmt.Errorf("could not create installation script: %w", err)
-	}
-
-	cmd := exec.Command("sudo", "bash", f.Name())
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	// Connect stdin for sudo pass
-	cmd.Stdin = os.Stdin
-
-	return cmd.Run()
 }
