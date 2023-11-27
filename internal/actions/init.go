@@ -106,6 +106,13 @@ yum -y install terraform
 		`
 	}
 
+	// MACOS
+	if _, err := exec.LookPath("brew"); err == nil {
+		sh = `brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
+		`
+	}
+
 	// Make temp script file
 	f, err := os.CreateTemp("", "d8x-installation-XXXX.sh")
 	if err != nil {
