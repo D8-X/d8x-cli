@@ -7,15 +7,15 @@ Setup includes provisioning resources on supported cloud providers, configuring
 servers, deploying swarm cluster and individual services.
 
 
-## Checklist
+## Pre-Flight Checklist
 
 - Create a Quicknode account that allows for several nodes (choose the 49$/month plan) using [this link](https://www.quicknode.com/signup). In a second step, we suggest you onboard Quicknode through us. Any potential kickback that we get will directly go to you if you subscribe   using [this template](https://quiknode.typeform.com/to/efkXcHuc).
 - Create 5 RPC endpoints on Quicknode for Polygon zkEVM testnet (chain id 1442) and 5 RPC endpoints for Polygon zkEVM mainnet (chain id 1101)
 - Create 3 private keys, one we call "broker key" the other one we call "executor key", and the last one we call "payment key"
-- Fund the 3 corresponding addresses with ETH on testnet (1442) and mainnet (1101)
+- Fund the "broker" and "executor" with ETH on testnet (1442) and mainnet (1101), send around $20 worth of ETH to the broker, around $100 for the executor
 - Decide on whether you will deploy the backend on Linode or AWS.
   - If on Linode, create an API token. On the Linode website after logging in, click on your profile name (top right) and select [API Tokens](https://cloud.linode.com/profile/tokens), click on 'create personal access token' and follow the instructions. You will need the API key in the CLI.
-  - If on AWS, ..
+  - If on AWS, create a new dedicated AWS account. Find the IAM (Identity and Access Management) service and navigate to "Create User". Fill in your user name and click next. In "Set permissions" step, select "Attach policies directly" search and attach `AmazonEC2FullAccess` and `AmazonRDSFullAccess`. Once you created your user, click on it to go to user's overview. In "Summary" click to "Create access key". Select "Local code" use case. Enter some informative description about this key like "Access key to run d8x-cli". Copy and securely store the **Access key** and **Secret access key** which are displayed at the end of this process. You will need to enter these values when running CLI for aws deployment.
 - Linode users need an external database cluster. 
   <details>
     <summary>We recommend you create a free PostgreSQL cluster on <a href='https://aiven.io/postgresql'>Aiven</a></summary>
@@ -30,7 +30,7 @@ servers, deploying swarm cluster and individual services.
 
   </details>
 - Get access to your domain name server, you will have to create A-name entries once you have the IP addresses of the servers available
-- You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. When running on Mac, additional installations are required
+- You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. Setup the CLI as directed below.
 
 ## Before You Start The CLI
 
