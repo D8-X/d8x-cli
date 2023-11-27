@@ -1,9 +1,11 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -19,10 +21,269 @@ import (
 // TODO - store this in config and make this configurable via flags
 var dockerStackName = "stack"
 
+// CollectSwarmInputs collects various information points which will be
+// automatically added to the configuration files. Collected info is: chain ids,
+// rpc urls.
+func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
+	chainId, err := c.GetChainId(ctx)
+	if err != nil {
+		return err
+	}
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	chainIdStr := strconv.Itoa(int(chainId))
+	// Collect HTTP rpc endpoints
+	if err := c.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
+		return err
+	}
+	// Collect Websocket rpc endpoints
+	if err := c.CollectWebsocketRPCUrls(cfg, chainIdStr); err != nil {
+		return err
+	}
+
+	// Collect DB dsn
+	if err := c.CollectDatabaseDSN(cfg); err != nil {
+		return err
+	}
+
+	// Collect redis password
+	if cfg.SwarmRedisPassword == "" {
+		pwd, err := c.generatePassword(20)
+		if err != nil {
+			return fmt.Errorf("generating password for redis: %w", err)
+		}
+		fmt.Println("Enter redis password for swarm cluster:")
+		password, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("password"),
+			components.TextInputOptValue(pwd),
+		)
+		if err != nil {
+			return err
+		}
+		cfg.SwarmRedisPassword = password
+	}
+
+	// Collect broker payout address
+	if err := c.CollecteBrokerPayoutAddress(cfg); err != nil {
+		return err
+	}
+
+	// Collect broker http endpoint
+	changeRemoteBrokerHTTP := true
+	if cfg.SwarmRemoteBrokerHTTPUrl != "" {
+		fmt.Printf("Found remote broker http url: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
+		if ok, err := c.TUI.NewPrompt("Do you want to change remote broker http endpoint?", false); err != nil {
+			return err
+		} else if !ok {
+			changeRemoteBrokerHTTP = false
+		}
+	}
+	if changeRemoteBrokerHTTP {
+		fmt.Println("Enter remote broker http url:")
+		brokerUrl, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("https://your-broker-domain.com"),
+			components.TextInputOptValue(cfg.SwarmRemoteBrokerHTTPUrl),
+		)
+		if err != nil {
+			return err
+		}
+		cfg.SwarmRemoteBrokerHTTPUrl = brokerUrl
+	}
+
+	return c.ConfigRWriter.Write(cfg)
+}
+
+func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
+	// Collect referrral broker payout address
+	changeReferralPayoutAddress := true
+	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
+		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
+		if ok, err := c.TUI.NewPrompt("Do you want to change broker payout address?", false); err != nil {
+			return err
+		} else if !ok {
+			changeReferralPayoutAddress = false
+		}
+	}
+	if changeReferralPayoutAddress {
+		fmt.Println("Enter broker payout address:")
+		fmt.Println(styles.GrayText.Render("See config README (live.referralSettings.json) for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md\n"))
+
+		brokerPayoutAddress, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
+			components.TextInputOptValue(cfg.ReferralConfig.BrokerPayoutAddress),
+		)
+		if err != nil {
+			return err
+		}
+
+		// Validate the address
+		if !ValidWalletAddress(brokerPayoutAddress) {
+			return fmt.Errorf("invalid address provided, please set the brokerPayoutAddr in live.referralSettings.json")
+		}
+		cfg.ReferralConfig.BrokerPayoutAddress = brokerPayoutAddress
+
+		return c.ConfigRWriter.Write(cfg)
+	}
+	return nil
+}
+
+func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
+	change := true
+	if cfg.DatabaseDSN != "" {
+		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want to update it?", cfg.DatabaseDSN)
+		ok, err := c.TUI.NewPrompt(info, false)
+		if err != nil {
+			return err
+		}
+		change = ok
+	}
+
+	if !change {
+		return nil
+	}
+
+	switch cfg.ServerProvider {
+	// Linode users must enter their own database dns stirng manually
+	case configs.D8XServerProviderLinode:
+		fmt.Println("Enter your database dsn connection string:")
+		dbDsn, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
+		)
+		if err != nil {
+			return err
+		}
+		cfg.DatabaseDSN = dbDsn
+
+		// For AWS - read it from rds credentials file
+	case configs.D8XServerProviderAWS:
+		creds, err := os.ReadFile(RDS_CREDS_FILE)
+		if err != nil {
+			return err
+		}
+		credsMap := parseAwsRDSCredentialsFile(creds)
+		cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
+			credsMap["user"],
+			credsMap["password"],
+			credsMap["host"],
+			credsMap["port"],
+		)
+	}
+
+	return c.ConfigRWriter.Write(cfg)
+}
+
+// EditSwarmEnv edits the .env file for swarm deployment with user provided and
+// provisioning values.
+func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
+	// Edit .env file
+	fmt.Println(styles.ItalicText.Render("Editing .env file..."))
+	envFile, err := os.ReadFile(envPath)
+	if err != nil {
+		return fmt.Errorf("reading .env file: %w", err)
+	}
+
+	envFileLines := strings.Split(string(envFile), "\n")
+
+	// We assume that all cfg values are present at this point
+	findReplaceOrCreateEnvs := map[string]string{
+		"NETWORK_NAME":       c.getChainPriceFeedName(strconv.Itoa(int(cfg.ChainId))),
+		"SDK_CONFIG_NAME":    c.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
+		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
+		"REDIS_PASSWORD":     cfg.SwarmRedisPassword,
+		"REMOTE_BROKER_HTTP": cfg.SwarmRemoteBrokerHTTPUrl,
+		"DATABASE_DSN":       cfg.DatabaseDSN,
+	}
+
+	// List of envs that were not found in .env but will be added to the output
+	prependEnvs := []string{}
+
+	// Process the env file and append collected .env values
+	for env, value := range findReplaceOrCreateEnvs {
+		envFound := false
+		envVal := env + "=" + value
+		fmt.Printf("Setting %s \n", envVal)
+		for lineIndex, line := range envFileLines {
+			if strings.HasPrefix(line, env) {
+				envFound = true
+				envFileLines[lineIndex] = envVal
+				break
+			}
+		}
+		if !envFound {
+			prependEnvs = append(prependEnvs, envVal)
+		}
+	}
+	if len(prependEnvs) > 0 {
+		envFileLines = append(prependEnvs, envFileLines...)
+	}
+
+	// Write the env output
+	return c.FS.WriteFile(envPath, []byte(strings.Join(envFileLines, "\n")))
+}
+
+// UpdateReferralSettings updates given referralSettingsPath json file with
+// referral broker payout address from config.
+func (c *Container) UpdateReferralSettings(referralSettingsPath string, cfg *configs.D8XConfig) error {
+	contents, err := os.ReadFile(referralSettingsPath)
+	if err != nil {
+		return err
+	}
+
+	referralSettings := []map[string]any{}
+
+	if err := json.Unmarshal(contents, &referralSettings); err != nil {
+		return err
+	}
+
+	for i, refSetting := range referralSettings {
+		if int(refSetting["chainId"].(float64)) == int(cfg.ChainId) {
+			refSetting["brokerPayoutAddr"] = cfg.ReferralConfig.BrokerPayoutAddress
+			referralSettings[i] = refSetting
+			break
+		}
+	}
+
+	out, err := json.MarshalIndent(referralSettings, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(referralSettingsPath, out, 0644)
+}
+
+func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, priceServiceWSEndpoints []string) error {
+	contents, err := os.ReadFile(candlesPriceConfigPath)
+	if err != nil {
+		return err
+	}
+
+	pricesConf := map[string]any{}
+
+	if err := json.Unmarshal(contents, &pricesConf); err != nil {
+		return err
+	}
+	pricesConf["priceServiceWSEndpoints"] = priceServiceWSEndpoints
+
+	out, err := json.MarshalIndent(pricesConf, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(candlesPriceConfigPath, out, 0644)
+}
+
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
-	d8xCfg, err := c.ConfigRWriter.Read()
+	if err := c.CollectSwarmInputs(ctx); err != nil {
+		return err
+	}
+
+	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -37,15 +298,101 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 		// Candles configs
 		{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
+
+		// All configs below should not be interesting for the user - hence we
+		// will be overwriting them and not showing in the information text.
+
 		// Docker swarm file
 		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
 	}
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
-	fmt.Println(styles.AlertImportant.Render("Please edit your .env and configuration files before proceeding."))
+
+	// Update .env file
+	if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
+		return fmt.Errorf("editing .env file: %w", err)
+	}
+
+	// Update rpcconfigs
+	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
+	for _, rpconfigFilePath := range []string{
+		"./trader-backend/rpc.main.json",
+		"./trader-backend/rpc.history.json",
+		"./trader-backend/rpc.referral.json",
+	} {
+		httpRpcs, wsRpcs := httpWsGetter()
+		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+				),
+			)
+		}
+	}
+
+	// Update referralSettings
+	if err := c.UpdateReferralSettings("./trader-backend/live.referralSettings.json", cfg); err != nil {
+		return fmt.Errorf("updating referralSettings.json: %w", err)
+	}
+
+	// Update the candles/prices.config.json. Make sure the default pyth.hermes
+	// entry is always the last one
+	addAnohter, err := c.TUI.NewPrompt("\nAdd additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+	if err != nil {
+		return err
+	}
+	priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
+	if addAnohter {
+		fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
+		additioanalWsEndpoint, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
+		)
+		if err != nil {
+			return err
+		}
+		priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
+	}
+	if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints); err != nil {
+		return err
+	}
+
+	// Collect and temporarily store referral payment executor private key
+	fmt.Println("Enter your referral payment executor private key:")
+	pk, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
+	)
+	if err != nil {
+		return err
+	}
+	if addr, err := PrivateKeyToAddress(pk); err != nil {
+		return fmt.Errorf("ivalid private key: %w", err)
+	} else {
+		fmt.Printf("Provided payment executor address: %s\n", addr.String())
+
+		// Check if user provided broker allowed executor address matches and
+		// report if not
+		if cfg.BrokerDeployed {
+			if !strings.EqualFold(addr.String(), cfg.BrokerServerConfig.ExecutorAddress) {
+				fmt.Println(
+					styles.ErrorText.Render(
+						"provided payment executor address does not match the one provided in broker setup",
+					),
+				)
+			}
+		}
+	}
+	pk = strings.TrimPrefix(pk, "0x")
+	keyfileLocal := "./trader-backend/keyfile.txt"
+	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
+		return fmt.Errorf("temp storage of keyfile failed: %w", err)
+	}
+
+	fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
 	fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-	for _, f := range filesToCopy {
+	for _, f := range filesToCopy[:6] {
 		fmt.Println(f.Dst)
 	}
 	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...")
@@ -87,21 +434,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 				return fmt.Errorf("removing existing stack: %w", err)
 			}
 		}
-	}
-
-	fmt.Println("Enter your referral payment executor private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
-	if err != nil {
-		return err
-	}
-	pk = strings.TrimPrefix(pk, "0x")
-	keyfileLocal := "./trader-backend/keyfile.txt"
-	// write keyfile
-	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
-		return fmt.Errorf("temp storage of keyfile failed: %w", err)
 	}
 
 	ipWorkers, err := c.HostsCfg.GetWorkerIps()
@@ -190,7 +522,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			sshConnWorker conn.SSHConnection
 			err           error
 		)
-		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+		if cfg.ServerProvider == configs.D8XServerProviderAWS {
 			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
 				ipWorkers[k],
@@ -254,7 +586,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			sshConnWorker conn.SSHConnection
 			err           error
 		)
-		if d8xCfg.ServerProvider == configs.D8XServerProviderAWS {
+		if cfg.ServerProvider == configs.D8XServerProviderAWS {
 			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
 				ip,

@@ -1,0 +1,22 @@
+{
+  "80001": {
+    "sdkNetwork": "mumbai",
+    "priceFeedNetwork": "testnet",
+    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws"
+  },
+  "1442": {
+    "sdkNetwork": "zkevmTestnet",
+    "priceFeedNetwork": "testnet",
+    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws"
+  },
+  "1101": {
+    "sdkNetwork": "zkevm",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws"
+  },
+  "default": {
+    "sdkNetwork": "zkevm",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws"
+  }
+}

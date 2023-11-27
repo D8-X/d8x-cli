@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -30,6 +31,14 @@ func (c *Container) Init(ctx *cli.Context) error {
 		fmt.Println(styles.ErrorText.Render("Ansible was not found!"))
 	} else {
 		fmt.Println(styles.SuccessText.Render("Ansible found!"))
+	}
+
+	// MACOS
+	if strings.Contains(runtime.GOOS, "darwin") {
+		if !tfFound || !ansibleFound {
+			return fmt.Errorf("ansible or terraform is not installed on the system")
+		}
+		return nil
 	}
 
 	install := []string{}
@@ -149,7 +158,7 @@ func (c *Container) installAnsible() error {
 	// Attempt to install pipx
 	if c.findInPath("pipx") != nil {
 		fmt.Println(styles.ItalicText.Render("Installing pipx"))
-		cmd := exec.Command("python3", expandCMD("-m pip install pipx")...)
+		cmd := exec.Command("python3", expandCMD("-m pip install pipx passlib")...)
 		cmd.Stderr = os.Stderr
 		cmd.Stdout = os.Stdout
 		err := cmd.Run()

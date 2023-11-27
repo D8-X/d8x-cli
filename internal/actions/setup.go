@@ -17,6 +17,11 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		return err
 	}
 
+	// Ignore init errors, since we might encounter them on mac
+	if err := c.Init(ctx); err != nil {
+		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Init error: %v", err)))
+	}
+
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
 		ok, err := c.TUI.NewPrompt(

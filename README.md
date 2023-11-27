@@ -7,75 +7,98 @@ Setup includes provisioning resources on supported cloud providers, configuring
 servers, deploying swarm cluster and individual services.
 
 
+## Pre-Flight Checklist
 
-## Using A Release
+- Create a Quicknode account that allows for several nodes (choose the 49$/month plan) using [this link](https://www.quicknode.com/signup). In a second step, we suggest you onboard Quicknode through us. Any potential kickback that we get will directly go to you if you subscribe   using [this template](https://quiknode.typeform.com/to/efkXcHuc).
+- Create 5 RPC endpoints on Quicknode for Polygon zkEVM testnet (chain id 1442) and 5 RPC endpoints for Polygon zkEVM mainnet (chain id 1101)
+- Create 3 private keys, one we call "broker key" the other one we call "executor key", and the last one we call "payment key"
+- Fund the "broker" and "executor" with ETH on testnet (1442) and mainnet (1101), send around $20 worth of ETH to the broker, around $100 for the executor
+- Decide on whether you will deploy the backend on Linode or AWS.
+  - If on Linode, create an API token. On the Linode website after logging in, click on your profile name (top right) and select [API Tokens](https://cloud.linode.com/profile/tokens), click on 'create personal access token' and follow the instructions. You will need the API key in the CLI.
+  - If on AWS, create a new dedicated AWS account. Find the IAM (Identity and Access Management) service and navigate to "Create User". Fill in your user name and click next. In "Set permissions" step, select "Attach policies directly" search and attach `AmazonEC2FullAccess` and `AmazonRDSFullAccess`. Once you created your user, click on it to go to user's overview. In "Summary" click to "Create access key". Select "Local code" use case. Enter some informative description about this key like "Access key to run d8x-cli". Copy and securely store the **Access key** and **Secret access key** which are displayed at the end of this process. You will need to enter these values when running CLI for aws deployment.
+- Linode users need an external database cluster. 
+  <details>
+    <summary>We recommend you create a free PostgreSQL cluster on <a href='https://aiven.io/postgresql'>Aiven</a></summary>
+    
+    - sign up a user on Aiven <a href='https://console.aiven.io/signup'>here</a>. Choose the 'business' option.
+    - you will be forwarded to the "Services" page. Choose PosgreSQL, then 'free plan' and choose a region close to the region you plan to deploy your hardware, as the name choose anything you like (d8xcluster if unsure), and click "create free service"
+    - You will see connection details. Click "skip this step"
+    - You will be able to restrict IP addresses on the next screen: click skip this step (we can restrict later)
+    - Now you have a database cluster available. Navigate on the left bar to 'Databases' and click on the right upper corner on 'Create database'. Create one database 'd8x_1442' (add database). Create another database called 'd8x_1101'. You should see now three databases listed: d8x_1442, d8x_1101, and defaultdb.
+    - Navigate to 'Overview' on the left sidebar. You can see 'Service URI'. This will be the "DSN-string" that yo will have to provide to the CLI, replacing 'defaultdb' with 'd8x_1101' for mainnet and 'd8x_1442' for testnet, for example:
+      `postgres://avnadmin:AVNS_TOAs8gaRaajKBWBckzsq@d8xcluster-pudgybear-5e36.a.aivencloud.com:11437/defaultdb?sslmode=require` -> you replace defaultdb by d8x_1101: `postgres://avnadmin:AVNS_TOAs8gasa#jKBWBckzsq@d8xcluster-pudgybear-5e36.a.aivencloud.com:11437/d8x_1101?sslmode=require` to get the DNS string that you will be prompted for when setting up mainnet
 
-When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
-extract the d8x binary and place it in your `PATH`.
-
-To run D8X-CLI on MacOS you will need to build it from source.
-
-## Building From Source
-
-```bash
-go build -o d8x ./main.go
-sudo mv d8x /usr/bin/d8x
-```
-
-Check out the `d8x help` command.
-## Before You Start The CLI
-
-- The CLI is built for Linux and can also work on MacOS (see also FAQ). For MacOS you
-need to build this Go-CLI application on your own (pay attention at the Go version), and you
-need to manually install [ansible](https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#pipx-install) and [terraform](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
-- The CLI allows to deploy on Linode and AWS.
-- You need to have priviledged access to either Linode or AWS so the hardware can be provisioned
-- With Linode, setup the database cluster and create a database. Any name for the db is fine. The db is called 'history' in our pre-defined config.
-  - The CLI will give you the choice of using a database from the cloud-provider of your choice, or a Linode database.   
-  - When using a Linode database cluster, have the database id ready, which you can read from the URL after browsing to the database on the Linode website, for example `https://cloud.linode.com/databases/postgresql/29109` the number 20109 is the id that the CLI tool asks for
-- Have a broker key/address and a broker executor key/address ready. The broker address is the address of the Whitelabelling partner that is paid trader fees (that are then redistributed according to the [referral system](https://github.com/D8-X/referral-system)). The executor executes referral
-payments. The address belonging to the executor will need to be entered as 'allowed executors' in the setup for broker server (more details will follow, this is a heads-up).
-  - Fund the executor and broker wallets with gas tokens (ETH on zkEVM) and monitor the wallet for its ETH balance
-- Decide on the broker fee. The broker fee is paid from the trader to the broker and potentially to referrers. The broker fee is relative to the notional position size. The broker fee is entered in tenth of a basis point ("tbps"),
-  that is, the percentage multiplied by 1000, so that `0.06% = 6 bps = 60 tbps` or `0.10% = 10 bps = 100 tbps`
-- Have multiple private RPCs for Websocket and HTTP ready. As of writing of this document, only Quicknode provides Websocket RPCs for Polygon's zkEVM. Feel free to contact us for recommendations.
-- You need to be able to access your Domain Name Service provider so you can create DNS records
+  </details>
+- Get access to your domain name server, you will have to create A-name entries once you have the IP addresses of the servers available
   Typically a config entry looks something like this:
 
   |        Hostname        | Type |  TTL   |      Data       |
   | :--------------------: | :--: | :----: | :-------------: |
   | api.dev.yourdomain.com |  A   | 1 hour | 139.144.112.122 |
+- Decide what default broker fee you will charge the traders
+- You can use Linux (or a Linux Virtual Machine) or Mac to run the CLI. Install the CLI as directed below.
 
-  <details>
-    <summary>Recommended Domain Name Entries</summary>
-    There are different REST APIs and WebSockets, which we map to the public IPs of the servers. 
-    The services and example names for the backend are as follows:
-    
-  	* api.dev.yourdomain.com: main REST API points to “Swarm manager”
-  	* ws.dev.yourdomain.com: main WebSocket points to “Swarm manager”
-  	* history.dev.yourdomain.com: historical data REST API points to “Swarm manager”
-  	* referral.dev.yourdomain.com: referral code REST API points to “Swarm manager”
-    * candles.dev.yourdomain.com: The Candle Server websocket points to “Swarm manager”
-    * broker.dev.yourdomain.com: The broker server has its own IP
+# CLI Installation
 
-  Both IP addresses, for the manager and broker server, will be shown to you during the setup.
-  </details>
+When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
+extract the d8x binary.
 
-- Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). Feel free to contact us for recommendations.
-The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service -- more details on configs will follow, this is a heads-up)
+To run D8X-CLI on MacOS you will need to build it from source.
 
-## Setup Procedure
-
-In most cases you can just run the setup
-```bash
-d8x setup
+### When using Mac
+Install ansible, terraform, and go
 ```
-and edit the configuration files when prompted by the CLI. 
+brew update
+brew install ansible
+brew install terraform
+brew install go
+```
+
+### Building From Source
+* ensure you have go >=1.20, for example
+  ```
+  $ go version
+    go version go1.21.4 linux/amd64
+  ```
+* checkout the repository into a local folder of your choice and navigate into the folder d8x-cli
+* build
+```bash
+go build -o d8x ./main.go
+```
+* now you have a binary file 'd8x'.
+* create a folder somewhere and copy the binary file to this folder, for example:
+  ```
+  mkdir ~/d8x-deployment
+  mv ./d8x ~/d8x-deployment
+  ```
+
+# Starting D8X Setup
+* copy the binary into a 'deployment folder' of your choice and navigate to this folder, for example:
+  ```
+  cd ~/d8x-deployment
+  mkdir ./deploy
+  cd deploy
+  ```
+* Now you can start the CLI from folder ~/d8x-deployment/deploy (if the binary is in ~/d8x-deployment/), for example:
+  ```
+  ../d8x help
+  ```
+* Run the setup with
+```bash
+../d8x setup
+```
+
+
+## Post-Flight Checklist
+- Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). Feel free to contact us for recommendations.
+The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service or prompt in CLI)
+- When using an external database with Linode: consider whitelisting the IP addresses of the manager/nodes and blocking other IPs
+
 
 ## Configuration Files
 
-Configuration files are key and the most involved part to setup D8X Perpetuals Backend:
-find out how to configure the system in the
+Configuration files are key to setup D8X Perpetuals Backend. Although the CLI guides you through the config,
+here you can find out details about the configuration
 [README](README_CONFIG.md).
 
 ## Usage Of The D8X CLI Tool
@@ -126,7 +149,8 @@ linode and usually takes around 30 minutes.
 has disabled option to create new managed databases. Therefore, you might need
 to use external Postgres database which you can either provision yourself or use
 an external database provider. Don't forget to update your database's security
-policies to allow access from all of the provisioned servers ip addresses.
+policies to allow access from all of the provisioned servers ip addresses. You
+can find more information how to do the external database setup in [this document](./docs/AIVEN_SETUP.md).
 
 For AWS provider - RDS Postgres instance will be provisioned automatically. You
 will be able to automatically create new databases for history and referral
@@ -290,6 +314,39 @@ via `d8x setup broker-deploy`
 </details>
 <details>
   <summary>How do I update the swarm server software images to a new version?</summary>
+
+**Via CLI**
+
+You can update services running in docker swarm and broker server by using the
+`d8x update` command. Command `update` will walk you through the update process.
+You will be prompted to select which services you want to update in the swarm
+cluster and then in the broker server.
+
+For swarm services, you will need to  provide a fully qualified url of docker
+image for the service to update to.
+
+Example:
+
+Let's say our main `api` service is running as
+`ghcr.io/d8-x/d8x-trader-main:main` image in our swarm setup. Now, if you want
+to update service `api` to the latest version of
+`ghcr.io/d8-x/d8x-trader-main:main` (`main` tag), simply updating to use
+`ghcr.io/d8-x/d8x-trader-main:main` image will not work. This is because swarm
+nodes will see that this image with main tag is already downloaded and even
+though there is a newer version of `main` image in container registry, it will
+not pull it (because the tag is the same). In order to force the upate of a
+specific tag that is already available and running in swarm, you have to specify
+the sha hash of the image. For example
+`ghcr.io/d8-x/d8x-trader-main:main@sha256:2ce51e825a559029f47e73a73531d8a0b10191c6bc16950649036edf20ea8c35`
+
+For broker server services, update will attempt to update services to the latest
+version available. This is because broker services are running in docker compose
+and the `update` command simply removes old containers and images and pulls new
+ones.
+
+
+
+**Manually**
 
 You login to the server where your software resides (e.g., the broker-server, or the
 swarm-manager for which you can get the ip with `d8x ip manager`).

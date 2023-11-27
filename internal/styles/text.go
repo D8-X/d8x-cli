@@ -30,6 +30,8 @@ var (
 			Italic(true)
 
 	CommandTitleText = ItalicText.Copy().Bold(true)
+
+	GrayText = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
 var (

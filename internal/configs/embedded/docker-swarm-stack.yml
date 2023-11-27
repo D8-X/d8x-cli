@@ -75,8 +75,8 @@ services:
       # Restart 5 times with 60 seconds delay before giving up.
       restart_policy:
         condition: any
-        delay: 60s
-        max_attempts: 5
+        delay: 360s
+        max_attempts: 10
         # Do not wait to verify restart
         window: 0s
     environment:

@@ -34,7 +34,33 @@ type D8XConfig struct {
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
-	BrokerServerConfig *D8XBrokerServerConfig `json:"broker_server_config"`
+	// Whether broker server is deployed
+	BrokerDeployed bool `json:"broker_deployed"`
+
+	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
+
+	ReferralConfig ReferralConfig `json:"referral_config"`
+
+	// Chain id of all services
+	ChainId uint `json:"chain_id"`
+
+	// List of user provided http rpc endpoints for chainId
+	HttpRpcList map[string][]string `json:"http_rpc_list"`
+	// List of user provided ws rpc endpoints for chainId
+	WsRpcList map[string][]string `json:"ws_rpc_list"`
+
+	SwarmRedisPassword string `json:"swarm_redis_password"`
+
+	// Value which will be used for REMOTE_BROKER_HTTP variable in .env file
+	SwarmRemoteBrokerHTTPUrl string `json:"swarm_remote_broker_http_url"`
+
+	// Database dsn string
+	DatabaseDSN string `json:"database_dsn"`
+}
+
+type ReferralConfig struct {
+	// ExecutorAddress     string `json:"executor_address"`
+	BrokerPayoutAddress string `json:"broker_payout_address"`
 }
 
 func (d *D8XConfig) IsEmpty() bool {
@@ -93,6 +119,8 @@ type D8XService struct {
 type D8XBrokerServerConfig struct {
 	FeeTBPS       string `json:"fee_tbps"`
 	RedisPassword string `json:"redis_password"`
+	// Executor address must match the provided Executor private key in swarm setup
+	ExecutorAddress string `json:"executor_address"`
 }
 
 func NewD8XConfig() *D8XConfig {
@@ -148,12 +176,18 @@ func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
 	if cfg.Services == nil {
 		cfg.Services = make(map[D8XServiceName]D8XService)
 	}
+	if cfg.HttpRpcList == nil {
+		cfg.HttpRpcList = make(map[string][]string)
+	}
+	if cfg.WsRpcList == nil {
+		cfg.WsRpcList = make(map[string][]string)
+	}
 
 	return cfg, nil
 }
 
 func (d *d8xConfigFileReadWriter) Write(cfg *D8XConfig) error {
-	if buf, err := json.Marshal(cfg); err != nil {
+	if buf, err := json.MarshalIndent(cfg, "", "\t"); err != nil {
 		return err
 	} else {
 		if err := os.WriteFile(d.filePath, buf, 0666); err != nil {
