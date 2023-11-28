@@ -34,10 +34,10 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	if err := c.EmbedCopier.CopyMultiToDest(
 		configs.EmbededConfigs,
 		"./aws.tf",
-
 		"embedded/trader-backend/tf-aws/main.tf",
 		"embedded/trader-backend/tf-aws/routes.tf",
 		"embedded/trader-backend/tf-aws/sg.tf",
+		"embedded/trader-backend/tf-aws/pg.tf",
 		"embedded/trader-backend/tf-aws/vars.tf",
 		"embedded/trader-backend/tf-aws/output.tf",
 	); err != nil {
@@ -107,11 +107,15 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 	awsKey := ""
 	awsSecret := ""
 	awsRDSInstanceClass := "db.t4g.small"
+	awsServerLabelPrefix := "d8x-cluster"
 	if cfg.AWSConfig != nil {
 		awsKey = cfg.AWSConfig.AccesKey
 		awsSecret = cfg.AWSConfig.SecretKey
 		if cfg.AWSConfig.RDSInstanceClass != "" {
 			awsRDSInstanceClass = cfg.AWSConfig.RDSInstanceClass
+		}
+		if cfg.AWSConfig.LabelPrefix != "" {
+			awsServerLabelPrefix = cfg.AWSConfig.LabelPrefix
 		}
 	}
 
@@ -156,9 +160,9 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 	}
 	awsCfg.RDSInstanceClass = dbClass
 
-	fmt.Println("Enter server tag prefix: ")
+	fmt.Println("Enter server tag prefix (must be unique between deployments): ")
 	labelPrefix, err := c.TUI.NewInput(
-		components.TextInputOptValue("d8x-cluster"),
+		components.TextInputOptValue(awsServerLabelPrefix),
 		components.TextInputOptPlaceholder("my-cluster"),
 	)
 	if err != nil {
@@ -253,6 +257,7 @@ func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName, referral
 	}
 
 	pgConn, err := pgx.ConnectConfig(context.Background(), pgCnfg)
+
 	if err != nil {
 		return fmt.Errorf("connecting to postgres instance: %w", err)
 	}
