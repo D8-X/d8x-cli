@@ -44,16 +44,18 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		return fmt.Errorf("collecting server provider details: %w", err)
 	}
 
-	// Terraform apply for selected server provider
-	tfCmd, err := providerConfigurer.BuildTerraformCMD(c)
-	if err != nil {
-		return err
-	}
-
-	// Exec terraform init
+	// Exec terraform init before we create provider cmd, so in case provider
+	// configurer perfroms any checks before building cmd - we already have tf
+	// init in place.
 	tfInit := exec.Command("terraform", "init")
 	connectCMDToCurrentTerm(tfInit)
 	if err := tfInit.Run(); err != nil {
+		return err
+	}
+
+	// Terraform apply for selected server provider
+	tfCmd, err := providerConfigurer.BuildTerraformCMD(c)
+	if err != nil {
 		return err
 	}
 
@@ -61,6 +63,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		connectCMDToCurrentTerm(tfCmd)
 		err := tfCmd.Run()
 		if err != nil {
+			fmt.Println(styles.ErrorText.Render("Terraform apply failed, please check the output above for more details.\nPossible issues:\n\tDuplicate server label\n\tIncorrect AWS credentials\n\tSelected region was used first time"))
 			return err
 		}
 	}
