@@ -160,7 +160,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 	}
 	awsCfg.RDSInstanceClass = dbClass
 
-	fmt.Println("Enter server tag prefix (must be  between deployments): ")
+	fmt.Println("Enter server tag prefix (must be unique between deployments): ")
 	labelPrefix, err := c.TUI.NewInput(
 		components.TextInputOptValue(awsServerLabelPrefix),
 		components.TextInputOptPlaceholder("my-cluster"),
