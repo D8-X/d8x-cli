@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -71,8 +72,6 @@ func (c *Container) DisplayPasswordAlert() {
 	created for default user on each provisioned server.`))
 	fmt.Printf("User: %s\n", c.DefaultClusterUserName)
 	fmt.Printf("Password: %s\n", c.UserPassword)
-
-	c.TUI.NewConfirmation("Please confirm that you have stored the password!")
 }
 
 // Get password gets the password with the following precedence:
@@ -87,4 +86,75 @@ func defaultPasswordGetter(ctx *cli.Context) (string, error) {
 	} else {
 		return string(pwd), nil
 	}
+}
+
+// CollectInputWithConfirmation shows an input field and when users fills it,
+// shows a confirmation
+func (c *Container) CollectInputWithConfirmation(inputTitle, confirmationTitle string, inputOpts ...components.TextInputOpt) (string, error) {
+	fmt.Println(inputTitle)
+	input, err := c.TUI.NewInput(
+		inputOpts...,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("You have entered: %s\n", input)
+
+	correct, err := c.TUI.NewPrompt(confirmationTitle, true)
+	if err != nil {
+		return "", err
+	}
+	// Try again
+	if !correct {
+		return c.CollectInputWithConfirmation(inputTitle, confirmationTitle, inputOpts...)
+	}
+
+	return input, nil
+}
+
+// TrimHttpsPrefix removes http:// or https:// prefix from the url
+func TrimHttpsPrefix(url string) string {
+	return strings.TrimSpace(strings.TrimPrefix(
+		strings.TrimPrefix(url, "http://"),
+		"https://",
+	))
+}
+
+// EnsureHttpsPrefixExists makes sure the url has https:// prefix
+func EnsureHttpsPrefixExists(url string) string {
+	return "https://" + TrimHttpsPrefix(url)
+}
+
+func (c *Container) CollectCertbotEmail(cfg *configs.D8XConfig) (string, error) {
+	change := true
+	if cfg.CertbotEmail != "" {
+		fmt.Printf("Email for certbot notifications is set to %s\n", cfg.CertbotEmail)
+		ok, err := c.TUI.NewPrompt("Do you want to change it?", false)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			change = false
+		}
+	}
+
+	if !change {
+		return cfg.CertbotEmail, nil
+	}
+
+	fmt.Println("Enter your email address for certbot notifications: ")
+	email, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("my-email@domain.com"),
+	)
+	if err != nil {
+		return "", err
+	}
+	cfg.CertbotEmail = email
+
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return "", err
+	}
+
+	return cfg.CertbotEmail, nil
 }

@@ -50,21 +50,16 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 		return err
 	}
 
-	// Collect redis password
+	// Generate redis password
 	if cfg.SwarmRedisPassword == "" {
 		pwd, err := c.generatePassword(20)
 		if err != nil {
 			return fmt.Errorf("generating password for redis: %w", err)
 		}
-		fmt.Println("Enter redis password for swarm cluster:")
-		password, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("password"),
-			components.TextInputOptValue(pwd),
-		)
 		if err != nil {
 			return err
 		}
-		cfg.SwarmRedisPassword = password
+		cfg.SwarmRedisPassword = pwd
 	}
 
 	// Collect broker payout address
@@ -91,7 +86,7 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		cfg.SwarmRemoteBrokerHTTPUrl = brokerUrl
+		cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
 	}
 
 	return c.ConfigRWriter.Write(cfg)
@@ -321,7 +316,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		"./trader-backend/rpc.history.json",
 		"./trader-backend/rpc.referral.json",
 	} {
-		httpRpcs, wsRpcs := httpWsGetter()
+		httpRpcs, wsRpcs := httpWsGetter(false)
 		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
 		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
 			fmt.Println(
@@ -367,24 +362,35 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	pk = strings.TrimPrefix(pk, "0x")
 	if addr, err := PrivateKeyToAddress(pk); err != nil {
 		return fmt.Errorf("ivalid private key: %w", err)
 	} else {
 		fmt.Printf("Provided payment executor address: %s\n", addr.String())
 
-		// Check if user provided broker allowed executor address matches and
-		// report if not
+		// Check if user provided broker allowed executor pk's address matches
+		// with values in broker/chainConfig.json and report if not
 		if cfg.BrokerDeployed {
-			if !strings.EqualFold(addr.String(), cfg.BrokerServerConfig.ExecutorAddress) {
+			allowedExecutorAddrs, err := c.GetBrokerChainConfigJsonAllowedExecutors("./broker-server/chainConfig.json", cfg)
+			if err != nil {
+				return fmt.Errorf("reading ./broker-server/chainConfig.json: %w", err)
+			}
+			matchFound := false
+			for _, allowedAddr := range allowedExecutorAddrs {
+				if strings.EqualFold(addr.String(), allowedAddr) {
+					matchFound = true
+					break
+				}
+			}
+			if !matchFound {
 				fmt.Println(
 					styles.ErrorText.Render(
-						"provided payment executor address does not match the one provided in broker setup",
+						"provided payment executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
 					),
 				)
 			}
 		}
 	}
-	pk = strings.TrimPrefix(pk, "0x")
 	keyfileLocal := "./trader-backend/keyfile.txt"
 	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
 		return fmt.Errorf("temp storage of keyfile failed: %w", err)
@@ -637,8 +643,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 }
 
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Starting swarm nginx and certbot setup...")
+
 	// Load config which we will later use to write details about services.
-	d8xCfg, err := c.ConfigRWriter.Read()
+	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -667,19 +675,17 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+
 	emailForCertbot := ""
 	if setupCertbot {
-		fmt.Println("Enter your email address for certbot notifications: ")
-		email, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("email@domain.com"),
-		)
+		email, err := c.CollectCertbotEmail(cfg)
 		if err != nil {
 			return err
 		}
 		emailForCertbot = email
 	}
 
-	services, err := c.swarmNginxCollectData(d8xCfg)
+	services, err := c.swarmNginxCollectData(cfg)
 	if err != nil {
 		return err
 	}
@@ -701,7 +707,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		hostnames[i] = svc.server
 
 		// Store services in d8x config
-		d8xCfg.Services[svc.serviceName] = configs.D8XService{
+		cfg.Services[svc.serviceName] = configs.D8XService{
 			Name:      svc.serviceName,
 			UsesHTTPS: setupCertbot,
 			HostName:  svc.server,
@@ -738,16 +744,23 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 			emailForCertbot,
 			hostnames,
 		)
-
 		fmt.Println(string(out))
+
 		if err != nil {
-			return err
+			restart, err2 := c.TUI.NewPrompt("Certbot setup failed, do you want to restart the swarm-nginx setup?", true)
+			if err2 != nil {
+				return err2
+			}
+			if restart {
+				return c.SwarmNginx(ctx)
+			}
+			return fmt.Errorf("certbot setup failed: %w", err)
 		} else {
 			fmt.Println(styles.SuccessText.Render("Manager server certificates setup done!"))
 		}
 	}
 
-	if err := c.ConfigRWriter.Write(d8xCfg); err != nil {
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return fmt.Errorf("could not update config: %w", err)
 	}
 
@@ -817,38 +830,24 @@ func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTup
 			}
 		}
 
-		fmt.Println(h.prompt)
-		input, err := c.TUI.NewInput(
+		input, err := c.CollectInputWithConfirmation(
+			h.prompt,
+			"Is this the correct domain you want to use for "+string(h.serviceName)+"?",
 			components.TextInputOptPlaceholder(h.placeholder),
 			components.TextInputOptValue(value),
 		)
 		if err != nil {
 			return nil, err
 		}
+		input = TrimHttpsPrefix(input)
 		hostsTpl[i].server = input
 		replacements[i] = files.ReplacementTuple{
 			Find:    h.find,
 			Replace: input,
 		}
-
 		hosts[i] = input
-	}
 
-	// Confirm choices
-	for _, h := range hostsTpl {
-		fmt.Printf(
-			"(sub)domain for %s: %s\n",
-			strings.ReplaceAll(h.find, "%", ""),
-			h.server,
-		)
-	}
-	correct, err := c.TUI.NewPrompt("Are these values correct?", true)
-	if err != nil {
-		return nil, err
-	}
-	// Restart this func
-	if !correct {
-		return c.swarmNginxCollectData(cfg)
+		fmt.Printf("Using domain %s for %s\n\n", input, h.serviceName)
 	}
 
 	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))

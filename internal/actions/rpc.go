@@ -228,7 +228,7 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 	return c.FS.WriteFile(rpcConfigFilePath, marshalled)
 }
 
-func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func() ([]string, []string) {
+func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func(bool) ([]string, []string) {
 	numHttpAvailable := len(cfg.HttpRpcList[chainId])
 	numWsAvailable := len(cfg.WsRpcList[chainId])
 
@@ -244,7 +244,7 @@ func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func()
 		wsRing = wsRing.Next()
 	}
 
-	return func() ([]string, []string) {
+	return func(backwards bool) ([]string, []string) {
 		httpRpcs := []string{}
 		wsRpcs := []string{}
 
@@ -265,11 +265,19 @@ func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func()
 
 		for i := 0; i < amountHttp; i++ {
 			httpRpcs = append(httpRpcs, httpRing.Value.(string))
-			httpRing = httpRing.Next()
+			if backwards {
+				httpRing = httpRing.Prev()
+			} else {
+				httpRing = httpRing.Next()
+			}
 		}
 		for i := 0; i < amountWs; i++ {
 			wsRpcs = append(wsRpcs, wsRing.Value.(string))
-			wsRing = wsRing.Next()
+			if backwards {
+				wsRing = wsRing.Prev()
+			} else {
+				wsRing = wsRing.Next()
+			}
 		}
 
 		return httpRpcs, wsRpcs

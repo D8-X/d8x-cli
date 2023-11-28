@@ -111,6 +111,35 @@ func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *con
 	return os.WriteFile(chainConfigPath, out, 0644)
 }
 
+func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath string, cfg *configs.D8XConfig) ([]string, error) {
+	contents, err := os.ReadFile(chainConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	chainConfig := []map[string]any{}
+
+	if err := json.Unmarshal(contents, &chainConfig); err != nil {
+		return nil, err
+	}
+
+	var allowedExecutors []string
+	for _, conf := range chainConfig {
+		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
+			v, ok := conf["allowedExecutors"].([]any)
+			if ok {
+				allowedExecutors = make([]string, len(v))
+				for i, executorAddr := range v {
+					if a, ok2 := executorAddr.(string); ok2 {
+						allowedExecutors[i] = a
+					}
+				}
+			}
+		}
+	}
+	return allowedExecutors, nil
+}
+
 // BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
@@ -157,7 +186,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	// Upate rpc.json config
 	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
 	rpconfigFilePath := "./broker-server/rpc.json"
-	httpRpcs, _ := httpWsGetter()
+	httpRpcs, _ := httpWsGetter(true)
 	fmt.Printf("Updating %s config...\n", rpconfigFilePath)
 	if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
 		fmt.Println(
@@ -207,6 +236,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	pk = strings.TrimPrefix(pk, "0x")
 	if addr, err := PrivateKeyToAddress(pk); err != nil {
 		return fmt.Errorf("ivalid private key: %w", err)
 	} else {
@@ -325,23 +355,24 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	}
 	emailForCertbot := ""
 	if setupCertbot {
-		fmt.Println("Enter your email address for certbot notifications: ")
-		email, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("email@domain.com"),
-		)
+		email, err := c.CollectCertbotEmail(cfg)
 		if err != nil {
 			return err
 		}
 		emailForCertbot = email
 	}
 
-	fmt.Println("Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):")
-	brokerServerName, err := c.TUI.NewInput(
+	brokerServerName, err := c.CollectInputWithConfirmation(
+		"Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):",
+		"Is this correct?",
 		components.TextInputOptPlaceholder("your-broker.domain.com"),
 	)
 	if err != nil {
 		return err
 	}
+	brokerServerName = TrimHttpsPrefix(brokerServerName)
+
+	fmt.Printf("Using broker domain: %s\n", brokerServerName)
 
 	// Print alert about DNS
 	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
@@ -403,7 +434,15 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 		out, err := c.certbotNginxSetup(sshConn, password, emailForCertbot, []string{brokerServerName})
 		fmt.Println(string(out))
+
 		if err != nil {
+			restart, err2 := c.TUI.NewPrompt("Certbot setup failed, do you want to restart the broker-nginx setup?", true)
+			if err2 != nil {
+				return err2
+			}
+			if restart {
+				return c.BrokerServerNginxCertbotSetup(ctx)
+			}
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render("Broker server certificates setup done!"))
