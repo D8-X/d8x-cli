@@ -7,10 +7,6 @@ terraform {
   }
 }
 
-# module "pg_instance_check" {
-#   source = "./pg_check"
-# }
-
 provider "aws" {
   region     = var.region
   access_key = var.aws_access_key
@@ -110,17 +106,6 @@ resource "aws_internet_gateway" "d8x_igw" {
     Name = "d8x-cluster-igw"
   }
 }
-
-# resource "aws_eip" "manager_public_ip" {
-#   tags = {
-#     Name = "d8x-cluster-manager-public-ip"
-#   }
-# }
-
-# resource "aws_eip_association" "eip_assoc" {
-#   instance_id   = aws_instance.manager.primary_network_interface_id
-#   allocation_id = aws_eip.manager_public_ip.id
-# }
 
 resource "aws_instance" "manager" {
   ami           = data.aws_ami.ubuntu.id
