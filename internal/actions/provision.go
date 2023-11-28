@@ -44,18 +44,17 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		return fmt.Errorf("collecting server provider details: %w", err)
 	}
 
-	// Exec terraform init before we create provider cmd, so in case provider
-	// configurer perfroms any checks before building cmd - we already have tf
-	// init in place.
-	tfInit := exec.Command("terraform", "init")
-	connectCMDToCurrentTerm(tfInit)
-	if err := tfInit.Run(); err != nil {
-		return err
-	}
-
 	// Terraform apply for selected server provider
 	tfCmd, err := providerConfigurer.BuildTerraformCMD(c)
 	if err != nil {
+		return err
+	}
+
+	// Terraform init must run after we copy all the terraform files via
+	// BuildTerraformCMD
+	tfInit := exec.Command("terraform", "init")
+	connectCMDToCurrentTerm(tfInit)
+	if err := tfInit.Run(); err != nil {
 		return err
 	}
 
