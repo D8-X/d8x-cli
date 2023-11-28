@@ -51,30 +51,6 @@ resource "aws_security_group" "ssh_docker_sg" {
   }
 }
 
-// Enable accessing RDS instance from private subnets
-resource "aws_security_group" "db_access" {
-  name_prefix = "d8x-cluster-posgtres-access-sg"
-  vpc_id      = aws_vpc.d8x_cluster_vpc.id
-
-  tags = {
-    Name = "d8x-cluster-posgtres-access-sg"
-  }
-
-  ingress {
-    cidr_blocks = local.subnets
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-  }
-
-  // Allow all traffic to go out
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
 
 resource "aws_security_group" "http_access" {
   name_prefix = "d8x-cluster-http-sg"
