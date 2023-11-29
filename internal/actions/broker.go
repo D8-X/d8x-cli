@@ -146,8 +146,14 @@ func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath str
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
-	if err := c.CollectBrokerInputs(ctx); err != nil {
+	guideUser, err := c.TUI.NewPrompt("Would you like the cli to guide you through the configuration?", true)
+	if err != nil {
 		return err
+	}
+	if guideUser {
+		if err := c.CollectBrokerInputs(ctx); err != nil {
+			return err
+		}
 	}
 
 	cfg, err := c.ConfigRWriter.Read()
@@ -183,23 +189,25 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	// Upate rpc.json config
-	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
-	rpconfigFilePath := "./broker-server/rpc.json"
-	httpRpcs, _ := httpWsGetter(true)
-	fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-	if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
-		fmt.Println(
-			styles.ErrorText.Render(
-				fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
-			),
-		)
-	}
+	if guideUser {
+		// Upate rpc.json config
+		httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
+		rpconfigFilePath := "./broker-server/rpc.json"
+		httpRpcs, _ := httpWsGetter(true)
+		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+				),
+			)
+		}
 
-	// Update chainConfig.json
-	fmt.Printf("Updating %s config...\n", chainConfig)
-	if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
-		return err
+		// Update chainConfig.json
+		fmt.Printf("Updating %s config...\n", chainConfig)
+		if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
+			return err
+		}
 	}
 
 	absChainConfig, err := filepath.Abs(chainConfig)
@@ -228,19 +236,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	)
 
 	// Collect required information
-	fmt.Println("Enter your broker private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
+	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
 	if err != nil {
 		return err
-	}
-	pk = strings.TrimPrefix(pk, "0x")
-	if addr, err := PrivateKeyToAddress(pk); err != nil {
-		return fmt.Errorf("ivalid private key: %w", err)
-	} else {
-		fmt.Printf("Provided broker address: %s\n\n", addr.String())
 	}
 
 	fmt.Println("Enter your broker fee percentage (%) value:")

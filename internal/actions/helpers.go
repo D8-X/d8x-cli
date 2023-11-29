@@ -158,3 +158,39 @@ func (c *Container) CollectCertbotEmail(cfg *configs.D8XConfig) (string, error) 
 
 	return cfg.CertbotEmail, nil
 }
+
+// CollectAndValidatePrivateKey prompts user to enter a private key, validates
+// it, displays the address of entered key and prompts user to confirm that
+// entered key's address is correct. If any of the validation or
+// confirmation steps fail, it will restart the collection process. Returned
+// values are private key without 0x prefix and its address.
+func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, error) {
+	fmt.Println(title)
+	pk, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
+		components.TextInputOptMasked(),
+	)
+	if err != nil {
+		return "", "", err
+	}
+	pk = strings.TrimPrefix(pk, "0x")
+	addr, err := PrivateKeyToAddress(pk)
+	if err != nil {
+		info := fmt.Sprintf("Invalid private key, please try again...\n - %s\n", err.Error())
+		fmt.Println(styles.ErrorText.Render(info))
+		return c.CollectAndValidatePrivateKey(title)
+	}
+
+	fmt.Printf("Wallet address of entered private key: %s\n", addr.Hex())
+
+	ok, err := c.TUI.NewPrompt("Is this correct address?", true)
+	if err != nil {
+		return "", "", err
+	}
+
+	if !ok {
+		return c.CollectAndValidatePrivateKey(title)
+	}
+
+	return pk, addr.Hex(), nil
+}

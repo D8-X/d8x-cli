@@ -274,8 +274,14 @@ func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, 
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
-	if err := c.CollectSwarmInputs(ctx); err != nil {
+	guideUser, err := c.TUI.NewPrompt("Would you like the cli to guide you through the configuration?", true)
+	if err != nil {
 		return err
+	}
+	if guideUser {
+		if err := c.CollectSwarmInputs(ctx); err != nil {
+			return err
+		}
 	}
 
 	cfg, err := c.ConfigRWriter.Read()
@@ -304,99 +310,91 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
 
-	// Update .env file
-	if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
-		return fmt.Errorf("editing .env file: %w", err)
-	}
-
-	// Update rpcconfigs
-	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
-	for i, rpconfigFilePath := range []string{
-		"./trader-backend/rpc.main.json",
-		"./trader-backend/rpc.history.json",
-		"./trader-backend/rpc.referral.json",
-	} {
-		httpRpcs, wsRpcs := httpWsGetter(false)
-		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-
-		// No wsRPC for referral
-		if i == 2 {
-			wsRpcs = nil
+	if guideUser {
+		// Update .env file
+		if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
+			return fmt.Errorf("editing .env file: %w", err)
 		}
 
-		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
+		// Update rpcconfigs
+		httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
+		for i, rpconfigFilePath := range []string{
+			"./trader-backend/rpc.main.json",
+			"./trader-backend/rpc.history.json",
+			"./trader-backend/rpc.referral.json",
+		} {
+			httpRpcs, wsRpcs := httpWsGetter(false)
+			fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+
+			// No wsRPC for referral
+			if i == 2 {
+				wsRpcs = nil
+			}
+
+			if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
+				fmt.Println(
+					styles.ErrorText.Render(
+						fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+					),
+				)
+			}
+		}
+
+		// Update referralSettings
+		if err := c.UpdateReferralSettings("./trader-backend/live.referralSettings.json", cfg); err != nil {
+			return fmt.Errorf("updating referralSettings.json: %w", err)
+		}
+
+		// Update the candles/prices.config.json. Make sure the default pyth.hermes
+		// entry is always the last one
+		addAnohter, err := c.TUI.NewPrompt("\nAdd additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+		if err != nil {
+			return err
+		}
+		priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
+		if addAnohter {
+			fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
+			additioanalWsEndpoint, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
+			)
+			if err != nil {
+				return err
+			}
+			priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
+		}
+		if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints); err != nil {
+			return err
+		}
+	}
+
+	// Collect and temporarily store referral payment executor private key
+	pk, pkWalletAddress, err := c.CollectAndValidatePrivateKey("Enter your referral payment executor private key:")
+	if err != nil {
+		return err
+	}
+	// Check if user provided broker allowed executor pk's address matches
+	// with values in broker/chainConfig.json and report if not
+	if cfg.BrokerDeployed {
+		allowedExecutorAddrs, err := c.GetBrokerChainConfigJsonAllowedExecutors("./broker-server/chainConfig.json", cfg)
+		if err != nil {
+			return fmt.Errorf("reading ./broker-server/chainConfig.json: %w", err)
+		}
+		matchFound := false
+		for _, allowedAddr := range allowedExecutorAddrs {
+			if strings.EqualFold(pkWalletAddress, allowedAddr) {
+				matchFound = true
+				break
+			}
+		}
+		if !matchFound {
 			fmt.Println(
 				styles.ErrorText.Render(
-					fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+					"provided payment executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
 				),
 			)
 		}
 	}
 
-	// Update referralSettings
-	if err := c.UpdateReferralSettings("./trader-backend/live.referralSettings.json", cfg); err != nil {
-		return fmt.Errorf("updating referralSettings.json: %w", err)
-	}
-
-	// Update the candles/prices.config.json. Make sure the default pyth.hermes
-	// entry is always the last one
-	addAnohter, err := c.TUI.NewPrompt("\nAdd additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
-	if err != nil {
-		return err
-	}
-	priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
-	if addAnohter {
-		fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
-		additioanalWsEndpoint, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
-		)
-		if err != nil {
-			return err
-		}
-		priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
-	}
-	if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints); err != nil {
-		return err
-	}
-
-	// Collect and temporarily store referral payment executor private key
-	fmt.Println("Enter your referral payment executor private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
-	if err != nil {
-		return err
-	}
-	pk = strings.TrimPrefix(pk, "0x")
-	if addr, err := PrivateKeyToAddress(pk); err != nil {
-		return fmt.Errorf("ivalid private key: %w", err)
-	} else {
-		fmt.Printf("Provided payment executor address: %s\n", addr.String())
-
-		// Check if user provided broker allowed executor pk's address matches
-		// with values in broker/chainConfig.json and report if not
-		if cfg.BrokerDeployed {
-			allowedExecutorAddrs, err := c.GetBrokerChainConfigJsonAllowedExecutors("./broker-server/chainConfig.json", cfg)
-			if err != nil {
-				return fmt.Errorf("reading ./broker-server/chainConfig.json: %w", err)
-			}
-			matchFound := false
-			for _, allowedAddr := range allowedExecutorAddrs {
-				if strings.EqualFold(addr.String(), allowedAddr) {
-					matchFound = true
-					break
-				}
-			}
-			if !matchFound {
-				fmt.Println(
-					styles.ErrorText.Render(
-						"provided payment executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
-					),
-				)
-			}
-		}
-	}
 	keyfileLocal := "./trader-backend/keyfile.txt"
 	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
 		return fmt.Errorf("temp storage of keyfile failed: %w", err)
