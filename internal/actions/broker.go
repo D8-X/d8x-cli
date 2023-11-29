@@ -51,21 +51,12 @@ func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
 		}
 	}
 	if changeExecutorAddress {
-		fmt.Println("Enter broker executor address:")
-		brokerExecutorAddress, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
-			components.TextInputOptValue(cfg.BrokerServerConfig.ExecutorAddress),
-		)
+		brokerExecutorAddress, err := c.CollectAndValidateWalletAddress("Enter broker executor address:", cfg.BrokerServerConfig.ExecutorAddress)
 		if err != nil {
 			return err
 		}
 
-		// Validate the address
-		if !ValidWalletAddress(brokerExecutorAddress) {
-			fmt.Println(styles.ErrorText.Render("invalid address provided, please set the allowedExecutors value in chainConfig.json"))
-		} else {
-			cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
-		}
+		cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
 	}
 
 	return c.ConfigRWriter.Write(cfg)

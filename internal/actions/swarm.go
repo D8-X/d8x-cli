@@ -110,20 +110,12 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 		}
 	}
 	if changeReferralPayoutAddress {
-		fmt.Println("Enter broker payout address:")
-		fmt.Println(styles.GrayText.Render("See config README (live.referralSettings.json) for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md\n"))
+		info := "Enter broker payout address:\n"
+		info = info + styles.GrayText.Render("See config README (live.referralSettings.json) for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md\n")
 
-		brokerPayoutAddress, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
-			components.TextInputOptValue(cfg.ReferralConfig.BrokerPayoutAddress),
-		)
+		brokerPayoutAddress, err := c.CollectAndValidateWalletAddress(info, cfg.ReferralConfig.BrokerPayoutAddress)
 		if err != nil {
 			return err
-		}
-
-		// Validate the address
-		if !ValidWalletAddress(brokerPayoutAddress) {
-			return fmt.Errorf("invalid address provided, please set the brokerPayoutAddr in live.referralSettings.json")
 		}
 		cfg.ReferralConfig.BrokerPayoutAddress = brokerPayoutAddress
 

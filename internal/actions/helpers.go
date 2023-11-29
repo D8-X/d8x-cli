@@ -194,3 +194,23 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 
 	return pk, addr.Hex(), nil
 }
+
+func (c *Container) CollectAndValidateWalletAddress(title, value string) (string, error) {
+	fmt.Println(title)
+	walletAddress, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
+		components.TextInputOptValue(value),
+	)
+	walletAddress = strings.TrimSpace(walletAddress)
+	if err != nil {
+		return "", err
+	}
+
+	// Validate the address
+	if !ValidWalletAddress(walletAddress) {
+		fmt.Println(styles.ErrorText.Render("invalid address provided, please try again..."))
+		return c.CollectAndValidateWalletAddress(title, value)
+	}
+
+	return walletAddress, nil
+}
