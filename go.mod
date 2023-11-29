@@ -11,6 +11,7 @@ require (
 	github.com/ethereum/go-ethereum v1.13.5
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/jackc/pgx/v5 v5.4.3
+	github.com/magiconair/properties v1.8.7
 	github.com/pkg/sftp v1.13.6
 	github.com/stretchr/testify v1.8.4
 	github.com/urfave/cli/v2 v2.25.7

@@ -167,17 +167,24 @@ func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
 	return chainJson.DefaultPythWSEndpoint
 }
 
+type WSRPCSlice struct {
+	Entries     []string
+	OmitIfEmpty bool
+}
+
 type RPCConfigEntry struct {
 	ChainId  uint     `json:"chainId"`
 	HttpRpcs []string `json:"HTTP"`
-	// WsRpcs is optional and can be a nil, in that case we will set it to empty
-	// slice
-	WsRpcs []string `json:"WS"`
+	// WsRpcs is optional and can be a nil, in that case we will omit it.
+	// However, if it is an empty slice, we want to include empty array.
+	WsRpcs *[]string `json:"WS,omitempty"`
 }
 
 // editRpcConfigUrls updates rpc config file for given chainId with wsRpcs and
 // httpRpcs. Any pre-existing rpc urls are kept. By default these will be the
-// public rpc urls.
+// public rpc urls (in embedded configs). When wsRpcs is nil, WS field will be
+// omitted, however, when it is empty slice - it will be included as empty array
+// in json output.
 func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, wsRpcs, httpRpcs []string) error {
 	rpcCfg, err := os.ReadFile(rpcConfigFilePath)
 	if err != nil {
@@ -193,7 +200,6 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 	found := false
 	newEntry := RPCConfigEntry{
 		ChainId:  chainId,
-		WsRpcs:   wsRpcs,
 		HttpRpcs: httpRpcs,
 	}
 
@@ -202,13 +208,14 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 			// Append existing urls to our new entry
 			entry.HttpRpcs = slices.Compact(append(entry.HttpRpcs, newEntry.HttpRpcs...))
 
-			if newEntry.WsRpcs != nil {
-				entry.WsRpcs = slices.Compact(append(entry.WsRpcs, newEntry.WsRpcs...))
-			}
-
-			// Prevent nulls in output json
-			if entry.WsRpcs == nil {
-				entry.WsRpcs = []string{}
+			// Only append ws rpcs if they are provided. If ws values are non
+			// nil we must create WS field entry if it doesn't exist.
+			if wsRpcs != nil {
+				if entry.WsRpcs == nil {
+					entry.WsRpcs = &[]string{}
+				}
+				tmp := slices.Compact(append(*entry.WsRpcs, wsRpcs...))
+				entry.WsRpcs = &tmp
 			}
 
 			rpcConfig[i] = entry
@@ -216,7 +223,11 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 		}
 	}
 
+	// ChainID entry was not found - append it to the output
 	if !found {
+		if wsRpcs != nil {
+			newEntry.WsRpcs = &wsRpcs
+		}
 		rpcConfig = append(rpcConfig, newEntry)
 	}
 
@@ -228,7 +239,7 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 	return c.FS.WriteFile(rpcConfigFilePath, marshalled)
 }
 
-func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func() ([]string, []string) {
+func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func(bool) ([]string, []string) {
 	numHttpAvailable := len(cfg.HttpRpcList[chainId])
 	numWsAvailable := len(cfg.WsRpcList[chainId])
 
@@ -244,7 +255,7 @@ func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func()
 		wsRing = wsRing.Next()
 	}
 
-	return func() ([]string, []string) {
+	return func(backwards bool) ([]string, []string) {
 		httpRpcs := []string{}
 		wsRpcs := []string{}
 
@@ -265,11 +276,19 @@ func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func()
 
 		for i := 0; i < amountHttp; i++ {
 			httpRpcs = append(httpRpcs, httpRing.Value.(string))
-			httpRing = httpRing.Next()
+			if backwards {
+				httpRing = httpRing.Prev()
+			} else {
+				httpRing = httpRing.Next()
+			}
 		}
 		for i := 0; i < amountWs; i++ {
 			wsRpcs = append(wsRpcs, wsRing.Value.(string))
-			wsRing = wsRing.Next()
+			if backwards {
+				wsRing = wsRing.Prev()
+			} else {
+				wsRing = wsRing.Next()
+			}
 		}
 
 		return httpRpcs, wsRpcs
