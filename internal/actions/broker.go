@@ -123,7 +123,7 @@ func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath str
 		return nil, err
 	}
 
-	var allowedExecutors []string
+	allowedExecutors := []string{}
 	for _, conf := range chainConfig {
 		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
 			v, ok := conf["allowedExecutors"].([]any)

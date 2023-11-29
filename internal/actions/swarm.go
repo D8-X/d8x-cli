@@ -78,10 +78,16 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 		}
 	}
 	if changeRemoteBrokerHTTP {
+		value := cfg.SwarmRemoteBrokerHTTPUrl
+		// Prepopulate broker http address if deployment was done
+		if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+			value = v.HostName
+		}
+
 		fmt.Println("Enter remote broker http url:")
 		brokerUrl, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("https://your-broker-domain.com"),
-			components.TextInputOptValue(cfg.SwarmRemoteBrokerHTTPUrl),
+			components.TextInputOptValue(value),
 		)
 		if err != nil {
 			return err
