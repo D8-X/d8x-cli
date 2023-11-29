@@ -71,6 +71,7 @@ func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
 	return c.ConfigRWriter.Write(cfg)
 }
 
+// UpdateBrokerChainConfigJson appends allowedExecutor addresses
 func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *configs.D8XConfig) error {
 	contents, err := os.ReadFile(chainConfigPath)
 	if err != nil {
@@ -85,7 +86,11 @@ func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *con
 
 	for i, conf := range chainConfig {
 		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
-			executors := []string{cfg.BrokerServerConfig.ExecutorAddress}
+			executors := []string{}
+			if len(cfg.BrokerServerConfig.ExecutorAddress) > 0 {
+				executors = append(executors, cfg.BrokerServerConfig.ExecutorAddress)
+			}
+
 			// Make sure we don't overwrite existing allowedExecutors
 			v, ok := conf["allowedExecutors"].([]any)
 			if ok {
