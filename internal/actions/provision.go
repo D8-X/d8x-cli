@@ -62,7 +62,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		connectCMDToCurrentTerm(tfCmd)
 		err := tfCmd.Run()
 		if err != nil {
-			fmt.Println(styles.ErrorText.Render("Terraform apply failed, please check the output above for more details.\nPossible issues:\n\tDuplicate server label\n\tIncorrect AWS credentials\n\tSelected region was used first time"))
+			fmt.Println(styles.ErrorText.Render("Terraform apply failed, please check the output above for more details.\nPossible issues:\n\tDuplicate server label\n\tIncorrect server provider credentials\n\tSelected region was used first time"))
 			return err
 		}
 	}

@@ -56,6 +56,8 @@ type D8XConfig struct {
 
 	// Database dsn string
 	DatabaseDSN string `json:"database_dsn"`
+
+	CertbotEmail string `json:"certbot_email"`
 }
 
 type ReferralConfig struct {

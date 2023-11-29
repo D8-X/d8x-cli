@@ -16,6 +16,9 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Chain ids which are allowed to enter
+var ALLOWED_CHAINS = []string{"1442", "1101"}
+
 type SSHConnectionMaker func()
 
 // Container is the cli container which provides all the command and subcommand
@@ -130,12 +133,21 @@ func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
 		}
 	}
 
-	fmt.Println("Enter chain id:")
-	chainId, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("1442"),
-	)
-	if err != nil {
-		return 0, err
+	fmt.Println("Select chain id:")
+	// Allow to input chain id if DEBUG_ALLOW_CHAINID_INPUT variable is set
+	var chainId string
+	if _, allowInput := os.LookupEnv("DEBUG_ALLOW_CHAINID_INPUT"); !allowInput {
+		chains, err := c.TUI.NewSelection(ALLOWED_CHAINS, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+		if err != nil {
+			return 0, err
+		}
+		chainId = chains[0]
+	} else {
+		chain, err := c.TUI.NewInput(components.TextInputOptPlaceholder("1101"))
+		if err != nil {
+			return 0, err
+		}
+		chainId = chain
 	}
 
 	chainIdUint, err := strconv.Atoi(chainId)

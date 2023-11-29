@@ -51,26 +51,18 @@ func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
 		}
 	}
 	if changeExecutorAddress {
-		fmt.Println("Enter broker executor address:")
-		brokerExecutorAddress, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
-			components.TextInputOptValue(cfg.BrokerServerConfig.ExecutorAddress),
-		)
+		brokerExecutorAddress, err := c.CollectAndValidateWalletAddress("Enter broker executor address:", cfg.BrokerServerConfig.ExecutorAddress)
 		if err != nil {
 			return err
 		}
 
-		// Validate the address
-		if !ValidWalletAddress(brokerExecutorAddress) {
-			fmt.Println(styles.ErrorText.Render("invalid address provided, please set the allowedExecutors value in chainConfig.json"))
-		} else {
-			cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
-		}
+		cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
 	}
 
 	return c.ConfigRWriter.Write(cfg)
 }
 
+// UpdateBrokerChainConfigJson appends allowedExecutor addresses
 func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *configs.D8XConfig) error {
 	contents, err := os.ReadFile(chainConfigPath)
 	if err != nil {
@@ -85,7 +77,11 @@ func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *con
 
 	for i, conf := range chainConfig {
 		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
-			executors := []string{cfg.BrokerServerConfig.ExecutorAddress}
+			executors := []string{}
+			if len(cfg.BrokerServerConfig.ExecutorAddress) > 0 {
+				executors = append(executors, cfg.BrokerServerConfig.ExecutorAddress)
+			}
+
 			// Make sure we don't overwrite existing allowedExecutors
 			v, ok := conf["allowedExecutors"].([]any)
 			if ok {
@@ -111,14 +107,49 @@ func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *con
 	return os.WriteFile(chainConfigPath, out, 0644)
 }
 
+func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath string, cfg *configs.D8XConfig) ([]string, error) {
+	contents, err := os.ReadFile(chainConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
+	chainConfig := []map[string]any{}
+
+	if err := json.Unmarshal(contents, &chainConfig); err != nil {
+		return nil, err
+	}
+
+	allowedExecutors := []string{}
+	for _, conf := range chainConfig {
+		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
+			v, ok := conf["allowedExecutors"].([]any)
+			if ok {
+				allowedExecutors = make([]string, len(v))
+				for i, executorAddr := range v {
+					if a, ok2 := executorAddr.(string); ok2 {
+						allowedExecutors[i] = a
+					}
+				}
+			}
+		}
+	}
+	return allowedExecutors, nil
+}
+
 // BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
-	if err := c.CollectBrokerInputs(ctx); err != nil {
+	guideUser, err := c.TUI.NewPrompt("Would you like the cli to guide you through the configuration?", true)
+	if err != nil {
 		return err
+	}
+	if guideUser {
+		if err := c.CollectBrokerInputs(ctx); err != nil {
+			return err
+		}
 	}
 
 	cfg, err := c.ConfigRWriter.Read()
@@ -154,23 +185,25 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	// Upate rpc.json config
-	httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
-	rpconfigFilePath := "./broker-server/rpc.json"
-	httpRpcs, _ := httpWsGetter()
-	fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-	if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
-		fmt.Println(
-			styles.ErrorText.Render(
-				fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
-			),
-		)
-	}
+	if guideUser {
+		// Upate rpc.json config
+		httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
+		rpconfigFilePath := "./broker-server/rpc.json"
+		httpRpcs, _ := httpWsGetter(true)
+		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+				),
+			)
+		}
 
-	// Update chainConfig.json
-	fmt.Printf("Updating %s config...\n", chainConfig)
-	if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
-		return err
+		// Update chainConfig.json
+		fmt.Printf("Updating %s config...\n", chainConfig)
+		if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
+			return err
+		}
 	}
 
 	absChainConfig, err := filepath.Abs(chainConfig)
@@ -199,18 +232,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	)
 
 	// Collect required information
-	fmt.Println("Enter your broker private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
+	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
 	if err != nil {
 		return err
-	}
-	if addr, err := PrivateKeyToAddress(pk); err != nil {
-		return fmt.Errorf("ivalid private key: %w", err)
-	} else {
-		fmt.Printf("Provided broker address: %s\n\n", addr.String())
 	}
 
 	fmt.Println("Enter your broker fee percentage (%) value:")
@@ -325,23 +349,24 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	}
 	emailForCertbot := ""
 	if setupCertbot {
-		fmt.Println("Enter your email address for certbot notifications: ")
-		email, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("email@domain.com"),
-		)
+		email, err := c.CollectCertbotEmail(cfg)
 		if err != nil {
 			return err
 		}
 		emailForCertbot = email
 	}
 
-	fmt.Println("Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):")
-	brokerServerName, err := c.TUI.NewInput(
+	brokerServerName, err := c.CollectInputWithConfirmation(
+		"Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):",
+		"Is this correct?",
 		components.TextInputOptPlaceholder("your-broker.domain.com"),
 	)
 	if err != nil {
 		return err
 	}
+	brokerServerName = TrimHttpsPrefix(brokerServerName)
+
+	fmt.Printf("Using broker domain: %s\n", brokerServerName)
 
 	// Print alert about DNS
 	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
@@ -403,7 +428,15 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 		out, err := c.certbotNginxSetup(sshConn, password, emailForCertbot, []string{brokerServerName})
 		fmt.Println(string(out))
+
 		if err != nil {
+			restart, err2 := c.TUI.NewPrompt("Certbot setup failed, do you want to restart the broker-nginx setup?", true)
+			if err2 != nil {
+				return err2
+			}
+			if restart {
+				return c.BrokerServerNginxCertbotSetup(ctx)
+			}
 			return err
 		} else {
 			fmt.Println(styles.SuccessText.Render("Broker server certificates setup done!"))
