@@ -156,6 +156,8 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	// Set broker deployed to true so distribute RPCs works
+	cfg.BrokerDeployed = true
 
 	bsd := brokerServerDeployment{}
 
@@ -187,9 +189,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 	if guideUser {
 		// Upate rpc.json config
-		httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
 		rpconfigFilePath := "./broker-server/rpc.json"
-		httpRpcs, _ := httpWsGetter(true)
+		httpRpcs, _ := DistributeRpcs(
+			// Broker is #3 in the list
+			3,
+			strconv.Itoa(int(cfg.ChainId)),
+			cfg,
+		)
+
 		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
 		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
 			fmt.Println(

@@ -324,13 +324,17 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 
 		// Update rpcconfigs
-		httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
 		for i, rpconfigFilePath := range []string{
 			"./trader-backend/rpc.main.json",
 			"./trader-backend/rpc.history.json",
 			"./trader-backend/rpc.referral.json",
 		} {
-			httpRpcs, wsRpcs := httpWsGetter(false)
+			httpRpcs, wsRpcs := DistributeRpcs(
+				i,
+				strconv.Itoa(int(cfg.ChainId)),
+				cfg,
+			)
+
 			fmt.Printf("Updating %s config...\n", rpconfigFilePath)
 
 			// No wsRPC for referral
