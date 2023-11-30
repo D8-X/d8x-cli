@@ -89,26 +89,28 @@ go build -o d8x ./main.go
 ```
 
 
-## Post-Flight Checklist
+# Post-Flight Checklist
 - Consider running your own Hermes price service to reliably stream prices: [details](https://docs.pyth.network/documentation/pythnet-price-feeds/hermes). Feel free to contact us for recommendations.
 The service endpoint will have to be added to the configuration file (variable priceServiceWSEndpoints of the candles-service or prompt in CLI)
 - When using an external database with Linode: consider whitelisting the IP addresses of the manager/nodes and blocking other IPs
+- Setup a monitoring of the referral executor wallet ETH funds. The referral address needs ETH to pay for gas when executing referral payments.
+- Regularly backup the database tables relevant for referrals, in particular: `referral_chain`, `referral_code`, `referral_code_usage`. If you reset/erase the database for some reason, without backing up and restoring these tables, referrers/traders will lose their referral codes and would no longer be rebated.
+- Consider copying, compressing and encrypting the folder you deployed from and sharing the resulting zip file among the relevant personal within your company. The file contains important credentials that allow to access the deployment servers and changing/updating/maintaining the system.
 
-
-## Configuration Files
+# Configuration Files
 
 Configuration files are key to setup D8X Perpetuals Backend. Although the CLI guides you through the config,
 here you can find out details about the configuration
 [README](README_CONFIG.md).
 
-## Usage Of The D8X CLI Tool
+# Usage Of The D8X CLI Tool
 
 Here are more details and options on the CLI tool. As noted above, running `d8x setup` is the only
 command you need for the initial setup.
 
-### Setup
-
-Performing a complete servers provisioning + configuration and services
+<details>
+  <summary><h2>Setup</h2></summary>
+  Performing a complete servers provisioning + configuration and services
 deployment can be done with the `setup` command:
 
 ```bash
@@ -120,7 +122,9 @@ The `setup` command is an aggregate of multiple individual subcommands such as
 through entire process of provisioning servers and deploying all the services.
 See `d8x setup --help` for more information and available `setup` subcommands.
 
-#### Provisioning and Configuration
+
+
+<h3>Provisioning and Configuration</h3>
 
 Setup will start with provisioning servers with terraform and configuring them
 with ansible. Depending on your selected server provider, you will need to
@@ -166,7 +170,12 @@ can run the following command:
 ssh -F ./manager_ssh_jump.conf jump_host -L 5433:<YOUR_RDS_HOSTNAME_HERE>:5432 -v -N
 ```
 
-#### Broker Server
+</details>
+
+
+
+<details>
+  <summary><h2>Broker Server</h2></summary>
 
 Upon selecting broker-server provisioning, deployment and nginx + certbot configuration will be performed.
 When you select to configure SSL (certbot setup), you need to set up your DNS "A"
@@ -188,8 +197,10 @@ To run only broker nginx+certbot setup:
 ```bash
 d8x setup broker-nginx
 ```
+</details>
 
-#### Trader backend (Swarm)
+<details>
+  <summary><h2>Trader backend (Swarm)</h2></summary>
 
 Trader backend docker swarm deployment and nginx + certbot setup is analogous to
 broker-server deployment, but involves slightly more configuration files. Make
@@ -215,8 +226,10 @@ To run only trader backend swarm nginx+certbot setup:
 ```bash
 d8x setup swarm-nginx
 ```
+</details>
 
-### Teardown
+<details>
+  <summary><h2>Teardown</h2></summary>
 
 If you wish to completely remove any provisioned resources, you can do so by
 running `tf-destroy` command.
@@ -227,7 +240,9 @@ d8x tf-destroy
 
 **Note that this action is irreversible**
 
-### SSH into machines
+</details>
+
+## SSH into machines
 
 `d8x` cli can be used to quickly ssh into your provisioned machines.
 
