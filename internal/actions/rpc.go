@@ -36,7 +36,12 @@ func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast
 		if err != nil {
 			return nil, err
 		}
-		endpoints = append(endpoints, strings.TrimSpace(endpoint))
+		endpoint = strings.TrimSpace(endpoint)
+		// Disallow empty strings
+		if endpoint == "" {
+			continue
+		}
+		endpoints = append(endpoints, endpoint)
 		if len(endpoints) >= requireAtLeast {
 			recommendedText := "We recommend having at least " + strconv.Itoa(recommended) + " RPCs. "
 			if len(endpoints) >= recommended {
@@ -105,11 +110,6 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 		}
 		cfg.WsRpcList[chainId] = slices.Compact(wsRpcs)
 	}
-
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return err
-	}
-
 	return c.ConfigRWriter.Write(cfg)
 }
 
@@ -208,6 +208,11 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 			// Append existing urls to our new entry
 			entry.HttpRpcs = slices.Compact(append(entry.HttpRpcs, newEntry.HttpRpcs...))
 
+			// Make sure to remove any pre-existing empty entries
+			entry.HttpRpcs = slices.DeleteFunc(entry.HttpRpcs, func(s string) bool {
+				return s == ""
+			})
+
 			// Only append ws rpcs if they are provided. If ws values are non
 			// nil we must create WS field entry if it doesn't exist.
 			if wsRpcs != nil {
@@ -216,6 +221,13 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 				}
 				tmp := slices.Compact(append(*entry.WsRpcs, wsRpcs...))
 				entry.WsRpcs = &tmp
+			}
+
+			if entry.WsRpcs != nil {
+				// Make sure to remove any pre-existing empty entries
+				*entry.WsRpcs = slices.DeleteFunc(*entry.WsRpcs, func(s string) bool {
+					return s == ""
+				})
 			}
 
 			rpcConfig[i] = entry

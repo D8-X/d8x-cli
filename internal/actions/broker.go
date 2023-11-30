@@ -40,18 +40,18 @@ func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
 		return err
 	}
 
-	// Collect broker executor wallet address
+	// Collect broker (referral) executor wallet address
 	changeExecutorAddress := true
 	if cfg.BrokerServerConfig.ExecutorAddress != "" {
-		fmt.Printf("Found broker executor address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
-		if ok, err := c.TUI.NewPrompt("Do you want to change broker executor address?", false); err != nil {
+		fmt.Printf("Found referral executor address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
+		if ok, err := c.TUI.NewPrompt("Do you want to change referral executor address?", false); err != nil {
 			return err
 		} else if !ok {
 			changeExecutorAddress = false
 		}
 	}
 	if changeExecutorAddress {
-		brokerExecutorAddress, err := c.CollectAndValidateWalletAddress("Enter broker executor address:", cfg.BrokerServerConfig.ExecutorAddress)
+		brokerExecutorAddress, err := c.CollectAndValidateWalletAddress("Enter referral executor address:", cfg.BrokerServerConfig.ExecutorAddress)
 		if err != nil {
 			return err
 		}

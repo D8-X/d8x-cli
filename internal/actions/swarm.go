@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -88,6 +89,7 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 		brokerUrl, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("https://your-broker-domain.com"),
 			components.TextInputOptValue(value),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return err
@@ -145,6 +147,7 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 		fmt.Println("Enter your database dsn connection string:")
 		dbDsn, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return err
@@ -259,6 +262,12 @@ func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, 
 	if err := json.Unmarshal(contents, &pricesConf); err != nil {
 		return err
 	}
+
+	// Delete empty values just in case
+	priceServiceWSEndpoints = slices.DeleteFunc(priceServiceWSEndpoints, func(s string) bool {
+		return s == ""
+	})
+
 	pricesConf["priceServiceWSEndpoints"] = priceServiceWSEndpoints
 
 	out, err := json.MarshalIndent(pricesConf, "", "  ")
@@ -354,7 +363,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
 			additioanalWsEndpoint, err := c.TUI.NewInput(
 				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
+				components.TextInputOptDenyEmpty(),
 			)
+			additioanalWsEndpoint = strings.TrimSpace(additioanalWsEndpoint)
 			if err != nil {
 				return err
 			}
@@ -366,7 +377,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 
 	// Collect and temporarily store referral payment executor private key
-	pk, pkWalletAddress, err := c.CollectAndValidatePrivateKey("Enter your referral payment executor private key:")
+	pk, pkWalletAddress, err := c.CollectAndValidatePrivateKey("Enter your referral executor private key:")
 	if err != nil {
 		return err
 	}
@@ -387,7 +398,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		if !matchFound {
 			fmt.Println(
 				styles.ErrorText.Render(
-					"provided payment executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
+					"provided referral executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
 				),
 			)
 		}
