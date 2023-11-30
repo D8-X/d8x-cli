@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,6 +58,9 @@ type inputModel struct {
 	// The actual value of text input, if masked is true, the value in textInput
 	// will be masked and this value will represent the actual value.
 	value string
+
+	// If set to true, it will not allow to enter empty values
+	denyEmpty bool
 }
 
 func (m inputModel) Init() tea.Cmd {
@@ -70,6 +74,13 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyEnter, tea.KeyEsc:
+			// Deny entering empty strings
+			if m.denyEmpty {
+				if strings.TrimSpace(m.textInput.Value()) == "" {
+					return m, cmd
+				}
+			}
+
 			return m, tea.Quit
 		case tea.KeyCtrlC:
 			return exitModel{}, tea.Quit
@@ -170,4 +181,15 @@ func (t testInputOptEnding) Apply(s *inputModel) {
 
 func TextInputOptEnding(value string) TextInputOpt {
 	return testInputOptEnding{val: value}
+}
+
+type textInputOptDenyEmpty struct {
+}
+
+func (t textInputOptDenyEmpty) Apply(s *inputModel) {
+	s.denyEmpty = true
+}
+
+func TextInputOptDenyEmpty() TextInputOpt {
+	return textInputOptDenyEmpty{}
 }
