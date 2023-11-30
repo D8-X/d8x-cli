@@ -121,7 +121,10 @@ type D8XService struct {
 type D8XBrokerServerConfig struct {
 	FeeTBPS       string `json:"fee_tbps"`
 	RedisPassword string `json:"redis_password"`
-	// Executor address must match the provided Executor private key in swarm setup
+
+	// Executor address must match the provided Executor private key in swarm
+	// setup. This is referral executor address, even though managed on broker
+	// config.
 	ExecutorAddress string `json:"executor_address"`
 }
 

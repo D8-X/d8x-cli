@@ -366,7 +366,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 
 	// Collect and temporarily store referral payment executor private key
-	pk, pkWalletAddress, err := c.CollectAndValidatePrivateKey("Enter your referral payment executor private key:")
+	pk, pkWalletAddress, err := c.CollectAndValidatePrivateKey("Enter your referral executor private key:")
 	if err != nil {
 		return err
 	}
@@ -387,7 +387,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		if !matchFound {
 			fmt.Println(
 				styles.ErrorText.Render(
-					"provided payment executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
+					"provided referral executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
 				),
 			)
 		}
