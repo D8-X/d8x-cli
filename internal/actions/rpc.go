@@ -18,6 +18,8 @@ type ChainJsonEntry struct {
 	SDKNetwork            string `json:"sdkNetwork"`
 	PriceFeedNetwork      string `json:"priceFeedNetwork"`
 	DefaultPythWSEndpoint string `json:"priceServiceWSEndpoint"`
+	// Chain type is either testnet or mainnet
+	Type string `json:"type"`
 }
 
 // trader-backend/chain.json structure. This must always contain "default" key.
@@ -152,9 +154,9 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// loadChainJson loads the chain.json file from the embedded configs and caches
+// LoadChainJson loads the chain.json file from the embedded configs and caches
 // it on Container instance.
-func (c *Container) loadChainJson() error {
+func (c *Container) LoadChainJson() error {
 	if c.cachedChainJson == nil {
 		contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
 		if err != nil {
@@ -174,7 +176,7 @@ func (c *Container) loadChainJson() error {
 
 // getChainSDKName retrieves the SDK compatible SDK_CONFIG_NAME
 func (c *Container) getChainSDKName(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
@@ -185,7 +187,7 @@ func (c *Container) getChainSDKName(chainId string) string {
 
 // getChainPriceFeedName retrieves the python compatible NETWORK_NAME
 func (c *Container) getChainPriceFeedName(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
@@ -197,13 +199,23 @@ func (c *Container) getChainPriceFeedName(chainId string) string {
 // getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
 // chain.json config
 func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
 		return c.cachedChainJson["default"].DefaultPythWSEndpoint
 	}
 	return chainJson.DefaultPythWSEndpoint
+}
+
+func (c *Container) getChainType(chainId string) string {
+	c.LoadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].Type
+	}
+	return chainJson.Type
 }
 
 type WSRPCSlice struct {

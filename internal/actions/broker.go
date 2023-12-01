@@ -332,6 +332,12 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
+	// Collect domain name
+	_, err = c.CollectSetupDomain(cfg)
+	if err != nil {
+		return err
+	}
+
 	nginxConfigNameTPL := "./nginx-broker.tpl.conf"
 	nginxConfigName := "./nginx-broker.configured.conf"
 
@@ -373,10 +379,17 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		emailForCertbot = email
 	}
 
+	domainValue := cfg.SuggestSubdomain(configs.D8XServiceBrokerServer, c.getChainType(strconv.Itoa(int(cfg.ChainId))))
+	if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+		if v.HostName != "" {
+			domainValue = v.HostName
+		}
+	}
 	brokerServerName, err := c.CollectInputWithConfirmation(
 		"Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):",
 		"Is this correct?",
 		components.TextInputOptPlaceholder("your-broker.domain.com"),
+		components.TextInputOptValue(domainValue),
 		components.TextInputOptDenyEmpty(),
 	)
 	if err != nil {

@@ -730,6 +730,12 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
+	// Collect domain name
+	_, err = c.CollectSetupDomain(cfg)
+	if err != nil {
+		return err
+	}
+
 	// Copy nginx config and ansible playbook for swarm nginx setup
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
@@ -902,7 +908,8 @@ func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTup
 	for i, h := range hostsTpl {
 
 		// When possible, find values from config for non-first time runs.
-		value := ""
+		// Provide some automatic subdomain suggestions by default
+		value := cfg.SuggestSubdomain(h.serviceName, c.getChainType(strconv.Itoa(int(cfg.ChainId))))
 		if v, ok := cfg.Services[h.serviceName]; ok {
 			if v.HostName != "" {
 				value = v.HostName

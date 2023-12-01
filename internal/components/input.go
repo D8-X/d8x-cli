@@ -40,6 +40,9 @@ func newInput(opts ...TextInputOpt) (string, error) {
 		returnValue = mdl.value
 	}
 
+	// Trim any whitespace from input
+	returnValue = strings.TrimSpace(returnValue)
+
 	return returnValue, nil
 }
 

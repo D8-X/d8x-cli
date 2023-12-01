@@ -213,3 +213,24 @@ func (c *Container) CollectAndValidateWalletAddress(title, value string) (string
 
 	return walletAddress, nil
 }
+
+// CollectSetupDomain collects domain name and stores it in config
+func (c *Container) CollectSetupDomain(cfg *configs.D8XConfig) (string, error) {
+	fmt.Println("Enter your domain name:")
+	domain, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("your-domain.com"),
+		components.TextInputOptValue(cfg.SetupDomain),
+		components.TextInputOptDenyEmpty(),
+	)
+	if err != nil {
+		return "", err
+	}
+	domain = TrimHttpsPrefix(domain)
+
+	cfg.SetupDomain = domain
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return "", err
+	}
+
+	return domain, nil
+}

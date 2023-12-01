@@ -1,20 +1,24 @@
 {
   "80001": {
+    "type": "testnet",
     "sdkNetwork": "mumbai",
     "priceFeedNetwork": "testnet",
     "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws"
   },
   "1442": {
+    "type": "testnet",
     "sdkNetwork": "zkevmTestnet",
     "priceFeedNetwork": "testnet",
     "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws"
   },
   "1101": {
+    "type": "mainnet",
     "sdkNetwork": "zkevm",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws"
   },
   "default": {
+    "type": "mainnet",
     "sdkNetwork": "zkevm",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws"
