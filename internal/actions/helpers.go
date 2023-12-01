@@ -166,6 +166,7 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 	pk, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
 		components.TextInputOptMasked(),
+		components.TextInputOptDenyEmpty(),
 	)
 	if err != nil {
 		return "", "", err
@@ -197,6 +198,7 @@ func (c *Container) CollectAndValidateWalletAddress(title, value string) (string
 	walletAddress, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
 		components.TextInputOptValue(value),
+		components.TextInputOptDenyEmpty(),
 	)
 	walletAddress = strings.TrimSpace(walletAddress)
 	if err != nil {

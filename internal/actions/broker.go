@@ -377,6 +377,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		"Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):",
 		"Is this correct?",
 		components.TextInputOptPlaceholder("your-broker.domain.com"),
+		components.TextInputOptDenyEmpty(),
 	)
 	if err != nil {
 		return err

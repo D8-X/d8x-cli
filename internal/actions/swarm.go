@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
+	"github.com/xo/dburl"
 )
 
 // Stack name that will be used when creating/destroying or managing swarm
@@ -141,9 +143,40 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 		return nil
 	}
 
-	switch cfg.ServerProvider {
-	// Linode users must enter their own database dns stirng manually
-	case configs.D8XServerProviderLinode:
+	// Validate database protocol prefix, and password if any special
+	// characters are present
+	dsnValidator := func(dbConnStr string) error {
+		if !strings.HasPrefix(dbConnStr, "postgres://") && !strings.HasPrefix(dbConnStr, "postgresql://") {
+			return fmt.Errorf("connection string must start with postgres:// or postgresql://")
+		}
+
+		connUrl, err := dburl.Parse(
+			dbConnStr,
+		)
+		if err != nil {
+			return err
+		}
+
+		if connUrl.User == nil {
+			return fmt.Errorf("user:password part is missing")
+		}
+
+		password, set := connUrl.User.Password()
+		if !set {
+			return fmt.Errorf("password is missing")
+		}
+		specialCharacters := []byte{'*', '?', '$', '(', ')', '`', '\\', '\'', '"', '>', '<', '|', '&'}
+
+		for _, char := range specialCharacters {
+			if bytes.Contains([]byte(password), []byte{char}) {
+				return fmt.Errorf("password contains special character %s, please use password without special characters", string(char))
+			}
+		}
+
+		return nil
+	}
+
+	for {
 		fmt.Println("Enter your database dsn connection string:")
 		dbDsn, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
@@ -152,7 +185,36 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 		if err != nil {
 			return err
 		}
-		cfg.DatabaseDSN = dbDsn
+		dbDsn = strings.TrimSpace(dbDsn)
+
+		if err := dsnValidator(dbDsn); err != nil {
+			fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
+		} else {
+			cfg.DatabaseDSN = dbDsn
+			break
+		}
+	}
+
+	switch cfg.ServerProvider {
+	// Linode users must enter their own database dns stirng manually
+	case configs.D8XServerProviderLinode:
+		for {
+			fmt.Println("Enter your database dsn connection string:")
+			dbDsn, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
+				components.TextInputOptDenyEmpty(),
+			)
+			if err != nil {
+				return err
+			}
+
+			if err := dsnValidator(dbDsn); err != nil {
+				fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
+			} else {
+				cfg.DatabaseDSN = dbDsn
+				break
+			}
+		}
 
 		// For AWS - read it from rds credentials file
 	case configs.D8XServerProviderAWS:
@@ -852,6 +914,7 @@ func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTup
 			"Is this the correct domain you want to use for "+string(h.serviceName)+"?",
 			components.TextInputOptPlaceholder(h.placeholder),
 			components.TextInputOptValue(value),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return nil, err
