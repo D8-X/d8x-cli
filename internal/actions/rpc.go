@@ -292,7 +292,6 @@ func DistributeRpcs(serviceIndex int, chainId string, cfg *configs.D8XConfig) ([
 				// by one. Basically we cut the first element out of the
 				// equation.
 				rpcIndexToGet = 1 + (serviceIndex-1)%(rpcsAvailable-1)
-				fmt.Printf("index: %d\n", rpcIndexToGet)
 			}
 
 			returnList = []string{rpcsList[rpcIndexToGet]}
