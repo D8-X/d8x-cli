@@ -3,6 +3,7 @@ package actions
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
 type ChainJsonEntry struct {
@@ -21,15 +23,45 @@ type ChainJsonEntry struct {
 // trader-backend/chain.json structure. This must always contain "default" key.
 type ChainJson map[string]ChainJsonEntry
 
+type rpcTransport string
+
+func (r rpcTransport) SecureProtocolPrefix() string {
+	return string(r) + "s://"
+}
+func (r rpcTransport) ProtocolPrefix() string {
+	return string(r) + "://"
+}
+
+const (
+	rpcTransportHTTP rpcTransport = "http"
+	rpcTransportWS   rpcTransport = "ws"
+)
+
 // RPCUrlCollector collects RPC urls from the user
-func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
-	transportUpper := strings.ToUpper(rpcTransport)
-	transportLower := strings.ToLower(rpcTransport)
+func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
+	transportUpper := strings.ToUpper(string(protocol))
+	transportLower := strings.ToLower(string(protocol))
 	endpoints := []string{}
+
+	validate := func(endpoint string) error {
+		// Ensure prefix is added
+		if !strings.HasPrefix(endpoint, protocol.SecureProtocolPrefix()) && !strings.HasPrefix(endpoint, protocol.ProtocolPrefix()) {
+			return fmt.Errorf("invalid protocol prefix, should be %s or %s", protocol.SecureProtocolPrefix(), protocol.ProtocolPrefix())
+		}
+
+		_, err := url.Parse(endpoint)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	for {
 		fmt.Printf("Enter %s RPC url #%d for chain id %s\n", transportUpper, len(endpoints)+1, chainId)
 		endpoint, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder(transportLower + "://localhost:8545"),
+			components.TextInputOptPlaceholder(transportLower+"://localhost:8545"),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return nil, err
@@ -37,6 +69,15 @@ func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast
 		endpoint = strings.TrimSpace(endpoint)
 		// Disallow empty strings
 		if endpoint == "" {
+			continue
+		}
+		// Validate enetered endpoint
+		if err := validate(endpoint); err != nil {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Invalid RPC url (%s), please try again...", err.Error()),
+				),
+			)
 			continue
 		}
 		endpoints = append(endpoints, endpoint)
@@ -76,7 +117,7 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 		}
 	}
 	if collectHttpRPCS {
-		httpRpcs, err := c.RPCUrlCollector("http", chainId, 3, 5)
+		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5)
 		if err != nil {
 			return err
 		}
@@ -102,7 +143,7 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 		}
 	}
 	if collectWSRPCS {
-		wsRpcs, err := c.RPCUrlCollector("ws", chainId, 1, 2)
+		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2)
 		if err != nil {
 			return err
 		}

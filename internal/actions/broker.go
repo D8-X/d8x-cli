@@ -22,6 +22,25 @@ const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
+func (c *Container) CollectBrokerFee() (string, error) {
+	fmt.Println("Enter your broker fee percentage (%) value:")
+	feePercentage, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("0.06"),
+		components.TextInputOptValue("0.06"),
+		components.TextInputOptEnding("%"),
+	)
+	if err != nil {
+		return "", err
+	}
+	tbpsFromPercentage, err := convertPercentToTBPS(feePercentage)
+	if err != nil {
+		fmt.Println(styles.ErrorText.Render("invalid tbps value: " + err.Error()))
+		return c.CollectBrokerFee()
+	}
+
+	return tbpsFromPercentage, nil
+}
+
 func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
 	// Make sure chain id is present in config
 	chainId, err := c.GetChainId(ctx)
@@ -244,20 +263,11 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	fmt.Println("Enter your broker fee percentage (%) value:")
-	feePercentage, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("0.06"),
-		components.TextInputOptValue("0.06"),
-		components.TextInputOptEnding("%"),
-	)
+	tbpsFromPercentage, err := c.CollectBrokerFee()
 	if err != nil {
 		return err
 	}
-	if tbpsFromPercentage, err := convertPercentToTBPS(feePercentage); err != nil {
-		return fmt.Errorf("invalid tbps value: %w", err)
-	} else {
-		bsd.brokerFeeTBPS = tbpsFromPercentage
-	}
+	bsd.brokerFeeTBPS = tbpsFromPercentage
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
