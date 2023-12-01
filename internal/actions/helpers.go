@@ -67,9 +67,6 @@ func (c *Container) DisplayPasswordAlert() {
 	if len(c.UserPassword) == 0 {
 		return
 	}
-
-	fmt.Println(styles.AlertImportant.Render(`Make sure to securely store default user password! This password will be
-	created for default user on each provisioned server.`))
 	fmt.Printf("User: %s\n", c.DefaultClusterUserName)
 	fmt.Printf("Password: %s\n", c.UserPassword)
 }
