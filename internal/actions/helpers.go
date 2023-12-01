@@ -127,11 +127,11 @@ func (c *Container) CollectCertbotEmail(cfg *configs.D8XConfig) (string, error) 
 	change := true
 	if cfg.CertbotEmail != "" {
 		fmt.Printf("Email for certbot notifications is set to %s\n", cfg.CertbotEmail)
-		ok, err := c.TUI.NewPrompt("Do you want to change it?", false)
+		keep, err := c.TUI.NewPrompt("Do you want to keep it?", true)
 		if err != nil {
 			return "", err
 		}
-		if !ok {
+		if keep {
 			change = false
 		}
 	}

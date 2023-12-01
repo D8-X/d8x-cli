@@ -108,11 +108,11 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 	httpRpcs, exists := cfg.HttpRpcList[chainId]
 	if exists {
 		fmt.Printf("The following HTTP RPC urls were found: \n%s \n", strings.Join(httpRpcs, "\n"))
-		ok, err := c.TUI.NewPrompt("Do you want to change HTTP RPC urls?", true)
+		keep, err := c.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if keep {
 			collectHttpRPCS = false
 		}
 	}
@@ -134,11 +134,11 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	wspRpcs, exists := cfg.WsRpcList[chainId]
 	if exists {
 		fmt.Printf("The following Websocket RPC urls were found: \n%s \n", strings.Join(wspRpcs, "\n"))
-		ok, err := c.TUI.NewPrompt("Do you want to change Websocket RPC urls?", true)
+		keep, err := c.TUI.NewPrompt("Do you want to keep these Websocket RPC urls?", true)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if keep {
 			collectWSRPCS = false
 		}
 	}

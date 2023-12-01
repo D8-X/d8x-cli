@@ -74,9 +74,9 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 	changeRemoteBrokerHTTP := true
 	if cfg.SwarmRemoteBrokerHTTPUrl != "" {
 		fmt.Printf("Found remote broker http url: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
-		if ok, err := c.TUI.NewPrompt("Do you want to change remote broker http endpoint?", false); err != nil {
+		if keep, err := c.TUI.NewPrompt("Do you want to keep remote broker http endpoint?", true); err != nil {
 			return err
-		} else if !ok {
+		} else if keep {
 			changeRemoteBrokerHTTP = false
 		}
 	}
@@ -107,9 +107,9 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 	changeReferralPayoutAddress := true
 	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
 		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
-		if ok, err := c.TUI.NewPrompt("Do you want to change broker payout address?", false); err != nil {
+		if keep, err := c.TUI.NewPrompt("Do you want to keep this broker payout address?", true); err != nil {
 			return err
-		} else if !ok {
+		} else if keep {
 			changeReferralPayoutAddress = false
 		}
 	}
@@ -131,12 +131,12 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	change := true
 	if cfg.DatabaseDSN != "" {
-		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want to update it?", cfg.DatabaseDSN)
-		ok, err := c.TUI.NewPrompt(info, false)
+		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want keep it?", cfg.DatabaseDSN)
+		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return err
 		}
-		change = ok
+		change = !keep
 	}
 
 	if !change {
@@ -420,12 +420,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 		// Update the candles/prices.config.json. Make sure the default pyth.hermes
 		// entry is always the last one
-		addAnohter, err := c.TUI.NewPrompt("\nAdd additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+		dontAddAnotherPythWss, err := c.TUI.NewPrompt("\nKeep only default Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
 		if err != nil {
 			return err
 		}
 		priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
-		if addAnohter {
+		if !dontAddAnotherPythWss {
 			fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
 			additioanalWsEndpoint, err := c.TUI.NewInput(
 				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),

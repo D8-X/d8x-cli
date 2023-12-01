@@ -123,12 +123,12 @@ func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
 			return cfg.ChainId, nil
 		}
 
-		info := fmt.Sprintf("Currently using chain id: %d. Change chain id?", cfg.ChainId)
-		change, err := c.TUI.NewPrompt(info, false)
+		info := fmt.Sprintf("Currently using chain id: %d. Keep using this chain id?", cfg.ChainId)
+		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return 0, err
 		}
-		if !change {
+		if keep {
 			return cfg.ChainId, nil
 		}
 	}
