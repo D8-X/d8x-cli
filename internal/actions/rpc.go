@@ -1,10 +1,8 @@
 package actions
 
 import (
-	"container/ring"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -251,58 +249,63 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 	return c.FS.WriteFile(rpcConfigFilePath, marshalled)
 }
 
-func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func(bool) ([]string, []string) {
-	numHttpAvailable := len(cfg.HttpRpcList[chainId])
-	numWsAvailable := len(cfg.WsRpcList[chainId])
-
-	httpRing := ring.New(numHttpAvailable)
-	for i := 0; i < numHttpAvailable; i++ {
-		httpRing.Value = cfg.HttpRpcList[chainId][i]
-		httpRing = httpRing.Next()
+// DistributeRpcs distribute rpc from cfg (user supplied rpcs) based on provided
+// serviceIndex. RPC distribution is done in a card dealing way (serviceIndex 0
+// gets 0, 0 + numServices, 0 + 2*numServices, etc.). We currently support 4
+// services which need rpcs: main, history, referral and broker-server
+// (optional) with serviceIndex values 0, 1,2 and 3 respectively. It is
+// suggested to have at least 4 Http rpcs added (3 without broker). Only
+// serviceIndex 0 and 1 gets websockets (main, history). Returned slices are
+// http and ws rpcs list.
+func DistributeRpcs(serviceIndex int, chainId string, cfg *configs.D8XConfig) ([]string, []string) {
+	// Maximum number of serviceIndex for http/ws lists
+	// main, history, referral
+	httpServices := 3
+	// main, history
+	wsServices := 2
+	if cfg.BrokerDeployed {
+		// and broker-server
+		httpServices = 4
 	}
 
-	wsRing := ring.New(numWsAvailable)
-	for i := 0; i < numWsAvailable; i++ {
-		wsRing.Value = cfg.WsRpcList[chainId][i]
-		wsRing = wsRing.Next()
-	}
+	httpAvailable := len(cfg.HttpRpcList[chainId])
+	wsAvailable := len(cfg.WsRpcList[chainId])
 
-	return func(backwards bool) ([]string, []string) {
-		httpRpcs := []string{}
-		wsRpcs := []string{}
+	distributionFunc := func(rpcsAvailable, rpcsServices int, rpcsList []string) []string {
+		returnList := []string{}
 
-		// Take at least 2 enties for http or more if possible (or if not
-		// possible - at lease numWs/Http)
-		amountHttp := 2
-		amountWs := 1
-		if amountHttp < numHttpAvailable {
-			amountHttp = int(math.Ceil(float64(numHttpAvailable) / float64(3)))
-		} else {
-			amountHttp = numHttpAvailable
-		}
-		if amountWs < numWsAvailable {
-			amountWs = int(math.Ceil(float64(numWsAvailable) / float64(3)))
-		} else {
-			amountWs = numWsAvailable
+		// Deny higher serviceIndex than supported via httpServices or
+		// wsServices.
+		if serviceIndex+1 > rpcsServices {
+			return returnList
 		}
 
-		for i := 0; i < amountHttp; i++ {
-			httpRpcs = append(httpRpcs, httpRing.Value.(string))
-			if backwards {
-				httpRing = httpRing.Prev()
-			} else {
-				httpRing = httpRing.Next()
+		// Special case - only single rpc available - always use it
+		if rpcsAvailable == 1 {
+			returnList = append(returnList, rpcsList[0])
+		} else if rpcsAvailable > 0 && rpcsAvailable < rpcsServices {
+			// Not enough http rpcs available - make sure serviceIndex 0 gets only
+			// 0th and others get everything else in sequence
+			rpcIndexToGet := serviceIndex
+			if serviceIndex > 0 {
+				// Start from 1st slice element and distribute in sequence one
+				// by one. Basically we cut the first element out of the
+				// equation.
+				rpcIndexToGet = 1 + (serviceIndex-1)%(rpcsAvailable-1)
+			}
+
+			returnList = []string{rpcsList[rpcIndexToGet]}
+		} else if rpcsAvailable >= rpcsServices {
+			for i := serviceIndex; i < rpcsAvailable; i += rpcsServices {
+				returnList = append(returnList, rpcsList[i])
 			}
 		}
-		for i := 0; i < amountWs; i++ {
-			wsRpcs = append(wsRpcs, wsRing.Value.(string))
-			if backwards {
-				wsRing = wsRing.Prev()
-			} else {
-				wsRing = wsRing.Next()
-			}
-		}
 
-		return httpRpcs, wsRpcs
+		return returnList
 	}
+
+	httpRpcs := distributionFunc(httpAvailable, httpServices, cfg.HttpRpcList[chainId])
+	wsRpcs := distributionFunc(wsAvailable, wsServices, cfg.WsRpcList[chainId])
+
+	return httpRpcs, wsRpcs
 }
