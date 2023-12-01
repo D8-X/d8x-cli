@@ -71,7 +71,7 @@ func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requi
 		if endpoint == "" {
 			continue
 		}
-		// Validate enetered endpoint
+		// Validate entered endpoint
 		if err := validate(endpoint); err != nil {
 			fmt.Println(
 				styles.ErrorText.Render(
