@@ -400,10 +400,12 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	fmt.Printf("Using broker domain: %s\n", brokerServerName)
 
 	// Print alert about DNS
-	fmt.Println(styles.AlertImportant.Render("Before proceeding with nginx and certbot setup, please ensure you have correctly added your DNS A records!"))
-	fmt.Println("Broker server IP address:", brokerIpAddr)
-	fmt.Println("Broker domain:", brokerServerName)
-	c.TUI.NewConfirmation("Press enter to continue...")
+	fmt.Println(styles.AlertImportant.Render("Please create the following DNS record on your domain provider's website now:"))
+	fmt.Println("Hostname:", brokerServerName)
+	fmt.Println("Type: A")
+	fmt.Println("IP address:", brokerIpAddr)
+
+	c.TUI.NewConfirmation("Press enter when done...")
 
 	if setupNginx {
 		fmt.Println(styles.ItalicText.Render("Setting up nginx for broker node"))
