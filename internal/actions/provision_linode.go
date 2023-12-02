@@ -159,7 +159,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 	l.Token = token
 
 	// DB
-	if ok, err := c.TUI.NewPrompt("Do you want to use a Linode database?", false); err == nil && ok {
+	if ok, err := c.TUI.NewPrompt("Do you want to use an external database? (choose no if you have a legacy Linode DB cluster)", true); err == nil && !ok {
 		fmt.Println("Enter your Linode database cluster ID")
 		dbId, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("12345678"),

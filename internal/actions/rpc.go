@@ -3,6 +3,7 @@ package actions
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -10,26 +11,59 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
 type ChainJsonEntry struct {
 	SDKNetwork            string `json:"sdkNetwork"`
 	PriceFeedNetwork      string `json:"priceFeedNetwork"`
 	DefaultPythWSEndpoint string `json:"priceServiceWSEndpoint"`
+	// Chain type is either testnet or mainnet
+	Type string `json:"type"`
 }
 
 // trader-backend/chain.json structure. This must always contain "default" key.
 type ChainJson map[string]ChainJsonEntry
 
+type rpcTransport string
+
+func (r rpcTransport) SecureProtocolPrefix() string {
+	return string(r) + "s://"
+}
+func (r rpcTransport) ProtocolPrefix() string {
+	return string(r) + "://"
+}
+
+const (
+	rpcTransportHTTP rpcTransport = "http"
+	rpcTransportWS   rpcTransport = "ws"
+)
+
 // RPCUrlCollector collects RPC urls from the user
-func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
-	transportUpper := strings.ToUpper(rpcTransport)
-	transportLower := strings.ToLower(rpcTransport)
+func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
+	transportUpper := strings.ToUpper(string(protocol))
+	transportLower := strings.ToLower(string(protocol))
 	endpoints := []string{}
+
+	validate := func(endpoint string) error {
+		// Ensure prefix is added
+		if !strings.HasPrefix(endpoint, protocol.SecureProtocolPrefix()) && !strings.HasPrefix(endpoint, protocol.ProtocolPrefix()) {
+			return fmt.Errorf("invalid protocol prefix, should be %s or %s", protocol.SecureProtocolPrefix(), protocol.ProtocolPrefix())
+		}
+
+		_, err := url.Parse(endpoint)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	for {
 		fmt.Printf("Enter %s RPC url #%d for chain id %s\n", transportUpper, len(endpoints)+1, chainId)
 		endpoint, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder(transportLower + "://localhost:8545"),
+			components.TextInputOptPlaceholder(transportLower+"://localhost:8545"),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return nil, err
@@ -37,6 +71,15 @@ func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast
 		endpoint = strings.TrimSpace(endpoint)
 		// Disallow empty strings
 		if endpoint == "" {
+			continue
+		}
+		// Validate entered endpoint
+		if err := validate(endpoint); err != nil {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Invalid RPC url (%s), please try again...", err.Error()),
+				),
+			)
 			continue
 		}
 		endpoints = append(endpoints, endpoint)
@@ -67,16 +110,16 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 	httpRpcs, exists := cfg.HttpRpcList[chainId]
 	if exists {
 		fmt.Printf("The following HTTP RPC urls were found: \n%s \n", strings.Join(httpRpcs, "\n"))
-		ok, err := c.TUI.NewPrompt("Do you want to change HTTP RPC urls?", true)
+		keep, err := c.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if keep {
 			collectHttpRPCS = false
 		}
 	}
 	if collectHttpRPCS {
-		httpRpcs, err := c.RPCUrlCollector("http", chainId, 3, 5)
+		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5)
 		if err != nil {
 			return err
 		}
@@ -93,16 +136,16 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	wspRpcs, exists := cfg.WsRpcList[chainId]
 	if exists {
 		fmt.Printf("The following Websocket RPC urls were found: \n%s \n", strings.Join(wspRpcs, "\n"))
-		ok, err := c.TUI.NewPrompt("Do you want to change Websocket RPC urls?", true)
+		keep, err := c.TUI.NewPrompt("Do you want to keep these Websocket RPC urls?", true)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if keep {
 			collectWSRPCS = false
 		}
 	}
 	if collectWSRPCS {
-		wsRpcs, err := c.RPCUrlCollector("ws", chainId, 1, 2)
+		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2)
 		if err != nil {
 			return err
 		}
@@ -111,9 +154,9 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// loadChainJson loads the chain.json file from the embedded configs and caches
+// LoadChainJson loads the chain.json file from the embedded configs and caches
 // it on Container instance.
-func (c *Container) loadChainJson() error {
+func (c *Container) LoadChainJson() error {
 	if c.cachedChainJson == nil {
 		contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
 		if err != nil {
@@ -133,7 +176,7 @@ func (c *Container) loadChainJson() error {
 
 // getChainSDKName retrieves the SDK compatible SDK_CONFIG_NAME
 func (c *Container) getChainSDKName(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
@@ -144,7 +187,7 @@ func (c *Container) getChainSDKName(chainId string) string {
 
 // getChainPriceFeedName retrieves the python compatible NETWORK_NAME
 func (c *Container) getChainPriceFeedName(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
@@ -156,13 +199,23 @@ func (c *Container) getChainPriceFeedName(chainId string) string {
 // getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
 // chain.json config
 func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
 		return c.cachedChainJson["default"].DefaultPythWSEndpoint
 	}
 	return chainJson.DefaultPythWSEndpoint
+}
+
+func (c *Container) getChainType(chainId string) string {
+	c.LoadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].Type
+	}
+	return chainJson.Type
 }
 
 type WSRPCSlice struct {

@@ -27,6 +27,16 @@ const (
 	D8XServiceCandlesWs D8XServiceName = "candles_ws"
 )
 
+var SuggestedSubdomains = map[D8XServiceName]string{
+	D8XServiceBrokerServer: "broker",
+
+	D8XServiceMainHTTP:  "api",
+	D8XServiceMainWS:    "ws",
+	D8XServiceHistory:   "history",
+	D8XServiceReferral:  "referral",
+	D8XServiceCandlesWs: "candles",
+}
+
 type D8XConfig struct {
 	Services       map[D8XServiceName]D8XService `json:"services"`
 	ServerProvider D8XServerProvider             `json:"server_provider"`
@@ -58,6 +68,10 @@ type D8XConfig struct {
 	DatabaseDSN string `json:"database_dsn"`
 
 	CertbotEmail string `json:"certbot_email"`
+
+	// Setup domain entered by user. Used to suggest subdomain names for
+	// services
+	SetupDomain string `setup_domain`
 }
 
 type ReferralConfig struct {
@@ -200,4 +214,15 @@ func (d *d8xConfigFileReadWriter) Write(cfg *D8XConfig) error {
 		}
 	}
 	return nil
+}
+
+func (c *D8XConfig) SuggestSubdomain(svc D8XServiceName, chainName string) string {
+	if c.SetupDomain == "" {
+		return ""
+	}
+
+	if subdomain, ok := SuggestedSubdomains[svc]; ok {
+		return fmt.Sprintf("%s-%s.%s", subdomain, chainName, c.SetupDomain)
+	}
+	return ""
 }
