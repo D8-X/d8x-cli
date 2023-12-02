@@ -181,7 +181,7 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 
 	fmt.Printf("Wallet address of entered private key: %s\n", addr.Hex())
 
-	ok, err := c.TUI.NewPrompt("Is this correct address?", true)
+	ok, err := c.TUI.NewPrompt("Is this the correct address?", true)
 	if err != nil {
 		return "", "", err
 	}
