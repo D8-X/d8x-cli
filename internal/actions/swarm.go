@@ -868,31 +868,31 @@ type hostnameTuple struct {
 // List of services which will be configured in nginx.conf
 var hostsTpl = []hostnameTuple{
 	{
-		prompt:      "Enter Main HTTP (sub)domain (e.g. main.d8x.xyz): ",
-		placeholder: "main.d8x.xyz",
+		prompt:      "Enter Main HTTP (sub)domain: ",
+		placeholder: "api.d8x.xyz",
 		find:        "%main%",
 		serviceName: configs.D8XServiceMainHTTP,
 	},
 	{
-		prompt:      "Enter Main Websockets (sub)domain (e.g. ws.d8x.xyz): ",
+		prompt:      "Enter Main Websockets (sub)domain: ",
 		placeholder: "ws.d8x.xyz",
 		find:        "%main_ws%",
 		serviceName: configs.D8XServiceMainWS,
 	},
 	{
-		prompt:      "Enter History HTTP (sub)domain (e.g. history.d8x.xyz): ",
+		prompt:      "Enter History HTTP (sub)domain: ",
 		placeholder: "history.d8x.xyz",
 		find:        "%history%",
 		serviceName: configs.D8XServiceHistory,
 	},
 	{
-		prompt:      "Enter Referral HTTP (sub)domain (e.g. referral.d8x.xyz): ",
+		prompt:      "Enter Referral HTTP (sub)domain: ",
 		placeholder: "referral.d8x.xyz",
 		find:        "%referral%",
 		serviceName: configs.D8XServiceReferral,
 	},
 	{
-		prompt:      "Enter Candlesticks Websockets (sub)domain (e.g. candles.d8x.xyz): ",
+		prompt:      "Enter Candlesticks Websockets (sub)domain: ",
 		placeholder: "candles.d8x.xyz",
 		find:        "%candles_ws%",
 		serviceName: configs.D8XServiceCandlesWs,
