@@ -23,14 +23,14 @@ type ChainInfo struct {
 
 // ALLOWED_CHAINS_STRINGS is used for selection component
 var ALLOWED_CHAINS_STRINGS = []string{
-	"testnet (1442)",
-	"mainnet (1101)",
+	"zkEVM testnet (1442)",
+	"zkEVM mainnet (1101)",
 }
 
 // Chain ids which are allowed to enter
 var ALLOWED_CHAINS_MAP = map[string]string{
-	"testnet (1442)": "1442",
-	"mainnet (1101)": "1101",
+	"zkEVM testnet (1442)": "1442",
+	"zkEVM mainnet (1101)": "1101",
 }
 
 type SSHConnectionMaker func()
