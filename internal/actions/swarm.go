@@ -480,7 +480,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	for _, f := range filesToCopy[:6] {
 		fmt.Println(f.Dst)
 	}
-	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...")
+	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
