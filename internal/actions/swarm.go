@@ -420,7 +420,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 		// Update the candles/prices.config.json. Make sure the default pyth.hermes
 		// entry is always the last one
-		dontAddAnotherPythWss, err := c.TUI.NewPrompt("\nKeep only default Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+		dontAddAnotherPythWss, err := c.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
 		if err != nil {
 			return err
 		}
