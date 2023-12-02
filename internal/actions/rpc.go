@@ -1,10 +1,9 @@
 package actions
 
 import (
-	"container/ring"
 	"encoding/json"
 	"fmt"
-	"math"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -12,26 +11,59 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
 type ChainJsonEntry struct {
 	SDKNetwork            string `json:"sdkNetwork"`
 	PriceFeedNetwork      string `json:"priceFeedNetwork"`
 	DefaultPythWSEndpoint string `json:"priceServiceWSEndpoint"`
+	// Chain type is either testnet or mainnet
+	Type string `json:"type"`
 }
 
 // trader-backend/chain.json structure. This must always contain "default" key.
 type ChainJson map[string]ChainJsonEntry
 
+type rpcTransport string
+
+func (r rpcTransport) SecureProtocolPrefix() string {
+	return string(r) + "s://"
+}
+func (r rpcTransport) ProtocolPrefix() string {
+	return string(r) + "://"
+}
+
+const (
+	rpcTransportHTTP rpcTransport = "http"
+	rpcTransportWS   rpcTransport = "ws"
+)
+
 // RPCUrlCollector collects RPC urls from the user
-func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
-	transportUpper := strings.ToUpper(rpcTransport)
-	transportLower := strings.ToLower(rpcTransport)
+func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
+	transportUpper := strings.ToUpper(string(protocol))
+	transportLower := strings.ToLower(string(protocol))
 	endpoints := []string{}
+
+	validate := func(endpoint string) error {
+		// Ensure prefix is added
+		if !strings.HasPrefix(endpoint, protocol.SecureProtocolPrefix()) && !strings.HasPrefix(endpoint, protocol.ProtocolPrefix()) {
+			return fmt.Errorf("invalid protocol prefix, should be %s or %s", protocol.SecureProtocolPrefix(), protocol.ProtocolPrefix())
+		}
+
+		_, err := url.Parse(endpoint)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	for {
 		fmt.Printf("Enter %s RPC url #%d for chain id %s\n", transportUpper, len(endpoints)+1, chainId)
 		endpoint, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder(transportLower + "://localhost:8545"),
+			components.TextInputOptPlaceholder(transportLower+"://localhost:8545"),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return nil, err
@@ -39,6 +71,15 @@ func (c *Container) RPCUrlCollector(rpcTransport, chainId string, requireAtLeast
 		endpoint = strings.TrimSpace(endpoint)
 		// Disallow empty strings
 		if endpoint == "" {
+			continue
+		}
+		// Validate entered endpoint
+		if err := validate(endpoint); err != nil {
+			fmt.Println(
+				styles.ErrorText.Render(
+					fmt.Sprintf("Invalid RPC url (%s), please try again...", err.Error()),
+				),
+			)
 			continue
 		}
 		endpoints = append(endpoints, endpoint)
@@ -69,16 +110,16 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 	httpRpcs, exists := cfg.HttpRpcList[chainId]
 	if exists {
 		fmt.Printf("The following HTTP RPC urls were found: \n%s \n", strings.Join(httpRpcs, "\n"))
-		ok, err := c.TUI.NewPrompt("Do you want to change HTTP RPC urls?", true)
+		keep, err := c.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if keep {
 			collectHttpRPCS = false
 		}
 	}
 	if collectHttpRPCS {
-		httpRpcs, err := c.RPCUrlCollector("http", chainId, 3, 5)
+		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5)
 		if err != nil {
 			return err
 		}
@@ -95,16 +136,16 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	wspRpcs, exists := cfg.WsRpcList[chainId]
 	if exists {
 		fmt.Printf("The following Websocket RPC urls were found: \n%s \n", strings.Join(wspRpcs, "\n"))
-		ok, err := c.TUI.NewPrompt("Do you want to change Websocket RPC urls?", true)
+		keep, err := c.TUI.NewPrompt("Do you want to keep these Websocket RPC urls?", true)
 		if err != nil {
 			return err
 		}
-		if !ok {
+		if keep {
 			collectWSRPCS = false
 		}
 	}
 	if collectWSRPCS {
-		wsRpcs, err := c.RPCUrlCollector("ws", chainId, 1, 2)
+		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2)
 		if err != nil {
 			return err
 		}
@@ -113,9 +154,9 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// loadChainJson loads the chain.json file from the embedded configs and caches
+// LoadChainJson loads the chain.json file from the embedded configs and caches
 // it on Container instance.
-func (c *Container) loadChainJson() error {
+func (c *Container) LoadChainJson() error {
 	if c.cachedChainJson == nil {
 		contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
 		if err != nil {
@@ -135,7 +176,7 @@ func (c *Container) loadChainJson() error {
 
 // getChainSDKName retrieves the SDK compatible SDK_CONFIG_NAME
 func (c *Container) getChainSDKName(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
@@ -146,7 +187,7 @@ func (c *Container) getChainSDKName(chainId string) string {
 
 // getChainPriceFeedName retrieves the python compatible NETWORK_NAME
 func (c *Container) getChainPriceFeedName(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
@@ -158,13 +199,23 @@ func (c *Container) getChainPriceFeedName(chainId string) string {
 // getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
 // chain.json config
 func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
-	c.loadChainJson()
+	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
 	if !exists {
 		return c.cachedChainJson["default"].DefaultPythWSEndpoint
 	}
 	return chainJson.DefaultPythWSEndpoint
+}
+
+func (c *Container) getChainType(chainId string) string {
+	c.LoadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].Type
+	}
+	return chainJson.Type
 }
 
 type WSRPCSlice struct {
@@ -251,58 +302,63 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 	return c.FS.WriteFile(rpcConfigFilePath, marshalled)
 }
 
-func (c *Container) getHttpWsRpcs(chainId string, cfg *configs.D8XConfig) func(bool) ([]string, []string) {
-	numHttpAvailable := len(cfg.HttpRpcList[chainId])
-	numWsAvailable := len(cfg.WsRpcList[chainId])
-
-	httpRing := ring.New(numHttpAvailable)
-	for i := 0; i < numHttpAvailable; i++ {
-		httpRing.Value = cfg.HttpRpcList[chainId][i]
-		httpRing = httpRing.Next()
+// DistributeRpcs distribute rpc from cfg (user supplied rpcs) based on provided
+// serviceIndex. RPC distribution is done in a card dealing way (serviceIndex 0
+// gets 0, 0 + numServices, 0 + 2*numServices, etc.). We currently support 4
+// services which need rpcs: main, history, referral and broker-server
+// (optional) with serviceIndex values 0, 1,2 and 3 respectively. It is
+// suggested to have at least 4 Http rpcs added (3 without broker). Only
+// serviceIndex 0 and 1 gets websockets (main, history). Returned slices are
+// http and ws rpcs list.
+func DistributeRpcs(serviceIndex int, chainId string, cfg *configs.D8XConfig) ([]string, []string) {
+	// Maximum number of serviceIndex for http/ws lists
+	// main, history, referral
+	httpServices := 3
+	// main, history
+	wsServices := 2
+	if cfg.BrokerDeployed {
+		// and broker-server
+		httpServices = 4
 	}
 
-	wsRing := ring.New(numWsAvailable)
-	for i := 0; i < numWsAvailable; i++ {
-		wsRing.Value = cfg.WsRpcList[chainId][i]
-		wsRing = wsRing.Next()
-	}
+	httpAvailable := len(cfg.HttpRpcList[chainId])
+	wsAvailable := len(cfg.WsRpcList[chainId])
 
-	return func(backwards bool) ([]string, []string) {
-		httpRpcs := []string{}
-		wsRpcs := []string{}
+	distributionFunc := func(rpcsAvailable, rpcsServices int, rpcsList []string) []string {
+		returnList := []string{}
 
-		// Take at least 2 enties for http or more if possible (or if not
-		// possible - at lease numWs/Http)
-		amountHttp := 2
-		amountWs := 1
-		if amountHttp < numHttpAvailable {
-			amountHttp = int(math.Ceil(float64(numHttpAvailable) / float64(3)))
-		} else {
-			amountHttp = numHttpAvailable
-		}
-		if amountWs < numWsAvailable {
-			amountWs = int(math.Ceil(float64(numWsAvailable) / float64(3)))
-		} else {
-			amountWs = numWsAvailable
+		// Deny higher serviceIndex than supported via httpServices or
+		// wsServices.
+		if serviceIndex+1 > rpcsServices {
+			return returnList
 		}
 
-		for i := 0; i < amountHttp; i++ {
-			httpRpcs = append(httpRpcs, httpRing.Value.(string))
-			if backwards {
-				httpRing = httpRing.Prev()
-			} else {
-				httpRing = httpRing.Next()
+		// Special case - only single rpc available - always use it
+		if rpcsAvailable == 1 {
+			returnList = append(returnList, rpcsList[0])
+		} else if rpcsAvailable > 0 && rpcsAvailable < rpcsServices {
+			// Not enough http rpcs available - make sure serviceIndex 0 gets only
+			// 0th and others get everything else in sequence
+			rpcIndexToGet := serviceIndex
+			if serviceIndex > 0 {
+				// Start from 1st slice element and distribute in sequence one
+				// by one. Basically we cut the first element out of the
+				// equation.
+				rpcIndexToGet = 1 + (serviceIndex-1)%(rpcsAvailable-1)
+			}
+
+			returnList = []string{rpcsList[rpcIndexToGet]}
+		} else if rpcsAvailable >= rpcsServices {
+			for i := serviceIndex; i < rpcsAvailable; i += rpcsServices {
+				returnList = append(returnList, rpcsList[i])
 			}
 		}
-		for i := 0; i < amountWs; i++ {
-			wsRpcs = append(wsRpcs, wsRing.Value.(string))
-			if backwards {
-				wsRing = wsRing.Prev()
-			} else {
-				wsRing = wsRing.Next()
-			}
-		}
 
-		return httpRpcs, wsRpcs
+		return returnList
 	}
+
+	httpRpcs := distributionFunc(httpAvailable, httpServices, cfg.HttpRpcList[chainId])
+	wsRpcs := distributionFunc(wsAvailable, wsServices, cfg.WsRpcList[chainId])
+
+	return httpRpcs, wsRpcs
 }

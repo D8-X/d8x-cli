@@ -16,8 +16,22 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+type ChainInfo struct {
+	ChainId   string
+	ChainName string
+}
+
+// ALLOWED_CHAINS_STRINGS is used for selection component
+var ALLOWED_CHAINS_STRINGS = []string{
+	"zkEVM testnet (1442)",
+	"zkEVM mainnet (1101)",
+}
+
 // Chain ids which are allowed to enter
-var ALLOWED_CHAINS = []string{"1442", "1101"}
+var ALLOWED_CHAINS_MAP = map[string]string{
+	"zkEVM testnet (1442)": "1442",
+	"zkEVM mainnet (1101)": "1101",
+}
 
 type SSHConnectionMaker func()
 
@@ -123,12 +137,12 @@ func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
 			return cfg.ChainId, nil
 		}
 
-		info := fmt.Sprintf("Currently using chain id: %d. Change chain id?", cfg.ChainId)
-		change, err := c.TUI.NewPrompt(info, false)
+		info := fmt.Sprintf("Currently using chain id: %d. Keep using this chain id?", cfg.ChainId)
+		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return 0, err
 		}
-		if !change {
+		if keep {
 			return cfg.ChainId, nil
 		}
 	}
@@ -137,11 +151,11 @@ func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
 	// Allow to input chain id if DEBUG_ALLOW_CHAINID_INPUT variable is set
 	var chainId string
 	if _, allowInput := os.LookupEnv("DEBUG_ALLOW_CHAINID_INPUT"); !allowInput {
-		chains, err := c.TUI.NewSelection(ALLOWED_CHAINS, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+		chains, err := c.TUI.NewSelection(ALLOWED_CHAINS_STRINGS, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
 			return 0, err
 		}
-		chainId = chains[0]
+		chainId = ALLOWED_CHAINS_MAP[chains[0]]
 	} else {
 		chain, err := c.TUI.NewInput(components.TextInputOptPlaceholder("1101"))
 		if err != nil {

@@ -67,9 +67,6 @@ func (c *Container) DisplayPasswordAlert() {
 	if len(c.UserPassword) == 0 {
 		return
 	}
-
-	fmt.Println(styles.AlertImportant.Render(`Make sure to securely store default user password! This password will be
-	created for default user on each provisioned server.`))
 	fmt.Printf("User: %s\n", c.DefaultClusterUserName)
 	fmt.Printf("Password: %s\n", c.UserPassword)
 }
@@ -130,11 +127,11 @@ func (c *Container) CollectCertbotEmail(cfg *configs.D8XConfig) (string, error) 
 	change := true
 	if cfg.CertbotEmail != "" {
 		fmt.Printf("Email for certbot notifications is set to %s\n", cfg.CertbotEmail)
-		ok, err := c.TUI.NewPrompt("Do you want to change it?", false)
+		keep, err := c.TUI.NewPrompt("Do you want to keep it?", true)
 		if err != nil {
 			return "", err
 		}
-		if !ok {
+		if keep {
 			change = false
 		}
 	}
@@ -169,6 +166,7 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 	pk, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
 		components.TextInputOptMasked(),
+		components.TextInputOptDenyEmpty(),
 	)
 	if err != nil {
 		return "", "", err
@@ -183,7 +181,7 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 
 	fmt.Printf("Wallet address of entered private key: %s\n", addr.Hex())
 
-	ok, err := c.TUI.NewPrompt("Is this correct address?", true)
+	ok, err := c.TUI.NewPrompt("Is this the correct address?", true)
 	if err != nil {
 		return "", "", err
 	}
@@ -200,6 +198,7 @@ func (c *Container) CollectAndValidateWalletAddress(title, value string) (string
 	walletAddress, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
 		components.TextInputOptValue(value),
+		components.TextInputOptDenyEmpty(),
 	)
 	walletAddress = strings.TrimSpace(walletAddress)
 	if err != nil {
@@ -213,4 +212,25 @@ func (c *Container) CollectAndValidateWalletAddress(title, value string) (string
 	}
 
 	return walletAddress, nil
+}
+
+// CollectSetupDomain collects domain name and stores it in config
+func (c *Container) CollectSetupDomain(cfg *configs.D8XConfig) (string, error) {
+	fmt.Println("Enter your domain name:")
+	domain, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder("your-domain.com"),
+		components.TextInputOptValue(cfg.SetupDomain),
+		components.TextInputOptDenyEmpty(),
+	)
+	if err != nil {
+		return "", err
+	}
+	domain = TrimHttpsPrefix(domain)
+
+	cfg.SetupDomain = domain
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return "", err
+	}
+
+	return domain, nil
 }

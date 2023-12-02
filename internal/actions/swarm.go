@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
+	"github.com/xo/dburl"
 )
 
 // Stack name that will be used when creating/destroying or managing swarm
@@ -72,9 +74,9 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 	changeRemoteBrokerHTTP := true
 	if cfg.SwarmRemoteBrokerHTTPUrl != "" {
 		fmt.Printf("Found remote broker http url: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
-		if ok, err := c.TUI.NewPrompt("Do you want to change remote broker http endpoint?", false); err != nil {
+		if keep, err := c.TUI.NewPrompt("Do you want to keep remote broker http endpoint?", true); err != nil {
 			return err
-		} else if !ok {
+		} else if keep {
 			changeRemoteBrokerHTTP = false
 		}
 	}
@@ -105,9 +107,9 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 	changeReferralPayoutAddress := true
 	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
 		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
-		if ok, err := c.TUI.NewPrompt("Do you want to change broker payout address?", false); err != nil {
+		if keep, err := c.TUI.NewPrompt("Do you want to keep this broker payout address?", true); err != nil {
 			return err
-		} else if !ok {
+		} else if keep {
 			changeReferralPayoutAddress = false
 		}
 	}
@@ -129,21 +131,52 @@ func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
 func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	change := true
 	if cfg.DatabaseDSN != "" {
-		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want to update it?", cfg.DatabaseDSN)
-		ok, err := c.TUI.NewPrompt(info, false)
+		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want keep it?", cfg.DatabaseDSN)
+		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return err
 		}
-		change = ok
+		change = !keep
 	}
 
 	if !change {
 		return nil
 	}
 
-	switch cfg.ServerProvider {
-	// Linode users must enter their own database dns stirng manually
-	case configs.D8XServerProviderLinode:
+	// Validate database protocol prefix, and password if any special
+	// characters are present
+	dsnValidator := func(dbConnStr string) error {
+		if !strings.HasPrefix(dbConnStr, "postgres://") && !strings.HasPrefix(dbConnStr, "postgresql://") {
+			return fmt.Errorf("connection string must start with postgres:// or postgresql://")
+		}
+
+		connUrl, err := dburl.Parse(
+			dbConnStr,
+		)
+		if err != nil {
+			return err
+		}
+
+		if connUrl.User == nil {
+			return fmt.Errorf("user:password part is missing")
+		}
+
+		password, set := connUrl.User.Password()
+		if !set {
+			return fmt.Errorf("password is missing")
+		}
+		specialCharacters := []byte{'*', '?', '$', '(', ')', '`', '\\', '\'', '"', '>', '<', '|', '&'}
+
+		for _, char := range specialCharacters {
+			if bytes.Contains([]byte(password), []byte{char}) {
+				return fmt.Errorf("password contains special character %s, please use password without special characters", string(char))
+			}
+		}
+
+		return nil
+	}
+
+	for {
 		fmt.Println("Enter your database dsn connection string:")
 		dbDsn, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
@@ -152,7 +185,36 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 		if err != nil {
 			return err
 		}
-		cfg.DatabaseDSN = dbDsn
+		dbDsn = strings.TrimSpace(dbDsn)
+
+		if err := dsnValidator(dbDsn); err != nil {
+			fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
+		} else {
+			cfg.DatabaseDSN = dbDsn
+			break
+		}
+	}
+
+	switch cfg.ServerProvider {
+	// Linode users must enter their own database dns stirng manually
+	case configs.D8XServerProviderLinode:
+		for {
+			fmt.Println("Enter your database dsn connection string:")
+			dbDsn, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
+				components.TextInputOptDenyEmpty(),
+			)
+			if err != nil {
+				return err
+			}
+
+			if err := dsnValidator(dbDsn); err != nil {
+				fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
+			} else {
+				cfg.DatabaseDSN = dbDsn
+				break
+			}
+		}
 
 		// For AWS - read it from rds credentials file
 	case configs.D8XServerProviderAWS:
@@ -324,13 +386,17 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 
 		// Update rpcconfigs
-		httpWsGetter := c.getHttpWsRpcs(strconv.Itoa(int(cfg.ChainId)), cfg)
 		for i, rpconfigFilePath := range []string{
 			"./trader-backend/rpc.main.json",
 			"./trader-backend/rpc.history.json",
 			"./trader-backend/rpc.referral.json",
 		} {
-			httpRpcs, wsRpcs := httpWsGetter(false)
+			httpRpcs, wsRpcs := DistributeRpcs(
+				i,
+				strconv.Itoa(int(cfg.ChainId)),
+				cfg,
+			)
+
 			fmt.Printf("Updating %s config...\n", rpconfigFilePath)
 
 			// No wsRPC for referral
@@ -354,12 +420,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 		// Update the candles/prices.config.json. Make sure the default pyth.hermes
 		// entry is always the last one
-		addAnohter, err := c.TUI.NewPrompt("\nAdd additional Pyth priceServiceWSEndpoint entry to ./candles/prices.config.json?", true)
+		dontAddAnotherPythWss, err := c.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
 		if err != nil {
 			return err
 		}
 		priceServiceWSEndpoints := []string{c.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
-		if addAnohter {
+		if !dontAddAnotherPythWss {
 			fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
 			additioanalWsEndpoint, err := c.TUI.NewInput(
 				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
@@ -414,7 +480,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	for _, f := range filesToCopy[:6] {
 		fmt.Println(f.Dst)
 	}
-	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are adjusted...")
+	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -664,6 +730,12 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
+	// Collect domain name
+	_, err = c.CollectSetupDomain(cfg)
+	if err != nil {
+		return err
+	}
+
 	// Copy nginx config and ansible playbook for swarm nginx setup
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
@@ -705,14 +777,13 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 
 	fmt.Println(
 		styles.AlertImportant.Render(
-			"Setup DNS A records with your manager IP address",
+			"Please create the following DNS records on your domain provider's website now:",
 		),
 	)
-	fmt.Println("Manager IP address: " + managerIp)
 	for _, svc := range services {
-		fmt.Printf("Service: %s Domain: %s\n", svc.serviceName, svc.server)
+		fmt.Printf("Hostname: %s\tType: A\tIP: %s\n", svc.server, managerIp)
 	}
-	c.TUI.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
+	c.TUI.NewConfirmation("\nPress enter when done...")
 
 	// Hostnames - domains list provided for certbot
 	hostnames := make([]string, len(services))
@@ -796,31 +867,31 @@ type hostnameTuple struct {
 // List of services which will be configured in nginx.conf
 var hostsTpl = []hostnameTuple{
 	{
-		prompt:      "Enter Main HTTP (sub)domain (e.g. main.d8x.xyz): ",
-		placeholder: "main.d8x.xyz",
+		prompt:      "Enter Main HTTP (sub)domain: ",
+		placeholder: "api.d8x.xyz",
 		find:        "%main%",
 		serviceName: configs.D8XServiceMainHTTP,
 	},
 	{
-		prompt:      "Enter Main Websockets (sub)domain (e.g. ws.d8x.xyz): ",
+		prompt:      "Enter Main Websockets (sub)domain: ",
 		placeholder: "ws.d8x.xyz",
 		find:        "%main_ws%",
 		serviceName: configs.D8XServiceMainWS,
 	},
 	{
-		prompt:      "Enter History HTTP (sub)domain (e.g. history.d8x.xyz): ",
+		prompt:      "Enter History HTTP (sub)domain: ",
 		placeholder: "history.d8x.xyz",
 		find:        "%history%",
 		serviceName: configs.D8XServiceHistory,
 	},
 	{
-		prompt:      "Enter Referral HTTP (sub)domain (e.g. referral.d8x.xyz): ",
+		prompt:      "Enter Referral HTTP (sub)domain: ",
 		placeholder: "referral.d8x.xyz",
 		find:        "%referral%",
 		serviceName: configs.D8XServiceReferral,
 	},
 	{
-		prompt:      "Enter Candlesticks Websockets (sub)domain (e.g. candles.d8x.xyz): ",
+		prompt:      "Enter Candlesticks Websockets (sub)domain: ",
 		placeholder: "candles.d8x.xyz",
 		find:        "%candles_ws%",
 		serviceName: configs.D8XServiceCandlesWs,
@@ -836,7 +907,8 @@ func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTup
 	for i, h := range hostsTpl {
 
 		// When possible, find values from config for non-first time runs.
-		value := ""
+		// Provide some automatic subdomain suggestions by default
+		value := cfg.SuggestSubdomain(h.serviceName, c.getChainType(strconv.Itoa(int(cfg.ChainId))))
 		if v, ok := cfg.Services[h.serviceName]; ok {
 			if v.HostName != "" {
 				value = v.HostName
@@ -848,6 +920,7 @@ func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTup
 			"Is this the correct domain you want to use for "+string(h.serviceName)+"?",
 			components.TextInputOptPlaceholder(h.placeholder),
 			components.TextInputOptValue(value),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return nil, err
