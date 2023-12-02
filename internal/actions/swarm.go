@@ -777,14 +777,13 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 
 	fmt.Println(
 		styles.AlertImportant.Render(
-			"Setup DNS A records with your manager IP address",
+			"Please create the following DNS records on your domain provider's website now:",
 		),
 	)
-	fmt.Println("Manager IP address: " + managerIp)
 	for _, svc := range services {
-		fmt.Printf("Service: %s Domain: %s\n", svc.serviceName, svc.server)
+		fmt.Printf("Hostname: %s\tType: A\tIP: %s\n", svc.server, managerIp)
 	}
-	c.TUI.NewConfirmation("Confirm that you have setup your DNS records to point to your manager's public IP address")
+	c.TUI.NewConfirmation("\nPress enter when done...")
 
 	// Hostnames - domains list provided for certbot
 	hostnames := make([]string, len(services))
