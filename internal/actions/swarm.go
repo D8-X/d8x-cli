@@ -92,6 +92,7 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 			components.TextInputOptPlaceholder("https://your-broker-domain.com"),
 			components.TextInputOptValue(value),
 			components.TextInputOptDenyEmpty(),
+			components.TextInputOptValidation(ValidateHttp, "url must start with http:// or https://"),
 		)
 		if err != nil {
 			return err

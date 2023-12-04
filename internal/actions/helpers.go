@@ -124,6 +124,11 @@ func EnsureHttpsPrefixExists(url string) string {
 	return "https://" + TrimHttpsPrefix(url)
 }
 
+// ValidateHttp validates if given url starts with http:// or https://
+func ValidateHttp(url string) bool {
+	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
+}
+
 func (c *Container) CollectCertbotEmail(cfg *configs.D8XConfig) (string, error) {
 	change := true
 	if cfg.CertbotEmail != "" {
