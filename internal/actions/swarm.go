@@ -176,25 +176,6 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 		return nil
 	}
 
-	for {
-		fmt.Println("Enter your database dsn connection string:")
-		dbDsn, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
-			components.TextInputOptDenyEmpty(),
-		)
-		if err != nil {
-			return err
-		}
-		dbDsn = strings.TrimSpace(dbDsn)
-
-		if err := dsnValidator(dbDsn); err != nil {
-			fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
-		} else {
-			cfg.DatabaseDSN = dbDsn
-			break
-		}
-	}
-
 	switch cfg.ServerProvider {
 	// Linode users must enter their own database dns stirng manually
 	case configs.D8XServerProviderLinode:
@@ -207,6 +188,7 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			if err != nil {
 				return err
 			}
+			dbDsn = strings.TrimSpace(dbDsn)
 
 			if err := dsnValidator(dbDsn); err != nil {
 				fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
