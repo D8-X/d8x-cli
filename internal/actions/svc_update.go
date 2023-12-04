@@ -75,6 +75,19 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 }
 
 func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+	if len(selectedSwarmServicesToUpdate) == 0 {
+		return nil
+	}
+
+	workerIps, err := c.HostsCfg.GetWorkerIps()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Pruning unused resources on worker servers...")
+	if err := c.PurgeWorkers(workerIps); err != nil {
+		return err
+	}
 
 	password, err := c.GetPassword(ctx)
 	if err != nil {
@@ -94,9 +107,11 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 		img := services[svcToUpdate].Image
 		tags, err := getTags(img)
+		// If tags cannot be fetched - show error, but do not exit the update
+		// process, since this is only local error on users' machine
 		if err != nil {
 			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not get tags for %s: %s\n", img, err.Error())))
-			continue
+			tags = []string{}
 		}
 
 		fmt.Printf("Available tags: %s\n\n", strings.Join(tags, ", "))
@@ -231,12 +246,16 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		return err
 	}
 
+	fmt.Println("Pruning unused resources on broker server...")
+	out, err := dockerPrune(sshConn)
+	fmt.Println(string(out))
+	if err != nil {
+		return fmt.Errorf("docker prune on broker server failed: %w", err)
+	}
+	fmt.Println(styles.SuccessText.Render("Docker prune on broker server completed successfully"))
+
 	// Ask for private key
-	fmt.Println("Enter your broker private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
+	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
 	if err != nil {
 		return err
 	}
@@ -246,7 +265,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 	redisPassword := ""
 	feeTBPS := ""
 	if !cfg.BrokerDeployed {
-		fmt.Println(styles.ErrorText.Render("Broker server configuration not found"))
+		fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
 		fmt.Println("Enter your broker redis password:")
 		pwd, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
@@ -256,10 +275,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		}
 		redisPassword = pwd
 
-		fmt.Println("Enter your broker fee tbps value:")
-		fee, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("60"),
-		)
+		fee, err := c.CollectBrokerFee()
 		if err != nil {
 			return err
 		}
@@ -337,4 +353,34 @@ func getTags(imgUrl string) ([]string, error) {
 		&types.SystemContext{},
 		imgRef,
 	)
+}
+
+// PurgeWorkers removes all all docker artifacts on each worker
+func (c *Container) PurgeWorkers(workersIps []string) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	for workerIndex, workerIp := range workersIps {
+		fmt.Printf("Running docker prune on worker-%d:\n", workerIndex+1)
+		worker, err := c.GetWorkerConnection(workerIp, cfg)
+		if err != nil {
+			return err
+		}
+
+		output, err := dockerPrune(worker)
+		fmt.Println(string(output))
+		if err != nil {
+			return fmt.Errorf("docker prune on worker %d failed: %w", workerIndex+1, err)
+		} else {
+			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Docker prune on worker %d completed successfully", workerIndex+1)))
+		}
+	}
+
+	return nil
+}
+
+func dockerPrune(server conn.SSHConnection) ([]byte, error) {
+	return server.ExecCommand("docker system prune -a -f --volumes && docker volume prune -f")
 }

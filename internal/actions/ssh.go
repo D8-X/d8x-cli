@@ -66,20 +66,19 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	))
 
 	// Get the connection
-	var cn conn.SSHConnection
-	if !isWorker || cfg.ServerProvider == configs.D8XServerProviderLinode {
-		cn, err = conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+	var (
+		cn      conn.SSHConnection
+		connErr error
+	)
+	if isWorker {
+		cn, connErr = c.GetWorkerConnection(ip, cfg)
 	} else {
-		// Workers are accessible through manager for non linode
-		managerConn, errMngr := conn.NewSSHConnection(ipManager, c.DefaultClusterUserName, c.SshKeyPath)
-		if err != nil {
-			return errMngr
-		}
-		cn, err = conn.NewSSHConnectionWithBastion(managerConn.GetClient(), ip, c.DefaultClusterUserName, c.SshKeyPath)
+		cn, connErr = conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
 	}
-	if err != nil {
-		return err
+	if connErr != nil {
+		return connErr
 	}
+
 	sshClient := cn.GetClient()
 
 	session, err := sshClient.NewSession()
@@ -121,4 +120,31 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+// GetWorkerConnection establishes a connection to given worker. If Server
+// provider is AWS, we use manager as a bastion server
+func (c *Container) GetWorkerConnection(workerIp string, cfg *configs.D8XConfig) (conn.SSHConnection, error) {
+	var (
+		cn      conn.SSHConnection
+		connErr error
+	)
+
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		cn, connErr = conn.NewSSHConnection(workerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	} else {
+		managerIp, err := c.HostsCfg.GetMangerPublicIp()
+		if err != nil {
+			return nil, err
+		}
+
+		// Workers are accessible through manager for AWS
+		managerConn, errMngr := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+		if err != nil {
+			return nil, errMngr
+		}
+		cn, connErr = conn.NewSSHConnectionWithBastion(managerConn.GetClient(), workerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	}
+
+	return cn, connErr
 }

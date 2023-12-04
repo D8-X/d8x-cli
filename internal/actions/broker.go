@@ -22,6 +22,8 @@ const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
+// CollectBrokerFee requires user to enter broker fee in percentage and returns
+// TBPS value
 func (c *Container) CollectBrokerFee() (string, error) {
 	fmt.Println("Enter your broker fee percentage (%) value:")
 	feePercentage, err := c.TUI.NewInput(
