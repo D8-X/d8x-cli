@@ -24,15 +24,15 @@ func (c *Container) Setup(ctx *cli.Context) error {
 
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
-		ok, err := c.TUI.NewPrompt(
-			fmt.Sprintf("Existing configuration (%s) was found. Do you want to remove it? (Recommended for only fresh start)", cfg.ServerProvider),
-			false,
+		keepConfig, err := c.TUI.NewPrompt(
+			fmt.Sprintf("Existing configuration (%s) was found. Do you want use it?", cfg.ServerProvider),
+			true,
 		)
 
 		if err != nil {
 			return err
 		}
-		if ok {
+		if !keepConfig {
 			if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
 				return err
 			}

@@ -44,7 +44,8 @@ func (c *Container) ensureSSHKeyPresent() error {
 				fmt.Sprintf("ssh-keygen -t ed25519 -f %s", c.SshKeyPath),
 			),
 		)
-		cmd := exec.Command("ssh-keygen", "-N", "", "-t", "ed25519", "-f", c.SshKeyPath, "-C", "d8xtrader")
+		keygenCmd := "yes | ssh-keygen -N \"\" -t ed25519 -C d8xtrader -f " + c.SshKeyPath
+		cmd := exec.Command("bash", "-c", keygenCmd)
 		connectCMDToCurrentTerm(cmd)
 		if err := cmd.Run(); err != nil {
 			return err
