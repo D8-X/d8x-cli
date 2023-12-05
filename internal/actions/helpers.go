@@ -86,31 +86,6 @@ func defaultPasswordGetter(ctx *cli.Context) (string, error) {
 	}
 }
 
-// CollectInputWithConfirmation shows an input field and when users fills it,
-// shows a confirmation
-func (c *Container) CollectInputWithConfirmation(inputTitle, confirmationTitle string, inputOpts ...components.TextInputOpt) (string, error) {
-	fmt.Println(inputTitle)
-	input, err := c.TUI.NewInput(
-		inputOpts...,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	fmt.Printf("You have entered: %s\n", input)
-
-	correct, err := c.TUI.NewPrompt(confirmationTitle, true)
-	if err != nil {
-		return "", err
-	}
-	// Try again
-	if !correct {
-		return c.CollectInputWithConfirmation(inputTitle, confirmationTitle, inputOpts...)
-	}
-
-	return input, nil
-}
-
 // TrimHttpsPrefix removes http:// or https:// prefix from the url
 func TrimHttpsPrefix(url string) string {
 	return strings.TrimSpace(strings.TrimPrefix(
@@ -127,39 +102,6 @@ func EnsureHttpsPrefixExists(url string) string {
 // ValidateHttp validates if given url starts with http:// or https://
 func ValidateHttp(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
-}
-
-func (c *Container) CollectCertbotEmail(cfg *configs.D8XConfig) (string, error) {
-	change := true
-	if cfg.CertbotEmail != "" {
-		fmt.Printf("Email for certbot notifications is set to %s\n", cfg.CertbotEmail)
-		keep, err := c.TUI.NewPrompt("Do you want to keep it?", true)
-		if err != nil {
-			return "", err
-		}
-		if keep {
-			change = false
-		}
-	}
-
-	if !change {
-		return cfg.CertbotEmail, nil
-	}
-
-	fmt.Println("Enter your email address for certbot notifications: ")
-	email, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("my-email@domain.com"),
-	)
-	if err != nil {
-		return "", err
-	}
-	cfg.CertbotEmail = email
-
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return "", err
-	}
-
-	return cfg.CertbotEmail, nil
 }
 
 // CollectAndValidatePrivateKey prompts user to enter a private key, validates
@@ -197,46 +139,4 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 	}
 
 	return pk, addr.Hex(), nil
-}
-
-func (c *Container) CollectAndValidateWalletAddress(title, value string) (string, error) {
-	fmt.Println(title)
-	walletAddress, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
-		components.TextInputOptValue(value),
-		components.TextInputOptDenyEmpty(),
-	)
-	walletAddress = strings.TrimSpace(walletAddress)
-	if err != nil {
-		return "", err
-	}
-
-	// Validate the address
-	if !ValidWalletAddress(walletAddress) {
-		fmt.Println(styles.ErrorText.Render("invalid address provided, please try again..."))
-		return c.CollectAndValidateWalletAddress(title, value)
-	}
-
-	return walletAddress, nil
-}
-
-// CollectSetupDomain collects domain name and stores it in config
-func (c *Container) CollectSetupDomain(cfg *configs.D8XConfig) (string, error) {
-	fmt.Println("Enter your domain name:")
-	domain, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("your-domain.com"),
-		components.TextInputOptValue(cfg.SetupDomain),
-		components.TextInputOptDenyEmpty(),
-	)
-	if err != nil {
-		return "", err
-	}
-	domain = TrimHttpsPrefix(domain)
-
-	cfg.SetupDomain = domain
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return "", err
-	}
-
-	return domain, nil
 }

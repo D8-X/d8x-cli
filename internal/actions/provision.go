@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -20,26 +19,11 @@ const (
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
 
-	fmt.Println("Select your server provider")
-
-	// List of supported server providers
-	selected, err := c.TUI.NewSelection([]string{
-		string(ServerProviderLinode),
-		string(ServerProviderAws),
-	},
-		components.SelectionOptAllowOnlySingleItem(),
-		components.SelectionOptRequireSelection(),
-	)
-
-	if err != nil {
+	if err := c.Input.CollectProvisionData(ctx); err != nil {
 		return err
 	}
 
-	if len(selected) <= 0 {
-		return fmt.Errorf("at least one server provider must be selected")
-	}
-
-	providerConfigurer, err := c.configureServerProviderForTF(SupportedServerProvider(selected[0]))
+	providerConfigurer, err := c.configureServerProviderForTF(SupportedServerProvider(c.Input.provisioning.selectedServerProvider))
 	if err != nil {
 		return fmt.Errorf("collecting server provider details: %w", err)
 	}

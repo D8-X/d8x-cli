@@ -275,7 +275,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		}
 		redisPassword = pwd
 
-		fee, err := c.CollectBrokerFee()
+		fee, err := c.Input.CollectBrokerFee()
 		if err != nil {
 			return err
 		}

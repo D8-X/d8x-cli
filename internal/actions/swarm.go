@@ -1,7 +1,6 @@
 package actions
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
-	"github.com/xo/dburl"
 )
 
 // Stack name that will be used when creating/destroying or managing swarm
@@ -27,7 +25,7 @@ var dockerStackName = "stack"
 // CollectSwarmInputs collects various information points which will be
 // automatically added to the configuration files. Collected info is: chain ids,
 // rpc urls.
-func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
+func (c *InputCollector) CollectSwarmInputs(ctx *cli.Context) error {
 	chainId, err := c.GetChainId(ctx)
 	if err != nil {
 		return err
@@ -55,7 +53,7 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 
 	// Generate redis password
 	if cfg.SwarmRedisPassword == "" {
-		pwd, err := c.generatePassword(20)
+		pwd, err := generatePassword(20)
 		if err != nil {
 			return fmt.Errorf("generating password for redis: %w", err)
 		}
@@ -98,120 +96,6 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 			return err
 		}
 		cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
-	}
-
-	return c.ConfigRWriter.Write(cfg)
-}
-
-func (c *Container) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
-	// Collect referrral broker payout address
-	changeReferralPayoutAddress := true
-	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
-		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
-		if keep, err := c.TUI.NewPrompt("Do you want to keep this broker payout address?", true); err != nil {
-			return err
-		} else if keep {
-			changeReferralPayoutAddress = false
-		}
-	}
-	if changeReferralPayoutAddress {
-		info := "Enter broker payout address:\n"
-		info = info + styles.GrayText.Render("See config README (live.referralSettings.json) for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md\n")
-
-		brokerPayoutAddress, err := c.CollectAndValidateWalletAddress(info, cfg.ReferralConfig.BrokerPayoutAddress)
-		if err != nil {
-			return err
-		}
-		cfg.ReferralConfig.BrokerPayoutAddress = brokerPayoutAddress
-
-		return c.ConfigRWriter.Write(cfg)
-	}
-	return nil
-}
-
-func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
-	change := true
-	if cfg.DatabaseDSN != "" {
-		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want keep it?", cfg.DatabaseDSN)
-		keep, err := c.TUI.NewPrompt(info, true)
-		if err != nil {
-			return err
-		}
-		change = !keep
-	}
-
-	if !change {
-		return nil
-	}
-
-	// Validate database protocol prefix, and password if any special
-	// characters are present
-	dsnValidator := func(dbConnStr string) error {
-		if !strings.HasPrefix(dbConnStr, "postgres://") && !strings.HasPrefix(dbConnStr, "postgresql://") {
-			return fmt.Errorf("connection string must start with postgres:// or postgresql://")
-		}
-
-		connUrl, err := dburl.Parse(
-			dbConnStr,
-		)
-		if err != nil {
-			return err
-		}
-
-		if connUrl.User == nil {
-			return fmt.Errorf("user:password part is missing")
-		}
-
-		password, set := connUrl.User.Password()
-		if !set {
-			return fmt.Errorf("password is missing")
-		}
-		specialCharacters := []byte{'*', '?', '$', '(', ')', '`', '\\', '\'', '"', '>', '<', '|', '&'}
-
-		for _, char := range specialCharacters {
-			if bytes.Contains([]byte(password), []byte{char}) {
-				return fmt.Errorf("password contains special character %s, please use password without special characters", string(char))
-			}
-		}
-
-		return nil
-	}
-
-	switch cfg.ServerProvider {
-	// Linode users must enter their own database dns stirng manually
-	case configs.D8XServerProviderLinode:
-		for {
-			fmt.Println("Enter your database dsn connection string:")
-			dbDsn, err := c.TUI.NewInput(
-				components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
-				components.TextInputOptDenyEmpty(),
-			)
-			if err != nil {
-				return err
-			}
-			dbDsn = strings.TrimSpace(dbDsn)
-
-			if err := dsnValidator(dbDsn); err != nil {
-				fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
-			} else {
-				cfg.DatabaseDSN = dbDsn
-				break
-			}
-		}
-
-		// For AWS - read it from rds credentials file
-	case configs.D8XServerProviderAWS:
-		creds, err := os.ReadFile(RDS_CREDS_FILE)
-		if err != nil {
-			return err
-		}
-		credsMap := parseAwsRDSCredentialsFile(creds)
-		cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
-			credsMap["user"],
-			credsMap["password"],
-			credsMap["host"],
-			credsMap["port"],
-		)
 	}
 
 	return c.ConfigRWriter.Write(cfg)
@@ -334,7 +218,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 	if guideUser {
-		if err := c.CollectSwarmInputs(ctx); err != nil {
+		if err := c.Input.CollectSwarmInputs(ctx); err != nil {
 			return err
 		}
 	}
@@ -725,7 +609,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	}
 
 	// Collect domain name
-	_, err = c.CollectSetupDomain(cfg)
+	_, err = c.Input.CollectSetupDomain(cfg)
 	if err != nil {
 		return err
 	}
@@ -757,7 +641,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 
 	emailForCertbot := ""
 	if setupCertbot {
-		email, err := c.CollectCertbotEmail(cfg)
+		email, err := c.Input.CollectCertbotEmail(cfg)
 		if err != nil {
 			return err
 		}
@@ -902,14 +786,14 @@ func (c *Container) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTup
 
 		// When possible, find values from config for non-first time runs.
 		// Provide some automatic subdomain suggestions by default
-		value := cfg.SuggestSubdomain(h.serviceName, c.getChainType(strconv.Itoa(int(cfg.ChainId))))
+		value := cfg.SuggestSubdomain(h.serviceName, c.GetChainType(strconv.Itoa(int(cfg.ChainId))))
 		if v, ok := cfg.Services[h.serviceName]; ok {
 			if v.HostName != "" {
 				value = v.HostName
 			}
 		}
 
-		input, err := c.CollectInputWithConfirmation(
+		input, err := c.Input.CollectInputWithConfirmation(
 			h.prompt,
 			"Is this the correct domain you want to use for "+string(h.serviceName)+"?",
 			components.TextInputOptPlaceholder(h.placeholder),

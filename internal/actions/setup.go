@@ -37,7 +37,11 @@ func (c *Container) Setup(ctx *cli.Context) error {
 				return err
 			}
 		}
+	}
 
+	// Collect all data needed for setup
+	if err := c.Input.CollectFullSetupInput(ctx); err != nil {
+		return err
 	}
 
 	if err := c.Provision(ctx); err != nil {
@@ -60,7 +64,7 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
-	if c.CreateBrokerServer {
+	if c.Input.setup.deployBroker {
 		if err := c.BrokerDeploy(ctx); err != nil {
 			return err
 		}

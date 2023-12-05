@@ -38,7 +38,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 
 	// Generate password when not provided
 	if c.UserPassword == "" {
-		password, err := c.generatePassword(16)
+		password, err := generatePassword(16)
 		if err != nil {
 			return err
 		}
@@ -80,7 +80,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	return c.RunCmd(cmd)
 }
 
-func (c *Container) generatePassword(n int) (string, error) {
+func generatePassword(n int) (string, error) {
 	set := "_1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	l := len(set)
 	pwd := ""

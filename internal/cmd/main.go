@@ -171,6 +171,14 @@ func RunD8XCli() {
 			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
 				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
 			)
+			// Initialize the input collector
+			container.Input = &actions.InputCollector{
+				ConfigRWriter: container.ConfigRWriter,
+				TUI:           container.TUI,
+				ChainTypeGetter: func(chainId string) (chainType string) {
+					return container.GetChainType(chainId)
+				},
+			}
 
 			// Chdir functionality
 			if ch := ctx.String("chdir"); ch != "" {

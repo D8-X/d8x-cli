@@ -42,7 +42,7 @@ const (
 
 // RPCUrlCollector collects RPC urls from the user. Slice suggestions is a list
 // of RPC suggestions which will be added as initial value to the input field.
-func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int, suggestions []string) ([]string, error) {
+func (c *InputCollector) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int, suggestions []string) ([]string, error) {
 	transportUpper := strings.ToUpper(string(protocol))
 	endpoints := []string{}
 
@@ -113,7 +113,7 @@ func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requi
 
 // CollectHTTPRPCUrls collects http rpc urls and writes them into the config
 // file
-func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) error {
+func (c *InputCollector) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) error {
 	collectHttpRPCS := true
 	httpRpcs, exists := cfg.HttpRpcList[chainId]
 	if exists {
@@ -139,7 +139,7 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 
 // CollectWebsocketRPCUrls collects websocket rpc urls and writes them into the
 // config file
-func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId string) error {
+func (c *InputCollector) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId string) error {
 	collectWSRPCS := true
 	wspRpcs, exists := cfg.WsRpcList[chainId]
 	if exists {
@@ -243,7 +243,7 @@ func (c *Container) getDefaultPythHTTPSEndpoint(chainId string) string {
 	return chainJson.DefaultPythHTTPSEndpoint
 }
 
-func (c *Container) getChainType(chainId string) string {
+func (c *Container) GetChainType(chainId string) string {
 	c.LoadChainJson()
 
 	chainJson, exists := c.cachedChainJson[chainId]
