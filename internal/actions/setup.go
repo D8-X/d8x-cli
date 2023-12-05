@@ -25,7 +25,7 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
 		keepConfig, err := c.TUI.NewPrompt(
-			fmt.Sprintf("Existing configuration (%s) was found. Do you want use it?", cfg.ServerProvider),
+			fmt.Sprintf("Existing configuration (%s) was found. Do you want to use it?", cfg.ServerProvider),
 			true,
 		)
 
