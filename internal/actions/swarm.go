@@ -413,6 +413,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			additioanalWsEndpoint, err := c.TUI.NewInput(
 				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
 				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValidation(
+					func(s string) bool {
+						return strings.HasPrefix(s, "wss://") || strings.HasPrefix(s, "ws://")
+					},
+					"websockets url must start with wss:// or ws://",
+				),
 			)
 			additioanalWsEndpoint = strings.TrimSpace(additioanalWsEndpoint)
 			if err != nil {
