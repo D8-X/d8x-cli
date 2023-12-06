@@ -27,8 +27,11 @@ type InputCollector struct {
 	// func to refresh or persist cfg
 	ConfigRWriter configs.D8XConfigReadWriter
 
+	// Cached chain.json data, loaded when InputCollector is created
+	ChainJson ChainJson
+
 	// TODO change this hack...
-	ChainTypeGetter func(chainId string) (chainType string)
+	// ChainTypeGetter func(chainId string) (chainType string)
 
 	TUI components.ComponentsRunner
 
@@ -38,15 +41,20 @@ type InputCollector struct {
 	setup InputCollectorSetupData
 
 	// Provisioning subcommand state
-	provisioning ProvisionInput
+	provisioning ProvisioningInput
 
 	// Collected broker deployment data
 	brokerDeployInput BrokerDeployInput
 	// Collected broker nginx setup data
 	brokerNginxInput BrokerNginxInput
+
+	// Collected swarm deployment data
+	swarmDeployInput SwarmDeployInput
 }
 
-type ProvisionInput struct {
+type ProvisioningInput struct {
+	collected bool
+
 	selectedServerProvider SupportedServerProvider
 
 	collectedLinodeConfigurer *linodeConfigurer
@@ -54,7 +62,7 @@ type ProvisionInput struct {
 }
 
 type InputCollectorSetupData struct {
-	// Whether deploy broker server
+	// Whether to provision and deploy broker server
 	deployBroker bool
 
 	setupDomainEntered bool
@@ -86,21 +94,29 @@ type BrokerNginxInput struct {
 	domainName string
 }
 
+type SwarmDeployInput struct {
+	collected bool
+	// whether user selected to be guided through configuration by cli
+	guideConfig bool
+
+	// Pyth endpoints for candles/prices.config.json
+	priceServiceWSEndpoints []string
+
+	referralPaymentExecutorPrivateKey    string
+	referralPaymentExecutorWalletAddress string
+}
+
 // CollectFullSetupInput collects complete deployment information for both swarm
 // and broker server deployments. This does not include credentials collection for
 // server provider setup.
 func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
+
 	// Collect server provider related provisioning data
-	if err := input.CollectProvisionData(ctx); err != nil {
+	if err := input.CollectProvisioningData(ctx); err != nil {
 		return err
 	}
 
 	// Broker deployment inputs
-	createBrokerServer, err := input.TUI.NewPrompt("Do you want to provision a broker server?", true)
-	if err != nil {
-		return err
-	}
-	input.setup.deployBroker = createBrokerServer
 	if input.setup.deployBroker {
 		// Setup info
 		if err := input.CollectBrokerDeployInput(ctx); err != nil {
@@ -114,14 +130,36 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 	}
 
 	// Swarm deployment inputs
-	// if err := input.CollectSwarmDeployInput(ctx); err != nil {
-
-	// }
+	if err := input.CollectSwarmDeployInputs(ctx); err != nil {
+		return err
+	}
+	// Swarm nginx inputs
+	if err := input.CollectSwarmNginxInputs(ctx); err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func (input *InputCollector) CollectProvisionData(ctx *cli.Context) error {
+func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
+	if input.provisioning.collected {
+		return nil
+	}
+
+	cfg, err := input.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	// We must ask about broker server before collecting information for the
+	// actual provisioning step, since we need to know whether to ask for broker
+	// server size on linode. This prompt is under
+	createBrokerServer, err := input.TUI.NewPrompt("Do you want to provision a broker server?", true)
+	if err != nil {
+		return err
+	}
+	input.setup.deployBroker = createBrokerServer
+
 	fmt.Println(styles.ItalicText.Render("Collecting provisioning information...\n"))
 
 	// Select server provider from  a list of supported server providers
@@ -140,11 +178,27 @@ func (input *InputCollector) CollectProvisionData(ctx *cli.Context) error {
 
 	switch input.provisioning.selectedServerProvider {
 	case ServerProviderLinode:
-		input.CollectLinodeProviderDetails(input.Cfg)
-	case ServerProviderAws:
-		input.CollectLinodeProviderDetails(input.Cfg)
+		configurer, err := input.CollectLinodeProviderDetails(cfg)
+		if err != nil {
+			return err
+		}
+		input.provisioning.collectedLinodeConfigurer = &configurer
 
+	case ServerProviderAws:
+		configurer, err := input.CollectAwProviderDetails(cfg)
+		if err != nil {
+			return err
+		}
+		input.provisioning.collectedAwsConfigurer = &configurer
 	}
+
+	// Update cfg - it will be pre-populated with server provider details from
+	// collector funcs
+	if err := input.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+
+	input.provisioning.collected = true
 
 	return nil
 }
@@ -163,6 +217,7 @@ func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	input.brokerDeployInput.guideConfig = guideUser
 	if guideUser {
 		if err := input.BrokerDeployConfigInputs(ctx); err != nil {
 			return err
@@ -192,6 +247,8 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 		return nil
 	}
 
+	fmt.Println(styles.ItalicText.Render("Collecting broker-nginx information...\n"))
+
 	cfg, err := input.ConfigRWriter.Read()
 	if err != nil {
 		return err
@@ -215,12 +272,14 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 	}
 
 	// Collect certbot email
-	if _, err := input.CollectCertbotEmail(cfg); err != nil {
-		return err
+	if input.brokerNginxInput.setupCertbot {
+		if _, err := input.CollectCertbotEmail(cfg); err != nil {
+			return err
+		}
 	}
 
 	// Collect broker server domain
-	domainValue := cfg.SuggestSubdomain(configs.D8XServiceBrokerServer, input.ChainTypeGetter(strconv.Itoa(int(cfg.ChainId))))
+	domainValue := cfg.SuggestSubdomain(configs.D8XServiceBrokerServer, input.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))))
 	if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
 		if v.HostName != "" {
 			domainValue = v.HostName
@@ -242,7 +301,141 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 	return nil
 }
 
-func (input *InputCollector) CollectSwarmDeployInput(ctx *cli.Context) error {
+// CollectSwarmDeployInputs collects various information points which will be
+// automatically added to the configuration files. Collected info is: chain ids,
+// rpc urls.
+func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
+	if input.swarmDeployInput.collected {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Collecting swarm-deploy information...\n"))
+
+	guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
+	if err != nil {
+		return err
+	}
+	input.swarmDeployInput.guideConfig = guideUser
+	if guideUser {
+		chainId, err := input.GetChainId(ctx)
+		if err != nil {
+			return err
+		}
+
+		cfg, err := input.ConfigRWriter.Read()
+		if err != nil {
+			return err
+		}
+
+		chainIdStr := strconv.Itoa(int(chainId))
+		// Collect HTTP rpc endpoints
+		if err := input.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
+			return err
+		}
+		// Collect Websocket rpc endpoints
+		if err := input.CollectWebsocketRPCUrls(cfg, chainIdStr); err != nil {
+			return err
+		}
+
+		// Collect DB dsn
+		if err := input.CollectDatabaseDSN(cfg); err != nil {
+			return err
+		}
+
+		// Generate redis password
+		if cfg.SwarmRedisPassword == "" {
+			pwd, err := generatePassword(20)
+			if err != nil {
+				return fmt.Errorf("generating password for redis: %w", err)
+			}
+			if err != nil {
+				return err
+			}
+			cfg.SwarmRedisPassword = pwd
+		}
+
+		// Collect broker payout address
+		if err := input.CollecteBrokerPayoutAddress(cfg); err != nil {
+			return err
+		}
+
+		// Collect broker http endpoint
+		changeRemoteBrokerHTTP := true
+		if cfg.SwarmRemoteBrokerHTTPUrl != "" {
+			fmt.Printf("Found remote broker http url: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
+			if keep, err := input.TUI.NewPrompt("Do you want to keep remote broker http endpoint?", true); err != nil {
+				return err
+			} else if keep {
+				changeRemoteBrokerHTTP = false
+			}
+		}
+		if changeRemoteBrokerHTTP {
+			value := cfg.SwarmRemoteBrokerHTTPUrl
+			// Prepopulate broker http address if deployment was done
+			if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				value = v.HostName
+			}
+
+			fmt.Println("Enter remote broker http url:")
+			brokerUrl, err := input.TUI.NewInput(
+				components.TextInputOptPlaceholder("https://your-broker-domain.com"),
+				components.TextInputOptValue(value),
+				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValidation(ValidateHttp, "url must start with http:// or https://"),
+			)
+			if err != nil {
+				return err
+			}
+			cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
+		}
+
+		// Collect hermes endpoint for candles/prices.config.json. Make sure the
+		// default pyth.hermes entry is always the last one
+		dontAddAnotherPythWss, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+		if err != nil {
+			return err
+		}
+		priceServiceWSEndpoints := []string{input.ChainJson.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
+		if !dontAddAnotherPythWss {
+			fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
+			additioanalWsEndpoint, err := input.TUI.NewInput(
+				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
+				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValidation(
+					func(s string) bool {
+						return strings.HasPrefix(s, "wss://") || strings.HasPrefix(s, "ws://")
+					},
+					"websockets url must start with wss:// or ws://",
+				),
+			)
+			additioanalWsEndpoint = strings.TrimSpace(additioanalWsEndpoint)
+			if err != nil {
+				return err
+			}
+			priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
+		}
+		input.swarmDeployInput.priceServiceWSEndpoints = priceServiceWSEndpoints
+
+		// Collect and temporarily store referral payment executor private key
+		pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
+		if err != nil {
+			return err
+		}
+		input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
+		input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
+
+		// Update the config
+		if err := input.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
+	}
+
+	input.swarmDeployInput.collected = true
+
+	return nil
+}
+
+func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 	return nil
 }
 
@@ -637,4 +830,16 @@ func (c *InputCollector) CollectCertbotEmail(cfg *configs.D8XConfig) (string, er
 	c.setup.certbotEmailEntered = true
 
 	return cfg.CertbotEmail, nil
+}
+
+// GetServerProviderConfigurer retrieves collected server provider configurer
+func (input *InputCollector) GetServerProviderConfigurer() ServerProviderConfigurer {
+	switch input.provisioning.selectedServerProvider {
+	case ServerProviderLinode:
+		return input.provisioning.collectedLinodeConfigurer
+	case ServerProviderAws:
+		return input.provisioning.collectedAwsConfigurer
+	}
+
+	return nil
 }

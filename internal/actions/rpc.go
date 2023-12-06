@@ -23,7 +23,8 @@ type ChainJsonEntry struct {
 	Type string `json:"type"`
 }
 
-// trader-backend/chain.json structure. This must always contain "default" key.
+// trader-backend/chain.json structure. This must always contain "default" key
+// with values.
 type ChainJson map[string]ChainJsonEntry
 
 type rpcTransport string
@@ -177,58 +178,61 @@ func (c *InputCollector) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// LoadChainJson loads the chain.json file from the embedded configs and caches
-// it on Container instance.
-func (c *Container) LoadChainJson() error {
-	if c.cachedChainJson == nil {
-		contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
-		if err != nil {
-			return err
-		}
+// LoadChainJson loads the chain.json file contents from the embedded configs
+func LoadChainJson() (ChainJson, error) {
+	chainJson := ChainJson{}
 
-		chainJson := ChainJson{}
-		if err := json.Unmarshal(contents, &chainJson); err != nil {
-			return fmt.Errorf("unmarshalling chain.json: %w", err)
-		}
-
-		c.cachedChainJson = chainJson
+	contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
+	if err != nil {
+		return chainJson, err
 	}
 
-	return nil
+	if err := json.Unmarshal(contents, &chainJson); err != nil {
+		return chainJson, fmt.Errorf("unmarshalling chain.json: %w", err)
+	}
+
+	return chainJson, err
+}
+
+// LoadChainJson loads and caches ChainJson data
+func (c *Container) LoadChainJson() (ChainJson, error) {
+	if c.cachedChainJson == nil {
+		chjs, err := LoadChainJson()
+		if err != nil {
+			return nil, err
+		}
+		c.cachedChainJson = chjs
+	}
+
+	return c.cachedChainJson, nil
 }
 
 // getChainSDKName retrieves the SDK compatible SDK_CONFIG_NAME
-func (c *Container) getChainSDKName(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getChainSDKName(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].SDKNetwork
+		return c["default"].SDKNetwork
 	}
-	return chainJson.SDKNetwork
+	return entry.SDKNetwork
 }
 
 // getChainPriceFeedName retrieves the python compatible NETWORK_NAME
-func (c *Container) getChainPriceFeedName(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getChainPriceFeedName(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].PriceFeedNetwork
+		return c["default"].PriceFeedNetwork
 	}
-	return chainJson.PriceFeedNetwork
+	return entry.PriceFeedNetwork
 }
 
 // getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
 // chain.json config
-func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getDefaultPythWSEndpoint(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].DefaultPythWSEndpoint
+		return c["default"].DefaultPythWSEndpoint
 	}
-	return chainJson.DefaultPythWSEndpoint
+	return entry.DefaultPythWSEndpoint
 }
 
 // getDefaultPythHTTPSEndpoint retrieves the default pyth https endpoint from
@@ -243,14 +247,12 @@ func (c *Container) getDefaultPythHTTPSEndpoint(chainId string) string {
 	return chainJson.DefaultPythHTTPSEndpoint
 }
 
-func (c *Container) GetChainType(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) GetChainType(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].Type
+		return c["default"].Type
 	}
-	return chainJson.Type
+	return entry.Type
 }
 
 type WSRPCSlice struct {

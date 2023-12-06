@@ -95,7 +95,9 @@ func (a *awsConfigurer) generateVariables() []string {
 	}
 }
 
-func (c *InputCollector) CollectAwsDetails(cfg *configs.D8XConfig) (awsConfigurer, error) {
+// CollectAwProviderDetails collects aws provider details from user input,
+// creates a new awsConfigurer and fills in configuration details to cfg.
+func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsConfigurer, error) {
 	awsCfg := awsConfigurer{}
 
 	// Text field values
@@ -164,8 +166,11 @@ func (c *InputCollector) CollectAwsDetails(cfg *configs.D8XConfig) (awsConfigure
 		return awsCfg, err
 	}
 	awsCfg.LabelPrefix = labelPrefix
-
 	awsCfg.CreateBrokerServer = c.setup.deployBroker
+
+	// Update the config
+	cfg.AWSConfig = &awsCfg.D8XAWSConfig
+	cfg.ServerProvider = configs.D8XServerProviderAWS
 
 	return awsCfg, nil
 }
@@ -177,7 +182,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		return nil, err
 	}
 
-	awsCfg, err := c.Input.CollectAwsDetails(cfg)
+	awsCfg, err := c.Input.CollectAwProviderDetails(cfg)
 	if err != nil {
 		return nil, err
 	}

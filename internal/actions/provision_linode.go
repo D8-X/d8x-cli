@@ -113,6 +113,9 @@ func getRegionItemByRegionId(regionId string) components.ListItem {
 	return components.ListItem{}
 }
 
+// CollectLinodeProviderDetails collects linode provider details from user
+// input, creates a new linodeConfigurer and fills in configuration details to
+// cfg.
 func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (linodeConfigurer, error) {
 	if c.provisioning.collectedLinodeConfigurer != nil {
 		return *c.provisioning.collectedLinodeConfigurer, nil
@@ -230,6 +233,10 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	c.provisioning.collectedLinodeConfigurer = &l
 
+	// Update the cfg
+	cfg.ServerProvider = configs.D8XServerProviderLinode
+	cfg.LinodeConfig = &l.D8XLinodeConfig
+
 	return l, nil
 }
 
@@ -257,8 +264,6 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 	l.authorizedKey = pub
 
 	// Write linode config to cfg
-	cfg.ServerProvider = configs.D8XServerProviderLinode
-	cfg.LinodeConfig = &l.D8XLinodeConfig
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return nil, err
 	}

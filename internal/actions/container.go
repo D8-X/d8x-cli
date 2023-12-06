@@ -91,7 +91,7 @@ type Container struct {
 	Input *InputCollector
 }
 
-func NewDefaultContainer() *Container {
+func NewDefaultContainer() (*Container, error) {
 
 	httpClient := http.DefaultClient
 	return &Container{
@@ -105,7 +105,7 @@ func NewDefaultContainer() *Container {
 		RunCmd: func(c *exec.Cmd) error {
 			return c.Run()
 		},
-	}
+	}, nil
 }
 
 // expandCMD expands input string to argument slice suitable for exec.Command

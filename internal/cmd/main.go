@@ -29,7 +29,10 @@ const CmdUsage = "D8X Backend management CLI tool"
 
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
-	container := actions.NewDefaultContainer()
+	container, err := actions.NewDefaultContainer()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Initialize cli application and its subcommands and bind default values
 	// for ac (via flags.Destination)
@@ -166,6 +169,12 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
+			// Cached ChainJson information
+			chainJsonData, err := container.LoadChainJson()
+			if err != nil {
+				return fmt.Errorf("loading chain json information: %w", err)
+			}
+
 			// Create d8x.conf.json config read writer. We can only do this here,
 			// because config directory is not know when initializing containter
 			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
@@ -175,9 +184,7 @@ func RunD8XCli() {
 			container.Input = &actions.InputCollector{
 				ConfigRWriter: container.ConfigRWriter,
 				TUI:           container.TUI,
-				ChainTypeGetter: func(chainId string) (chainType string) {
-					return container.GetChainType(chainId)
-				},
+				ChainJson:     chainJsonData,
 			}
 
 			// Chdir functionality

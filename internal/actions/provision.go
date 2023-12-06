@@ -19,13 +19,12 @@ const (
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
 
-	if err := c.Input.CollectProvisionData(ctx); err != nil {
+	if err := c.Input.CollectProvisioningData(ctx); err != nil {
 		return err
 	}
-
-	providerConfigurer, err := c.configureServerProviderForTF(SupportedServerProvider(c.Input.provisioning.selectedServerProvider))
-	if err != nil {
-		return fmt.Errorf("collecting server provider details: %w", err)
+	providerConfigurer := c.Input.GetServerProviderConfigurer()
+	if providerConfigurer == nil {
+		return fmt.Errorf("misconfigured server provider details")
 	}
 
 	// Terraform apply for selected server provider
