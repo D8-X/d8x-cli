@@ -2,13 +2,16 @@ package actions
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"github.com/xo/dburl"
@@ -30,8 +33,8 @@ type InputCollector struct {
 	// Cached chain.json data, loaded when InputCollector is created
 	ChainJson ChainJson
 
-	// TODO change this hack...
-	// ChainTypeGetter func(chainId string) (chainType string)
+	// Default ssh key path
+	SSHKeyPath string
 
 	TUI components.ComponentsRunner
 
@@ -50,6 +53,8 @@ type InputCollector struct {
 
 	// Collected swarm deployment data
 	swarmDeployInput SwarmDeployInput
+	// Collected swarm nginx setup data
+	swarmNginxInput SwarmNginxInput
 }
 
 type ProvisioningInput struct {
@@ -106,6 +111,17 @@ type SwarmDeployInput struct {
 	referralPaymentExecutorWalletAddress string
 }
 
+type SwarmNginxInput struct {
+	// Is this data already collected
+	collected bool
+
+	setupNginx   bool
+	setupCertbot bool
+
+	// Collected service domain names
+	collectedServiceDomains []hostnameTuple
+}
+
 // CollectFullSetupInput collects complete deployment information for both swarm
 // and broker server deployments. This does not include credentials collection for
 // server provider setup.
@@ -113,6 +129,11 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 
 	// Collect server provider related provisioning data
 	if err := input.CollectProvisioningData(ctx); err != nil {
+		return err
+	}
+
+	// Collect private keys whenever they are not collected
+	if err := input.CollectPrivateKeys(); err != nil {
 		return err
 	}
 
@@ -176,12 +197,27 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 	}
 	input.provisioning.selectedServerProvider = SupportedServerProvider(selectedProvider[0])
 
+	if err := input.EnsureSSHKeyPresent(input.SSHKeyPath); err != nil {
+		return fmt.Errorf("ensuring ssh key is present: %w", err)
+	} else {
+		// Print a line because ssh-keygen output can be long
+		fmt.Println("")
+	}
+
+	// Collect public ssh key for server provider configurers
+	authorizedKey, err := getPublicKey(input.SSHKeyPath)
+	if err != nil {
+		return err
+	}
+
+	// Finalize server provider details
 	switch input.provisioning.selectedServerProvider {
 	case ServerProviderLinode:
 		configurer, err := input.CollectLinodeProviderDetails(cfg)
 		if err != nil {
 			return err
 		}
+		configurer.authorizedKey = authorizedKey
 		input.provisioning.collectedLinodeConfigurer = &configurer
 
 	case ServerProviderAws:
@@ -189,6 +225,7 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
+		configurer.authorizedKey = authorizedKey
 		input.provisioning.collectedAwsConfigurer = &configurer
 	}
 
@@ -203,6 +240,82 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 	return nil
 }
 
+// PostProvisioningHook runs after provisioning in order to collect any missing
+// data. For example we can directly collect linode database DSN, but can't do
+// that for AWS RDS, since we
+func (input *InputCollector) PostProvisioningHook() error {
+	cfg, err := input.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	// Attempt to parse aws_rds credentials file
+	if err := collectAwsRdsDsnString(cfg); err != nil {
+		return err
+	}
+
+	return input.ConfigRWriter.Write(cfg)
+}
+
+// CollectBrokerPrivateKey collects broker private key and stores it in input
+// state
+func (input *InputCollector) CollectBrokerPrivateKey() error {
+	pk, _, err := input.CollectAndValidatePrivateKey("Enter your broker private key:")
+	if err != nil {
+		return err
+	}
+	input.brokerDeployInput.privateKey = pk
+
+	return nil
+}
+
+// CollectReferralExecutorPrivateKey collects referral executor private key and
+// stores it in input state
+func (input *InputCollector) CollectReferralExecutorPrivateKey(cfg *configs.D8XConfig) error {
+	pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
+	if err != nil {
+		return err
+	}
+	input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
+	input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
+
+	// Store the referral executor wallet address for broker-deploy step
+	cfg.BrokerServerConfig.ExecutorAddress = pkWalletAddress
+
+	return input.ConfigRWriter.Write(cfg)
+}
+
+// CollectPrivateKeys collects broker and referral executor private keys. Only
+// once per session
+func (input *InputCollector) CollectPrivateKeys() error {
+	if input.brokerDeployInput.privateKey != "" && input.swarmDeployInput.referralPaymentExecutorPrivateKey != "" {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
+
+	cfg, err := input.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	// Collect broker private key
+	if input.brokerDeployInput.privateKey == "" {
+		if err := input.CollectBrokerPrivateKey(); err != nil {
+			return err
+		}
+	}
+
+	// Collect referral executor private key
+	if input.swarmDeployInput.referralPaymentExecutorPrivateKey == "" {
+		if err := input.CollectReferralExecutorPrivateKey(cfg); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CollectBrokerDeployInput collects all the input required for broker-deploy
 // action
 func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
@@ -212,6 +325,11 @@ func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
 
 	fmt.Println(styles.ItalicText.Render("Collecting broker-deploy information...\n"))
 
+	// Collect private keys whenever they are not collected
+	if err := input.CollectPrivateKeys(); err != nil {
+		return err
+	}
+
 	// Check with user if we want to go through configuration via CLI
 	guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through the broker-deploy configuration?", true)
 	if err != nil {
@@ -219,17 +337,22 @@ func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
 	}
 	input.brokerDeployInput.guideConfig = guideUser
 	if guideUser {
-		if err := input.BrokerDeployConfigInputs(ctx); err != nil {
+		cfg, err := input.ConfigRWriter.Read()
+		if err != nil {
+			return err
+		}
+		// Make sure chain id is present in config
+		chainId, err := input.GetChainId(cfg, ctx)
+		if err != nil {
+			return err
+		}
+		chainIdStr := strconv.Itoa(int(chainId))
+
+		// Collect HTTP rpc endpoints
+		if err := input.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
 			return err
 		}
 	}
-
-	// Private key is required always since we don't store it anywhere in config
-	pk, _, err := input.CollectAndValidatePrivateKey("Enter your broker private key:")
-	if err != nil {
-		return err
-	}
-	input.brokerDeployInput.privateKey = pk
 
 	tbpsFromPercentage, err := input.CollectBrokerFee()
 	if err != nil {
@@ -298,6 +421,8 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 	brokerServerName = TrimHttpsPrefix(brokerServerName)
 	input.brokerNginxInput.domainName = brokerServerName
 
+	input.brokerNginxInput.collected = true
+
 	return nil
 }
 
@@ -311,18 +436,24 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 
 	fmt.Println(styles.ItalicText.Render("Collecting swarm-deploy information...\n"))
 
+	// Collect private keys whenever they are not collected
+	if err := input.CollectPrivateKeys(); err != nil {
+		return err
+	}
+
 	guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
 	if err != nil {
 		return err
 	}
 	input.swarmDeployInput.guideConfig = guideUser
 	if guideUser {
-		chainId, err := input.GetChainId(ctx)
+
+		cfg, err := input.ConfigRWriter.Read()
 		if err != nil {
 			return err
 		}
 
-		cfg, err := input.ConfigRWriter.Read()
+		chainId, err := input.GetChainId(cfg, ctx)
 		if err != nil {
 			return err
 		}
@@ -375,6 +506,10 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
 				value = v.HostName
 			}
+			// Lastly, prepopulate with available value from broker-nginx setup
+			if value == "" && input.brokerNginxInput.domainName != "" {
+				value = EnsureHttpsPrefixExists(input.brokerNginxInput.domainName)
+			}
 
 			fmt.Println("Enter remote broker http url:")
 			brokerUrl, err := input.TUI.NewInput(
@@ -416,14 +551,6 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		}
 		input.swarmDeployInput.priceServiceWSEndpoints = priceServiceWSEndpoints
 
-		// Collect and temporarily store referral payment executor private key
-		pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
-		if err != nil {
-			return err
-		}
-		input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
-		input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
-
 		// Update the config
 		if err := input.ConfigRWriter.Write(cfg); err != nil {
 			return err
@@ -436,6 +563,48 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 }
 
 func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
+	if input.swarmNginxInput.collected {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Collecting broker-nginx information...\n"))
+
+	cfg, err := input.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	setupNginx, err := input.TUI.NewPrompt("Do you want to setup nginx for broker-server?", true)
+	if err != nil {
+		return err
+	}
+	input.swarmNginxInput.setupNginx = setupNginx
+	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
+	if err != nil {
+		return err
+	}
+	input.swarmNginxInput.setupCertbot = setupCertbot
+
+	// Collect domain name
+	_, err = input.CollectSetupDomain(cfg)
+	if err != nil {
+		return err
+	}
+
+	// Collect certbot email
+	if input.swarmNginxInput.setupCertbot {
+		if _, err := input.CollectCertbotEmail(cfg); err != nil {
+			return err
+		}
+	}
+
+	// Collect swarm services domain
+	if _, err := input.SwarmNginxCollectDomains(cfg); err != nil {
+		return err
+	}
+
+	input.swarmNginxInput.collected = true
+
 	return nil
 }
 
@@ -477,57 +646,13 @@ func (c *InputCollector) CollectBrokerFee() (string, error) {
 	return tbpsFromPercentage, nil
 }
 
-func (c *InputCollector) BrokerDeployConfigInputs(ctx *cli.Context) error {
-	// Make sure chain id is present in config
-	chainId, err := c.GetChainId(ctx)
-	if err != nil {
-		return err
-	}
-	chainIdStr := strconv.Itoa(int(chainId))
-
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
-	}
-
-	// Collect HTTP rpc endpoints
-	if err := c.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
-		return err
-	}
-
-	// Collect broker (referral) executor wallet address
-	changeExecutorAddress := true
-	if cfg.BrokerServerConfig.ExecutorAddress != "" {
-		fmt.Printf("Found referral executor address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
-		if keep, err := c.TUI.NewPrompt("Do you want to keep this referral executor address?", true); err != nil {
-			return err
-		} else if keep {
-			changeExecutorAddress = false
-		}
-	}
-	if changeExecutorAddress {
-		brokerExecutorAddress, err := c.CollectAndValidateWalletAddress("Enter referral executor address:", cfg.BrokerServerConfig.ExecutorAddress)
-		if err != nil {
-			return err
-		}
-
-		cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
-	}
-
-	return c.ConfigRWriter.Write(cfg)
-}
-
 // GetChainId attempts to retrieve the chain id from config, if that is not
 // possible, prompts use to enter it and stores the value in config
-func (c *InputCollector) GetChainId(ctx *cli.Context) (uint, error) {
-	// TODO read chain id from flags
-
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return 0, err
-	}
-
+func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (uint, error) {
 	if cfg.ChainId != 0 {
+		c.chainIdSelected = true
+
+		// Do not ask for chain id if it was already entered in current session
 		if c.chainIdSelected {
 			return cfg.ChainId, nil
 		}
@@ -566,6 +691,7 @@ func (c *InputCollector) GetChainId(ctx *cli.Context) (uint, error) {
 
 	c.chainIdSelected = true
 	cfg.ChainId = uint(chainIdUint)
+
 	return cfg.ChainId, c.ConfigRWriter.Write(cfg)
 }
 
@@ -660,22 +786,36 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			}
 		}
 
-		// For AWS - read it from rds credentials file
+	// For AWS - read it from rds credentials file
 	case configs.D8XServerProviderAWS:
-		creds, err := os.ReadFile(RDS_CREDS_FILE)
-		if err != nil {
+		if err := collectAwsRdsDsnString(cfg); err != nil {
 			return err
 		}
-		credsMap := parseAwsRDSCredentialsFile(creds)
-		cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
-			credsMap["user"],
-			credsMap["password"],
-			credsMap["host"],
-			credsMap["port"],
-		)
 	}
 
 	return c.ConfigRWriter.Write(cfg)
+}
+
+// collectAwsRdsDsnString collects database dsn string from AWS RDS credentials
+// file and adds it to the given cfg. If RDS_CREDS_FILE does not exist yet it
+// will not return an error and will silently fail.
+func collectAwsRdsDsnString(cfg *configs.D8XConfig) error {
+	creds, err := os.ReadFile(RDS_CREDS_FILE)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	credsMap := parseAwsRDSCredentialsFile(creds)
+	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
+		credsMap["user"],
+		credsMap["password"],
+		credsMap["host"],
+		credsMap["port"],
+	)
+
+	return nil
 }
 
 func (c *InputCollector) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
@@ -841,5 +981,87 @@ func (input *InputCollector) GetServerProviderConfigurer() ServerProviderConfigu
 		return input.provisioning.collectedAwsConfigurer
 	}
 
+	return nil
+}
+
+// SwarmNginxCollectDomains collects hostnames information.
+func (c *InputCollector) SwarmNginxCollectDomains(cfg *configs.D8XConfig) ([]hostnameTuple, error) {
+	hosts := make([]string, len(hostsTpl))
+	replacements := make([]files.ReplacementTuple, len(hostsTpl))
+	for i, h := range hostsTpl {
+
+		// When possible, find values from config for non-first time runs.
+		// Provide some automatic subdomain suggestions by default
+		value := cfg.SuggestSubdomain(h.serviceName, c.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))))
+		if v, ok := cfg.Services[h.serviceName]; ok {
+			if v.HostName != "" {
+				value = v.HostName
+			}
+		}
+
+		input, err := c.CollectInputWithConfirmation(
+			h.prompt,
+			"Is this the correct domain you want to use for "+string(h.serviceName)+"?",
+			components.TextInputOptPlaceholder(h.placeholder),
+			components.TextInputOptValue(value),
+			components.TextInputOptDenyEmpty(),
+		)
+		if err != nil {
+			return nil, err
+		}
+		input = TrimHttpsPrefix(input)
+		hostsTpl[i].server = input
+		replacements[i] = files.ReplacementTuple{
+			Find:    h.find,
+			Replace: input,
+		}
+		hosts[i] = input
+
+		fmt.Printf("Using domain %s for %s\n\n", input, h.serviceName)
+	}
+
+	c.swarmNginxInput.collectedServiceDomains = hostsTpl
+
+	return hostsTpl, nil
+}
+
+// EnsureSSHKeyPresent prompts user to create or override new ssh key pair in
+// default provided sshKeyPath location
+func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string) error {
+	// By default, we assume key exists, if it doesn't - we will create it
+	// without prompting for users's constent, otherwise we prompt for consent.
+	createKey := false
+	_, err := os.Stat(sshKeyPath)
+	if err != nil {
+		fmt.Printf("SSH key %s was not found, creating new one...\n", sshKeyPath)
+		createKey = true
+	} else {
+		ok, err := c.TUI.NewPrompt(
+			fmt.Sprintf("SSH key %s was found, do you want to overwrite it with a new one?", sshKeyPath),
+			true,
+		)
+		if err != nil {
+			return err
+		}
+
+		if ok {
+			createKey = true
+		}
+	}
+
+	if createKey {
+		fmt.Println(
+			"Executing:",
+			styles.ItalicText.Render(
+				fmt.Sprintf("ssh-keygen -t ed25519 -f %s", sshKeyPath),
+			),
+		)
+		keygenCmd := "yes | ssh-keygen -N \"\" -t ed25519 -C d8xtrader -f " + sshKeyPath
+		cmd := exec.Command("bash", "-c", keygenCmd)
+		connectCMDToCurrentTerm(cmd)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
 	return nil
 }

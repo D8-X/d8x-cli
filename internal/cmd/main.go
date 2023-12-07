@@ -180,11 +180,13 @@ func RunD8XCli() {
 			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
 				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
 			)
+
 			// Initialize the input collector
 			container.Input = &actions.InputCollector{
 				ConfigRWriter: container.ConfigRWriter,
 				TUI:           container.TUI,
 				ChainJson:     chainJsonData,
+				SSHKeyPath:    container.SshKeyPath,
 			}
 
 			// Chdir functionality

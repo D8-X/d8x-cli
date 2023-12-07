@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
@@ -492,14 +491,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm nginx and certbot setup...")
 
-	// Load config which we will later use to write details about services.
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
+	if err := c.Input.CollectSwarmNginxInputs(ctx); err != nil {
 		return err
 	}
 
-	// Collect domain name
-	_, err = c.Input.CollectSetupDomain(cfg)
+	// Load config which we will later use to write details about services.
+	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -524,24 +521,9 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	setupCertbot, err := c.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
-	if err != nil {
-		return err
-	}
-
-	emailForCertbot := ""
-	if setupCertbot {
-		email, err := c.Input.CollectCertbotEmail(cfg)
-		if err != nil {
-			return err
-		}
-		emailForCertbot = email
-	}
-
-	services, err := c.Input.swarmNginxCollectData(cfg)
-	if err != nil {
-		return err
-	}
+	setupCertbot := c.Input.swarmNginxInput.setupCertbot
+	emailForCertbot := cfg.CertbotEmail
+	services := c.Input.swarmNginxInput.collectedServiceDomains
 
 	replacements := make([]files.ReplacementTuple, len(services))
 	for i, svc := range services {
@@ -574,7 +556,6 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	hostnames := make([]string, len(services))
 	for i, svc := range services {
 		hostnames[i] = svc.server
-
 		// Store services in d8x config
 		cfg.Services[svc.serviceName] = configs.D8XService{
 			Name:      svc.serviceName,
@@ -681,45 +662,4 @@ var hostsTpl = []hostnameTuple{
 		find:        "%candles_ws%",
 		serviceName: configs.D8XServiceCandlesWs,
 	},
-}
-
-// swarmNginxCollectData collects hostnames information and prepares
-// nginx.configured.conf file. Returns list of hostnames provided by user
-func (c *InputCollector) swarmNginxCollectData(cfg *configs.D8XConfig) ([]hostnameTuple, error) {
-
-	hosts := make([]string, len(hostsTpl))
-	replacements := make([]files.ReplacementTuple, len(hostsTpl))
-	for i, h := range hostsTpl {
-
-		// When possible, find values from config for non-first time runs.
-		// Provide some automatic subdomain suggestions by default
-		value := cfg.SuggestSubdomain(h.serviceName, c.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))))
-		if v, ok := cfg.Services[h.serviceName]; ok {
-			if v.HostName != "" {
-				value = v.HostName
-			}
-		}
-
-		input, err := c.CollectInputWithConfirmation(
-			h.prompt,
-			"Is this the correct domain you want to use for "+string(h.serviceName)+"?",
-			components.TextInputOptPlaceholder(h.placeholder),
-			components.TextInputOptValue(value),
-			components.TextInputOptDenyEmpty(),
-		)
-		if err != nil {
-			return nil, err
-		}
-		input = TrimHttpsPrefix(input)
-		hostsTpl[i].server = input
-		replacements[i] = files.ReplacementTuple{
-			Find:    h.find,
-			Replace: input,
-		}
-		hosts[i] = input
-
-		fmt.Printf("Using domain %s for %s\n\n", input, h.serviceName)
-	}
-
-	return hostsTpl, nil
 }

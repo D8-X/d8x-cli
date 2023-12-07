@@ -240,37 +240,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 	return l, nil
 }
 
-// createLinodeServerConfigurer collects information for the linode cluster
-// provisioning and creates linode ServerProviderConfigurer
-func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, error) {
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	l, err := c.Input.CollectLinodeProviderDetails(cfg)
-	if err != nil {
-		return nil, err
-	}
-
-	// SSH key check
-	if err := c.ensureSSHKeyPresent(); err != nil {
-		return nil, err
-	}
-	pub, err := c.getPublicKey()
-	if err != nil {
-		return nil, err
-	}
-	l.authorizedKey = pub
-
-	// Write linode config to cfg
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return nil, err
-	}
-
-	return l, nil
-}
-
 // noLinodeDbCheck displays some information to users when external db is used.
 func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
 	if i.DbId == "" {

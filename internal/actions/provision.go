@@ -58,6 +58,11 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		return err
 	}
 
+	// Update the input
+	if err := c.Input.PostProvisioningHook(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -72,17 +77,4 @@ type ServerProviderConfigurer interface {
 	// successfuly. This method is used to perform provider specific actions
 	// after the provisioning.
 	PostProvisioningAction(*Container) error
-}
-
-// configureServerProviderForTF collects details about user specified provider
-// and returns a server configurer
-func (c *Container) configureServerProviderForTF(provider SupportedServerProvider) (ServerProviderConfigurer, error) {
-	switch provider {
-	case ServerProviderLinode:
-		return c.createLinodeServerConfigurer()
-	case ServerProviderAws:
-		return c.createAWSServerConfigurer()
-	}
-
-	return nil, nil
 }

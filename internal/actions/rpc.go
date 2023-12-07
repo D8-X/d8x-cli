@@ -114,12 +114,12 @@ func (c *InputCollector) RPCUrlCollector(protocol rpcTransport, chainId string, 
 
 // CollectHTTPRPCUrls collects http rpc urls and writes them into the config
 // file
-func (c *InputCollector) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) error {
+func (input *InputCollector) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) error {
 	collectHttpRPCS := true
 	httpRpcs, exists := cfg.HttpRpcList[chainId]
 	if exists {
 		fmt.Printf("The following HTTP RPC urls were found: \n%s \n", strings.Join(httpRpcs, "\n"))
-		keep, err := c.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
+		keep, err := input.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
 		if err != nil {
 			return err
 		}
@@ -128,14 +128,14 @@ func (c *InputCollector) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId stri
 		}
 	}
 	if collectHttpRPCS {
-		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5, []string{})
+		httpRpcs, err := input.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5, []string{})
 		if err != nil {
 			return err
 		}
 		cfg.HttpRpcList[chainId] = slices.Compact(httpRpcs)
 	}
 
-	return c.ConfigRWriter.Write(cfg)
+	return input.ConfigRWriter.Write(cfg)
 }
 
 // CollectWebsocketRPCUrls collects websocket rpc urls and writes them into the

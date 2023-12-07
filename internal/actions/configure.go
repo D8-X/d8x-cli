@@ -30,7 +30,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		return err
 	}
 
-	pubKey, err := c.getPublicKey()
+	pubKey, err := getPublicKey(c.SshKeyPath)
 	if err != nil {
 		return fmt.Errorf("retrieving public key: %w", err)
 	}
