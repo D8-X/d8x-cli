@@ -1,8 +1,8 @@
 [
   {
-    "chainId": 80001,
-    "name": "Mumbai",
-    "perpetualManagerProxyAddr": "0xCdd7C9e07689d1B3D558A714fAa5Cc4B6bA654bD",
+    "chainId": 195,
+    "name": "x1",
+    "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
     "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
     "allowedExecutors": []
   },

@@ -25,12 +25,14 @@ type ChainInfo struct {
 var ALLOWED_CHAINS_STRINGS = []string{
 	"zkEVM testnet (1442)",
 	"zkEVM mainnet (1101)",
+	"x1 testnet (195)",
 }
 
 // Chain ids which are allowed to enter
 var ALLOWED_CHAINS_MAP = map[string]string{
 	"zkEVM testnet (1442)": "1442",
 	"zkEVM mainnet (1101)": "1101",
+	"x1 testnet (195)":     "195",
 }
 
 type SSHConnectionMaker func()
