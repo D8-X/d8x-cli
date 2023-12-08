@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -64,6 +65,10 @@ type inputModel struct {
 
 	// If set to true, it will not allow to enter empty values
 	denyEmpty bool
+
+	// List of input validation rules to run
+	validators             []textInputOptValidation
+	currentValidationError string
 }
 
 func (m inputModel) Init() tea.Cmd {
@@ -73,6 +78,9 @@ func (m inputModel) Init() tea.Cmd {
 func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// Reset validation error on each update
+	m.currentValidationError = ""
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.Type {
@@ -80,6 +88,14 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Deny entering empty strings
 			if m.denyEmpty {
 				if strings.TrimSpace(m.textInput.Value()) == "" {
+					return m, cmd
+				}
+			}
+
+			// Run validations
+			for _, v := range m.validators {
+				if !v.valid(m.textInput.Value()) {
+					m.currentValidationError = v.errorMsg
 					return m, cmd
 				}
 			}
@@ -126,7 +142,11 @@ func (m inputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m inputModel) View() string {
-	return fmt.Sprintf("%s\n\n", m.textInput.View())
+	validationErr := ""
+	if m.currentValidationError != "" {
+		validationErr = styles.ErrorText.Render(m.currentValidationError)
+	}
+	return fmt.Sprintf("%s\n%s\n", m.textInput.View(), validationErr)
 }
 
 var _ TextInputOpt = (*textInputOptPlaceholder)(nil)
@@ -195,4 +215,17 @@ func (t textInputOptDenyEmpty) Apply(s *inputModel) {
 
 func TextInputOptDenyEmpty() TextInputOpt {
 	return textInputOptDenyEmpty{}
+}
+
+type textInputOptValidation struct {
+	errorMsg string
+	valid    func(string) bool
+}
+
+func (t textInputOptValidation) Apply(s *inputModel) {
+	s.validators = append(s.validators, t)
+}
+
+func TextInputOptValidation(fn func(string) bool, errMsg string) TextInputOpt {
+	return textInputOptValidation{errorMsg: errMsg, valid: fn}
 }

@@ -92,6 +92,7 @@ func (c *Container) CollectSwarmInputs(ctx *cli.Context) error {
 			components.TextInputOptPlaceholder("https://your-broker-domain.com"),
 			components.TextInputOptValue(value),
 			components.TextInputOptDenyEmpty(),
+			components.TextInputOptValidation(ValidateHttp, "url must start with http:// or https://"),
 		)
 		if err != nil {
 			return err
@@ -176,25 +177,6 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 		return nil
 	}
 
-	for {
-		fmt.Println("Enter your database dsn connection string:")
-		dbDsn, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("postgresql://user:password@host:5432/postgres"),
-			components.TextInputOptDenyEmpty(),
-		)
-		if err != nil {
-			return err
-		}
-		dbDsn = strings.TrimSpace(dbDsn)
-
-		if err := dsnValidator(dbDsn); err != nil {
-			fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
-		} else {
-			cfg.DatabaseDSN = dbDsn
-			break
-		}
-	}
-
 	switch cfg.ServerProvider {
 	// Linode users must enter their own database dns stirng manually
 	case configs.D8XServerProviderLinode:
@@ -207,6 +189,7 @@ func (c *Container) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			if err != nil {
 				return err
 			}
+			dbDsn = strings.TrimSpace(dbDsn)
 
 			if err := dsnValidator(dbDsn); err != nil {
 				fmt.Println(styles.ErrorText.Render("Invalid database connection string, please try again: " + err.Error()))
@@ -430,6 +413,12 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			additioanalWsEndpoint, err := c.TUI.NewInput(
 				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
 				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValidation(
+					func(s string) bool {
+						return strings.HasPrefix(s, "wss://") || strings.HasPrefix(s, "ws://")
+					},
+					"websockets url must start with wss:// or ws://",
+				),
 			)
 			additioanalWsEndpoint = strings.TrimSpace(additioanalWsEndpoint)
 			if err != nil {

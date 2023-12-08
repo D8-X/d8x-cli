@@ -39,10 +39,10 @@ const (
 	rpcTransportWS   rpcTransport = "ws"
 )
 
-// RPCUrlCollector collects RPC urls from the user
-func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
+// RPCUrlCollector collects RPC urls from the user. Slice suggestions is a list
+// of RPC suggestions which will be added as initial value to the input field.
+func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int, suggestions []string) ([]string, error) {
 	transportUpper := strings.ToUpper(string(protocol))
-	transportLower := strings.ToLower(string(protocol))
 	endpoints := []string{}
 
 	validate := func(endpoint string) error {
@@ -60,10 +60,17 @@ func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requi
 	}
 
 	for {
+		// If suggestions are provided, use them as initial value
+		val := ""
+		if len(endpoints) < len(suggestions) {
+			val = suggestions[len(endpoints)]
+		}
+
 		fmt.Printf("Enter %s RPC url #%d for chain id %s\n", transportUpper, len(endpoints)+1, chainId)
 		endpoint, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder(transportLower+"://localhost:8545"),
+			components.TextInputOptPlaceholder(protocol.SecureProtocolPrefix()+"your-rpc-provider.com"),
 			components.TextInputOptDenyEmpty(),
+			components.TextInputOptValue(val),
 		)
 		if err != nil {
 			return nil, err
@@ -119,7 +126,7 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 		}
 	}
 	if collectHttpRPCS {
-		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5)
+		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5, []string{})
 		if err != nil {
 			return err
 		}
@@ -144,8 +151,23 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 			collectWSRPCS = false
 		}
 	}
+
+	// When http rpcs are provided - make a suggestion list for websocket rpcs
+	// by changing http(s):// to wss:// prefix
+	suggestions := []string{}
+	if httpRpcs, ok := cfg.HttpRpcList[chainId]; ok {
+		for _, rpc := range httpRpcs {
+			suggestions = append(suggestions,
+				"wss://"+strings.TrimPrefix(
+					strings.TrimPrefix(rpc, "http://"),
+					"https://",
+				),
+			)
+		}
+	}
+
 	if collectWSRPCS {
-		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2)
+		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2, suggestions)
 		if err != nil {
 			return err
 		}
