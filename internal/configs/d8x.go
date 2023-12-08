@@ -71,7 +71,7 @@ type D8XConfig struct {
 
 	// Setup domain entered by user. Used to suggest subdomain names for
 	// services
-	SetupDomain string `setup_domain`
+	SetupDomain string `json:"setup_domain"`
 }
 
 type ReferralConfig struct {
