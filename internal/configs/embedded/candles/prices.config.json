@@ -2,6 +2,7 @@
 {
   "pythAPIEndpoint": "https://benchmarks.pyth.network/",
   "priceServiceWSEndpoints": ["wss://hermes.pyth.network/ws"],
+  "priceServiceHTTPSEndpoints": [],
   "priceFeeds": [
     {
       "symbol": "btc-usd",

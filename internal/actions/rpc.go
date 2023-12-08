@@ -15,9 +15,10 @@ import (
 )
 
 type ChainJsonEntry struct {
-	SDKNetwork            string `json:"sdkNetwork"`
-	PriceFeedNetwork      string `json:"priceFeedNetwork"`
-	DefaultPythWSEndpoint string `json:"priceServiceWSEndpoint"`
+	SDKNetwork               string `json:"sdkNetwork"`
+	PriceFeedNetwork         string `json:"priceFeedNetwork"`
+	DefaultPythWSEndpoint    string `json:"priceServiceWSEndpoint"`
+	DefaultPythHTTPSEndpoint string `json:"priceServiceHTTPSEndpoint"`
 	// Chain type is either testnet or mainnet
 	Type string `json:"type"`
 }
@@ -228,6 +229,18 @@ func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
 		return c.cachedChainJson["default"].DefaultPythWSEndpoint
 	}
 	return chainJson.DefaultPythWSEndpoint
+}
+
+// getDefaultPythHTTPSEndpoint retrieves the default pyth https endpoint from
+// chain.json config
+func (c *Container) getDefaultPythHTTPSEndpoint(chainId string) string {
+	c.LoadChainJson()
+
+	chainJson, exists := c.cachedChainJson[chainId]
+	if !exists {
+		return c.cachedChainJson["default"].DefaultPythHTTPSEndpoint
+	}
+	return chainJson.DefaultPythHTTPSEndpoint
 }
 
 func (c *Container) getChainType(chainId string) string {
