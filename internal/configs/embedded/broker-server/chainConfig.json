@@ -3,7 +3,7 @@
     "chainId": 195,
     "name": "x1",
     "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
-    "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
+    "multiPayCtrctAddr": "0x3594D0eAAaC82D3AFA7347d098bc4a39A71e918c",
     "allowedExecutors": []
   },
   {
