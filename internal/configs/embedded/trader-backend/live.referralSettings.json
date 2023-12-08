@@ -3,7 +3,7 @@
     "chainId": 195,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 14 * * 2",
-    "multiPayContractAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
+    "multiPayContractAddr": "0x3594D0eAAaC82D3AFA7347d098bc4a39A71e918c",
     "tokenX": {
       "address": "0xd08B8E59a36BaA7EED60E21C1D6a7778811C30eD",
       "decimals": 18
