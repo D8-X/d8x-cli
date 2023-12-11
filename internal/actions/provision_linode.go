@@ -113,9 +113,14 @@ func getRegionItemByRegionId(regionId string) components.ListItem {
 	return components.ListItem{}
 }
 
-// createLinodeServerConfigurer collects information for the linode cluster
-// provisioning and creates linode ServerProviderConfigurer
-func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, error) {
+// CollectLinodeProviderDetails collects linode provider details from user
+// input, creates a new linodeConfigurer and fills in configuration details to
+// cfg.
+func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (linodeConfigurer, error) {
+	if c.provisioning.collectedLinodeConfigurer != nil {
+		return *c.provisioning.collectedLinodeConfigurer, nil
+	}
+
 	l := linodeConfigurer{}
 
 	// Attempt to load defaults from config
@@ -127,10 +132,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		defaultSwarmNodeSize      = "g6-dedicated-2"
 		defaultBrokerSize         = "g6-dedicated-2"
 	)
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return nil, err
-	}
+
 	if cfg.ServerProvider == configs.D8XServerProviderLinode {
 		if cfg.LinodeConfig != nil {
 			defaultToken = cfg.LinodeConfig.Token
@@ -154,7 +156,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 	)
 
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.Token = token
 
@@ -166,7 +168,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 			components.TextInputOptValue(defaultDbId),
 		)
 		if err != nil {
-			return nil, err
+			return l, err
 		}
 		l.DbId = dbId
 	} else {
@@ -180,7 +182,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		components.ListOptSelectedItem(defaultRegionItem),
 	)
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.Region = selected.ItemTitle
 	fmt.Printf(
@@ -200,17 +202,12 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		components.TextInputOptValue(defaultClusterLabelPrefix),
 	)
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.LabelPrefix = label
 
 	// Broker-server
-	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker server?", true)
-	if err != nil {
-		return nil, err
-	}
-	l.CreateBrokerServer = createBrokerServer
-	c.CreateBrokerServer = createBrokerServer
+	l.CreateBrokerServer = c.setup.deployBroker
 
 	// Servers sizes
 	fmt.Println("Swarm linode node size")
@@ -219,7 +216,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		components.TextInputOptValue(defaultSwarmNodeSize),
 	)
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.SwarmNodeSize = swarmNodeSize
 	fmt.Println("Broker linode node size")
@@ -229,27 +226,16 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 			components.TextInputOptValue(defaultBrokerSize),
 		)
 		if err != nil {
-			return nil, err
+			return l, err
 		}
 		l.BrokerServerSize = brokerNodeSize
 	}
 
-	// SSH key check
-	if err := c.ensureSSHKeyPresent(); err != nil {
-		return nil, err
-	}
-	pub, err := c.getPublicKey()
-	if err != nil {
-		return nil, err
-	}
-	l.authorizedKey = pub
+	c.provisioning.collectedLinodeConfigurer = &l
 
-	// Write linode config to cfg
+	// Update the cfg
 	cfg.ServerProvider = configs.D8XServerProviderLinode
 	cfg.LinodeConfig = &l.D8XLinodeConfig
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return nil, err
-	}
 
 	return l, nil
 }

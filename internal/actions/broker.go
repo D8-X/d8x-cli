@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
@@ -22,110 +21,35 @@ const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
-// CollectBrokerFee requires user to enter broker fee in percentage and returns
-// TBPS value
-func (c *Container) CollectBrokerFee() (string, error) {
-	fmt.Println("Enter your broker fee percentage (%) value:")
-	feePercentage, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("0.06"),
-		components.TextInputOptValue("0.06"),
-		components.TextInputOptEnding("%"),
-	)
-	if err != nil {
-		return "", err
-	}
-	tbpsFromPercentage, err := convertPercentToTBPS(feePercentage)
-	if err != nil {
-		fmt.Println(styles.ErrorText.Render("invalid tbps value: " + err.Error()))
-		return c.CollectBrokerFee()
-	}
+// UpdateBrokerChainConfigAllowedExecutors is updateFn for UpdateConfig for
+// broker-server/chainConfig.json configuration
+func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string, chainId int) func(*[]map[string]any) error {
+	return func(chainConfig *[]map[string]any) error {
+		for i, conf := range *chainConfig {
+			if int(conf["chainId"].(float64)) == chainId {
+				executors := []string{}
+				if len(allowedExecutorAddress) > 0 {
+					executors = append(executors, allowedExecutorAddress)
+				}
 
-	return tbpsFromPercentage, nil
-}
-
-func (c *Container) CollectBrokerInputs(ctx *cli.Context) error {
-	// Make sure chain id is present in config
-	chainId, err := c.GetChainId(ctx)
-	if err != nil {
-		return err
-	}
-	chainIdStr := strconv.Itoa(int(chainId))
-
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
-	}
-
-	// Collect HTTP rpc endpoints
-	if err := c.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
-		return err
-	}
-
-	// Collect broker (referral) executor wallet address
-	changeExecutorAddress := true
-	if cfg.BrokerServerConfig.ExecutorAddress != "" {
-		fmt.Printf("Found referral executor address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
-		if ok, err := c.TUI.NewPrompt("Do you want to change referral executor address?", false); err != nil {
-			return err
-		} else if !ok {
-			changeExecutorAddress = false
-		}
-	}
-	if changeExecutorAddress {
-		brokerExecutorAddress, err := c.CollectAndValidateWalletAddress("Enter referral executor address:", cfg.BrokerServerConfig.ExecutorAddress)
-		if err != nil {
-			return err
-		}
-
-		cfg.BrokerServerConfig.ExecutorAddress = brokerExecutorAddress
-	}
-
-	return c.ConfigRWriter.Write(cfg)
-}
-
-// UpdateBrokerChainConfigJson appends allowedExecutor addresses
-func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *configs.D8XConfig) error {
-	contents, err := os.ReadFile(chainConfigPath)
-	if err != nil {
-		return err
-	}
-
-	chainConfig := []map[string]any{}
-
-	if err := json.Unmarshal(contents, &chainConfig); err != nil {
-		return err
-	}
-
-	for i, conf := range chainConfig {
-		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
-			executors := []string{}
-			if len(cfg.BrokerServerConfig.ExecutorAddress) > 0 {
-				executors = append(executors, cfg.BrokerServerConfig.ExecutorAddress)
-			}
-
-			// Make sure we don't overwrite existing allowedExecutors
-			v, ok := conf["allowedExecutors"].([]any)
-			if ok {
-				for _, executorAddr := range v {
-					if a, ok2 := executorAddr.(string); ok2 {
-						executors = append(executors, a)
+				// Make sure we don't overwrite existing allowedExecutors
+				v, ok := conf["allowedExecutors"].([]any)
+				if ok {
+					for _, executorAddr := range v {
+						if a, ok2 := executorAddr.(string); ok2 {
+							executors = append(executors, a)
+						}
 					}
 				}
+				executors = slices.Compact(executors)
+				conf["allowedExecutors"] = executors
+				// Update the entry
+				(*chainConfig)[i] = conf
+				break
 			}
-			executors = slices.Compact(executors)
-			conf["allowedExecutors"] = executors
-
-			chainConfig[i] = conf
-			break
 		}
+		return nil
 	}
-
-	out, err := json.MarshalIndent(chainConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(chainConfigPath, out, 0644)
 }
 
 func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath string, cfg *configs.D8XConfig) ([]string, error) {
@@ -163,16 +87,11 @@ func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath str
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
-	guideUser, err := c.TUI.NewPrompt("Would you like the cli to guide you through the configuration?", true)
-	if err != nil {
-		return err
-	}
-	if guideUser {
-		if err := c.CollectBrokerInputs(ctx); err != nil {
-			return err
-		}
+	if err := c.Input.CollectBrokerDeployInput(ctx); err != nil {
+		return fmt.Errorf("collecting broker deploy input: %w", err)
 	}
 
+	// Refresh the cfg after input was collected
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
@@ -208,7 +127,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	if guideUser {
+	if c.Input.brokerDeployInput.guideConfig {
 		// Upate rpc.json config
 		rpconfigFilePath := "./broker-server/rpc.json"
 		httpRpcs, _ := DistributeRpcs(
@@ -229,7 +148,13 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 		// Update chainConfig.json
 		fmt.Printf("Updating %s config...\n", chainConfig)
-		if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
+		if err := UpdateConfig[[]map[string]any](
+			chainConfig,
+			UpdateBrokerChainConfigAllowedExecutors(
+				cfg.BrokerServerConfig.ExecutorAddress,
+				int(cfg.ChainId),
+			),
+		); err != nil {
 			return err
 		}
 	}
@@ -248,7 +173,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	)
 
 	// Generate and display broker-server redis password file
-	redisPw, err := c.generatePassword(16)
+	redisPw, err := generatePassword(16)
 	if err != nil {
 		return fmt.Errorf("generating redis password: %w", err)
 	}
@@ -259,17 +184,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		styles.SuccessText.Render("REDIS Password for broker-server was stored in " + BROKER_SERVER_REDIS_PWD_FILE + " file"),
 	)
 
-	// Collect required information
-	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
-	if err != nil {
-		return err
-	}
-
-	tbpsFromPercentage, err := c.CollectBrokerFee()
-	if err != nil {
-		return err
-	}
-	bsd.brokerFeeTBPS = tbpsFromPercentage
+	// Retrieve required information from user input
+	pk := c.Input.brokerDeployInput.privateKey
+	bsd.brokerFeeTBPS = c.Input.brokerDeployInput.feeTBPS
 
 	// Upload the files and exec in ./broker directory
 	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
@@ -327,15 +244,13 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Performing nginx and certbot setup for broker server...")
 
-	// Load config which we will later use to write details about broker sever
-	// service.
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
+	if err := c.Input.CollectBrokerNginxInput(ctx); err != nil {
 		return err
 	}
 
-	// Collect domain name
-	_, err = c.CollectSetupDomain(cfg)
+	// Load config which we will later use to write details about broker sever
+	// service.
+	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -364,40 +279,10 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
-	setupNginx, err := c.TUI.NewPrompt("Do you want to setup nginx for broker-server?", true)
-	if err != nil {
-		return err
-	}
-	setupCertbot, err := c.TUI.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
-	if err != nil {
-		return err
-	}
-	emailForCertbot := ""
-	if setupCertbot {
-		email, err := c.CollectCertbotEmail(cfg)
-		if err != nil {
-			return err
-		}
-		emailForCertbot = email
-	}
-
-	domainValue := cfg.SuggestSubdomain(configs.D8XServiceBrokerServer, c.getChainType(strconv.Itoa(int(cfg.ChainId))))
-	if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
-		if v.HostName != "" {
-			domainValue = v.HostName
-		}
-	}
-	brokerServerName, err := c.CollectInputWithConfirmation(
-		"Enter Broker-server HTTP (sub)domain (e.g. broker.d8x.xyz):",
-		"Is this correct?",
-		components.TextInputOptPlaceholder("your-broker.domain.com"),
-		components.TextInputOptValue(domainValue),
-		components.TextInputOptDenyEmpty(),
-	)
-	if err != nil {
-		return err
-	}
-	brokerServerName = TrimHttpsPrefix(brokerServerName)
+	setupCertbot := c.Input.brokerNginxInput.setupCertbot
+	setupNginx := c.Input.brokerNginxInput.setupNginx
+	emailForCertbot := cfg.CertbotEmail
+	brokerServerName := c.Input.brokerNginxInput.domainName
 
 	fmt.Printf("Using broker domain: %s\n", brokerServerName)
 
@@ -529,6 +414,7 @@ func (c *Container) brokerServerKeyVolSetup(sshClient conn.SSHConnection, pk str
 	return sshClient.ExecCommand(cmd)
 }
 
+// Convert given percentage string p to TBPS string
 func convertPercentToTBPS(p string) (string, error) {
 	// Allow to enter 0
 	if p == "0" {
@@ -562,5 +448,4 @@ func convertPercentToTBPS(p string) (string, error) {
 	tbps := parsedFloat * 1000
 
 	return strconv.FormatFloat(tbps, 'f', 0, 64), nil
-
 }

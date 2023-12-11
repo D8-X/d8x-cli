@@ -42,7 +42,7 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		if a == nil {
 			return fmt.Errorf("aws config is not defined")
 		}
-		authorizedKey, err := c.getPublicKey()
+		authorizedKey, err := getPublicKey(c.SshKeyPath)
 		if err != nil {
 			return err
 		}

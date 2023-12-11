@@ -71,7 +71,7 @@ type D8XConfig struct {
 
 	// Setup domain entered by user. Used to suggest subdomain names for
 	// services
-	SetupDomain string `setup_domain`
+	SetupDomain string `json:"setup_domain"`
 }
 
 type ReferralConfig struct {
@@ -133,7 +133,10 @@ type D8XService struct {
 }
 
 type D8XBrokerServerConfig struct {
-	FeeTBPS       string `json:"fee_tbps"`
+	FeeTBPS string `json:"fee_tbps"`
+	// User supplied Fee value in percent
+	FeeInputPercent string `json:"fee_input_percent"`
+
 	RedisPassword string `json:"redis_password"`
 
 	// Executor address must match the provided Executor private key in swarm

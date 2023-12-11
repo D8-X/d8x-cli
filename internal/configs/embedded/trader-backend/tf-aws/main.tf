@@ -45,14 +45,14 @@ resource "aws_vpc" "d8x_cluster_vpc" {
   enable_dns_hostnames = true
 
   tags = {
-    Name = "d8x-cluster-vpc"
+    Name = "${var.server_label_prefix}-vpc"
   }
 }
 
 
 resource "aws_eip" "manager_ip" {
   tags = {
-    Name = "d8x-cluster-eip"
+    Name = "${var.server_label_prefix}-eip"
   }
 }
 
@@ -62,7 +62,7 @@ resource "aws_nat_gateway" "public_nat" {
 
 
   tags = {
-    Name = "d8x-cluster-nat-gateway"
+    Name = "${var.server_label_prefix}-nat-gateway"
   }
 
   # To ensure proper ordering, it is recommended to add an explicit dependency
@@ -75,7 +75,7 @@ resource "aws_subnet" "public_subnet" {
   cidr_block = local.subnets[0]
 
   tags = {
-    Name = "d8x-cluster-subnet_public"
+    Name = "${var.server_label_prefix}-subnet_public"
   }
   map_public_ip_on_launch = true
 }
@@ -84,7 +84,7 @@ resource "aws_subnet" "workers_subnet" {
   vpc_id     = aws_vpc.d8x_cluster_vpc.id
   cidr_block = local.subnets[1]
   tags = {
-    Name = "d8x-cluster-subnet_workers"
+    Name = "${var.server_label_prefix}-subnet_workers"
   }
   availability_zone = "${var.region}a"
 }
@@ -94,7 +94,7 @@ resource "aws_subnet" "private_subnet_2" {
   vpc_id     = aws_vpc.d8x_cluster_vpc.id
   cidr_block = local.subnets[2]
   tags = {
-    Name = "d8x-cluster-subnet_private_2"
+    Name = "${var.server_label_prefix}-subnet_private_2"
   }
   availability_zone = "${var.region}b"
 }
@@ -103,7 +103,7 @@ resource "aws_subnet" "private_subnet_2" {
 resource "aws_internet_gateway" "d8x_igw" {
   vpc_id = aws_vpc.d8x_cluster_vpc.id
   tags = {
-    Name = "d8x-cluster-igw"
+    Name = "${var.server_label_prefix}-igw"
   }
 }
 

@@ -72,11 +72,12 @@ services:
   referral:
     image: ghcr.io/d8-x/d8x-referral-system:main
     deploy:
-      # Restart 5 times with 60 seconds delay before giving up.
+      # Restart up to 20 times with 60 seconds delay before giving up. Referral
+      # has to wait for history service to start and run the migrations.
       restart_policy:
         condition: any
-        delay: 360s
-        max_attempts: 10
+        delay: 60s
+        max_attempts: 20
         # Do not wait to verify restart
         window: 0s
     environment:

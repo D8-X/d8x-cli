@@ -24,18 +24,8 @@ func TestAWSServerConfigurer(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "read d8x config - error",
-			expect: func(e *expecter) {
-				e.ConfigReadWriter.EXPECT().Read().Return(nil, assert.AnError)
-			},
-			wantErr: assert.AnError.Error(),
-		},
-		{
 			name: "enter access token - error",
 			expect: func(e *expecter) {
-				cfg := configs.NewD8XConfig()
-
-				e.ConfigReadWriter.EXPECT().Read().Return(cfg, nil)
 				e.Components.EXPECT().
 					NewInput(
 						components.TextInputOptValue(""),
@@ -47,9 +37,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 		{
 			name: "enter access secret - error",
 			expect: func(e *expecter) {
-				cfg := configs.NewD8XConfig()
-
-				e.ConfigReadWriter.EXPECT().Read().Return(cfg, nil)
 				e.Components.EXPECT().
 					NewInput(
 						components.TextInputOptValue(""),
@@ -67,9 +54,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 		{
 			name: "enter region - error",
 			expect: func(e *expecter) {
-				cfg := configs.NewD8XConfig()
-
-				e.ConfigReadWriter.EXPECT().Read().Return(cfg, nil)
 				e.Components.EXPECT().
 					NewInput(
 						components.TextInputOptValue(""),
@@ -109,11 +93,13 @@ func TestAWSServerConfigurer(t *testing.T) {
 			}
 
 			c := &Container{
-				ConfigRWriter: expect.ConfigReadWriter,
-				TUI:           fakeTUI,
+				Input: &InputCollector{
+					ConfigRWriter: expect.ConfigReadWriter,
+					TUI:           fakeTUI,
+				},
 			}
 
-			_, err := c.createAWSServerConfigurer()
+			_, err := c.Input.CollectAwProviderDetails(&configs.D8XConfig{})
 			if tt.wantErr != "" {
 				assert.EqualError(t, err, tt.wantErr)
 			} else {

@@ -95,14 +95,11 @@ func (a *awsConfigurer) generateVariables() []string {
 	}
 }
 
-// createAWSServerConfigurer creates new awsConfigurer from user input
-func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error) {
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return nil, err
-	}
+// CollectAwProviderDetails collects aws provider details from user input,
+// creates a new awsConfigurer and fills in configuration details to cfg.
+func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsConfigurer, error) {
+	awsCfg := awsConfigurer{}
 
-	awsCfg := &awsConfigurer{}
 	// Text field values
 	awsKey := ""
 	awsSecret := ""
@@ -125,7 +122,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.AccesKey = accessKey
 
@@ -136,7 +133,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.SecretKey = secretKey
 
@@ -146,7 +143,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("us-west-1"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.Region = region
 
@@ -156,7 +153,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("db.t3.medium"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.RDSInstanceClass = dbClass
 
@@ -166,35 +163,14 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("my-cluster"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.LabelPrefix = labelPrefix
+	awsCfg.CreateBrokerServer = c.setup.deployBroker
 
-	// Broker-server
-	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker server?", true)
-	if err != nil {
-		return nil, err
-	}
-	awsCfg.CreateBrokerServer = createBrokerServer
-	// Set to deploy in container for current session
-	c.CreateBrokerServer = createBrokerServer
-
-	// SSH key check
-	if err := c.ensureSSHKeyPresent(); err != nil {
-		return nil, err
-	}
-	pub, err := c.getPublicKey()
-	if err != nil {
-		return nil, err
-	}
-	awsCfg.authorizedKey = pub
-
-	// Store aws details in configuration file
-	cfg.ServerProvider = configs.D8XServerProviderAWS
+	// Update the config
 	cfg.AWSConfig = &awsCfg.D8XAWSConfig
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return nil, err
-	}
+	cfg.ServerProvider = configs.D8XServerProviderAWS
 
 	return awsCfg, nil
 }
