@@ -296,7 +296,7 @@ func (c *Container) UpdateReferralSettings(referralSettingsPath string, cfg *con
 	return os.WriteFile(referralSettingsPath, out, 0644)
 }
 
-func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, priceServiceWSEndpoints []string) error {
+func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, priceServiceWSEndpoints []string, priceServiceHTTPSEndpoints []string) error {
 	contents, err := os.ReadFile(candlesPriceConfigPath)
 	if err != nil {
 		return err
@@ -312,9 +312,12 @@ func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, 
 	priceServiceWSEndpoints = slices.DeleteFunc(priceServiceWSEndpoints, func(s string) bool {
 		return s == ""
 	})
+	priceServiceHTTPSEndpoints = slices.DeleteFunc(priceServiceHTTPSEndpoints, func(s string) bool {
+		return s == ""
+	})
 
 	pricesConf["priceServiceWSEndpoints"] = priceServiceWSEndpoints
-
+	pricesConf["priceServiceHTTPSEndpoints"] = priceServiceHTTPSEndpoints
 	out, err := json.MarshalIndent(pricesConf, "", "  ")
 	if err != nil {
 		return err
@@ -426,9 +429,11 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			}
 			priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
 		}
-		if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints); err != nil {
+		priceServiceHTTPSEndpoints := []string{c.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
+		if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", priceServiceWSEndpoints, priceServiceHTTPSEndpoints); err != nil {
 			return err
 		}
+
 	}
 
 	// Collect and temporarily store referral payment executor private key
