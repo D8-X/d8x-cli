@@ -567,14 +567,14 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render("Collecting broker-nginx information...\n"))
+	fmt.Println(styles.ItalicText.Render("Collecting swarm-nginx information...\n"))
 
 	cfg, err := input.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
 
-	setupNginx, err := input.TUI.NewPrompt("Do you want to setup nginx for broker-server?", true)
+	setupNginx, err := input.TUI.NewPrompt("Do you want to setup nginx for swarm-server?", true)
 	if err != nil {
 		return err
 	}
@@ -650,12 +650,12 @@ func (c *InputCollector) CollectBrokerFee() (string, error) {
 // possible, prompts use to enter it and stores the value in config
 func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (uint, error) {
 	if cfg.ChainId != 0 {
-		c.chainIdSelected = true
-
 		// Do not ask for chain id if it was already entered in current session
 		if c.chainIdSelected {
 			return cfg.ChainId, nil
 		}
+
+		c.chainIdSelected = true
 
 		info := fmt.Sprintf("Currently using chain id: %d. Keep using this chain id?", cfg.ChainId)
 		keep, err := c.TUI.NewPrompt(info, true)
