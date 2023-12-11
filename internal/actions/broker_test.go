@@ -58,3 +58,14 @@ func TestParseTBPS(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateBrokerChainConfigAllowedExecutors(t *testing.T) {
+	chainConfig := &[]map[string]any{
+		// Duplicates should be removed automatically
+		{"chainId": float64(4001), "allowedExecutors": []any{"old-executor-address", "old-executor-address", "old-executor-address", "old-executor-address"}},
+		{"chainId": float64(4401), "allowedExecutors": []any{"old-executor-address-4401"}},
+	}
+	err := UpdateBrokerChainConfigAllowedExecutors("new-executor-address", 4001)(chainConfig)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"new-executor-address", "old-executor-address"}, (*chainConfig)[0]["allowedExecutors"])
+}

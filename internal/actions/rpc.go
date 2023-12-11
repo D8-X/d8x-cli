@@ -237,14 +237,12 @@ func (c ChainJson) getDefaultPythWSEndpoint(chainId string) string {
 
 // getDefaultPythHTTPSEndpoint retrieves the default pyth https endpoint from
 // chain.json config
-func (c *Container) getDefaultPythHTTPSEndpoint(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getDefaultPythHTTPSEndpoint(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].DefaultPythHTTPSEndpoint
+		return c["default"].DefaultPythHTTPSEndpoint
 	}
-	return chainJson.DefaultPythHTTPSEndpoint
+	return entry.DefaultPythHTTPSEndpoint
 }
 
 func (c ChainJson) GetChainType(chainId string) string {

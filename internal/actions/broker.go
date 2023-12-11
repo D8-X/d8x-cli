@@ -21,49 +21,35 @@ const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
-// UpdateBrokerChainConfigJson appends allowedExecutor addresses
-func (c *Container) UpdateBrokerChainConfigJson(chainConfigPath string, cfg *configs.D8XConfig) error {
-	contents, err := os.ReadFile(chainConfigPath)
-	if err != nil {
-		return err
-	}
+// UpdateBrokerChainConfigAllowedExecutors is updateFn for UpdateConfig for
+// broker-server/chainConfig.json configuration
+func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string, chainId int) func(*[]map[string]any) error {
+	return func(chainConfig *[]map[string]any) error {
+		for i, conf := range *chainConfig {
+			if int(conf["chainId"].(float64)) == chainId {
+				executors := []string{}
+				if len(allowedExecutorAddress) > 0 {
+					executors = append(executors, allowedExecutorAddress)
+				}
 
-	chainConfig := []map[string]any{}
-
-	if err := json.Unmarshal(contents, &chainConfig); err != nil {
-		return err
-	}
-
-	for i, conf := range chainConfig {
-		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
-			executors := []string{}
-			if len(cfg.BrokerServerConfig.ExecutorAddress) > 0 {
-				executors = append(executors, cfg.BrokerServerConfig.ExecutorAddress)
-			}
-
-			// Make sure we don't overwrite existing allowedExecutors
-			v, ok := conf["allowedExecutors"].([]any)
-			if ok {
-				for _, executorAddr := range v {
-					if a, ok2 := executorAddr.(string); ok2 {
-						executors = append(executors, a)
+				// Make sure we don't overwrite existing allowedExecutors
+				v, ok := conf["allowedExecutors"].([]any)
+				if ok {
+					for _, executorAddr := range v {
+						if a, ok2 := executorAddr.(string); ok2 {
+							executors = append(executors, a)
+						}
 					}
 				}
+				executors = slices.Compact(executors)
+				conf["allowedExecutors"] = executors
+				// Update the entry
+				(*chainConfig)[i] = conf
+				break
 			}
-			executors = slices.Compact(executors)
-			conf["allowedExecutors"] = executors
-
-			chainConfig[i] = conf
-			break
 		}
+		return nil
 	}
-
-	out, err := json.MarshalIndent(chainConfig, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(chainConfigPath, out, 0644)
 }
 
 func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath string, cfg *configs.D8XConfig) ([]string, error) {
@@ -162,7 +148,13 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 		// Update chainConfig.json
 		fmt.Printf("Updating %s config...\n", chainConfig)
-		if err := c.UpdateBrokerChainConfigJson(chainConfig, cfg); err != nil {
+		if err := UpdateConfig[[]map[string]any](
+			chainConfig,
+			UpdateBrokerChainConfigAllowedExecutors(
+				cfg.BrokerServerConfig.ExecutorAddress,
+				int(cfg.ChainId),
+			),
+		); err != nil {
 			return err
 		}
 	}

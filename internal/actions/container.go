@@ -84,9 +84,6 @@ type Container struct {
 	// Cached parsed chain.json contents
 	cachedChainJson ChainJson
 
-	// Whether user was already asked to set up the chain id in current session
-	chainIdAlreadyEntered bool
-
 	// Global input state
 	Input *InputCollector
 }

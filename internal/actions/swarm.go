@@ -1,7 +1,6 @@
 package actions
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -70,48 +69,25 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 	return c.FS.WriteFile(envPath, []byte(strings.Join(envFileLines, "\n")))
 }
 
-// UpdateReferralSettings updates given referralSettingsPath json file with
-// referral broker payout address from config.
-func (c *Container) UpdateReferralSettings(referralSettingsPath string, cfg *configs.D8XConfig) error {
-	contents, err := os.ReadFile(referralSettingsPath)
-	if err != nil {
-		return err
-	}
-
-	referralSettings := []map[string]any{}
-
-	if err := json.Unmarshal(contents, &referralSettings); err != nil {
-		return err
-	}
-
-	for i, refSetting := range referralSettings {
-		if int(refSetting["chainId"].(float64)) == int(cfg.ChainId) {
-			refSetting["brokerPayoutAddr"] = cfg.ReferralConfig.BrokerPayoutAddress
-			referralSettings[i] = refSetting
-			break
+// UpdateReferralSettings is an updateFn for UpdateConfig for referral settings
+// json file
+func UpdateReferralSettingsBrokerPayoutAddress(brokerPayoutAddress string, chainId int) func(referralSettings *[]map[string]any) error {
+	return func(referralSettings *[]map[string]any) error {
+		referralSettingsV := *referralSettings
+		for i, refSetting := range referralSettingsV {
+			if int(refSetting["chainId"].(float64)) == chainId {
+				refSetting["brokerPayoutAddr"] = brokerPayoutAddress
+				(*referralSettings)[i] = refSetting
+				break
+			}
 		}
+		return nil
 	}
-
-	out, err := json.MarshalIndent(referralSettings, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(referralSettingsPath, out, 0644)
 }
 
-func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, priceServiceWSEndpoints []string, priceServiceHTTPSEndpoints []string) error {
-	contents, err := os.ReadFile(candlesPriceConfigPath)
-	if err != nil {
-		return err
-	}
-
-	pricesConf := map[string]any{}
-
-	if err := json.Unmarshal(contents, &pricesConf); err != nil {
-		return err
-	}
-
+// UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
+// candles prices config files
+func UpdateCandlesPriceConfigPriceServices(priceServiceWSEndpoints []string, priceServiceHTTPSEndpoints []string) func(pricesConf *map[string]any) error {
 	// Delete empty values just in case
 	priceServiceWSEndpoints = slices.DeleteFunc(priceServiceWSEndpoints, func(s string) bool {
 		return s == ""
@@ -120,14 +96,11 @@ func (c *Container) UpdateCandlesPriceConfigJson(candlesPriceConfigPath string, 
 		return s == ""
 	})
 
-	pricesConf["priceServiceWSEndpoints"] = priceServiceWSEndpoints
-	pricesConf["priceServiceHTTPSEndpoints"] = priceServiceHTTPSEndpoints
-	out, err := json.MarshalIndent(pricesConf, "", "  ")
-	if err != nil {
-		return err
+	return func(pricesConf *map[string]any) error {
+		(*pricesConf)["priceServiceWSEndpoints"] = priceServiceWSEndpoints
+		(*pricesConf)["priceServiceHTTPSEndpoints"] = priceServiceHTTPSEndpoints
+		return nil
 	}
-
-	return os.WriteFile(candlesPriceConfigPath, out, 0644)
 }
 
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
@@ -198,16 +171,21 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 
 		// Update referralSettings
-		if err := c.UpdateReferralSettings("./trader-backend/live.referralSettings.json", cfg); err != nil {
+		if err := UpdateConfig[[]map[string]any](
+			"./trader-backend/live.referralSettings.json",
+			UpdateReferralSettingsBrokerPayoutAddress(cfg.ReferralConfig.BrokerPayoutAddress, int(cfg.ChainId)),
+		); err != nil {
 			return fmt.Errorf("updating referralSettings.json: %w", err)
 		}
 
 		// Update price configs with pyth ws endpoints
-		priceServiceHTTPSEndpoints := []string{c.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
-		if err := c.UpdateCandlesPriceConfigJson("./candles/prices.config.json", c.Input.swarmDeployInput.priceServiceWSEndpoints, priceServiceHTTPSEndpoints); err != nil {
+		priceServiceHTTPSEndpoints := []string{c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
+		if err := UpdateConfig[map[string]any](
+			"./candles/prices.config.json",
+			UpdateCandlesPriceConfigPriceServices(c.Input.swarmDeployInput.priceServiceWSEndpoints, priceServiceHTTPSEndpoints),
+		); err != nil {
 			return err
 		}
-
 	}
 
 	// Collected input data

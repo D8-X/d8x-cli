@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -97,4 +98,33 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 	}
 
 	return pk, addr.Hex(), nil
+}
+
+// UpdateConfig opens the given json config file and parses its contents into
+// target which is then passed to updateFn to perform any updates. After
+// successful updateFn call config file contents at configFilePath is updated
+// with new version of target.
+func UpdateConfig[Target any](configFilePath string, updateFn func(*Target) error) error {
+	contents, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return err
+	}
+
+	target := new(Target)
+
+	if err := json.Unmarshal(contents, &target); err != nil {
+		return err
+	}
+
+	if err := updateFn(target); err != nil {
+		return nil
+	}
+
+	out, err := json.MarshalIndent(target, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configFilePath, out, 0644)
+
 }
