@@ -299,11 +299,19 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 		return err
 	}
 
-	// Collect broker private key. Make sure we don't collect this on
-	// swarm-deploy
+	// Broker private key must be collected only once per session. Do not
+	// collect it for individual swarm-deploy or user chooses not to deploy
+	// broker during the setup
 	if input.brokerDeployInput.privateKey == "" && ctx.Command.Name != "swarm-deploy" {
-		if err := input.CollectBrokerPrivateKey(); err != nil {
-			return err
+		collect := true
+		if ctx.Command.Name == "setup" && !input.setup.deployBroker {
+			collect = false
+		}
+
+		if collect {
+			if err := input.CollectBrokerPrivateKey(); err != nil {
+				return err
+			}
 		}
 	}
 
