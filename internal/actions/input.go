@@ -133,7 +133,7 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 	}
 
 	// Collect private keys whenever they are not collected
-	if err := input.CollectPrivateKeys(); err != nil {
+	if err := input.CollectPrivateKeys(ctx); err != nil {
 		return err
 	}
 
@@ -287,7 +287,7 @@ func (input *InputCollector) CollectReferralExecutorPrivateKey(cfg *configs.D8XC
 
 // CollectPrivateKeys collects broker and referral executor private keys. Only
 // once per session
-func (input *InputCollector) CollectPrivateKeys() error {
+func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 	if input.brokerDeployInput.privateKey != "" && input.swarmDeployInput.referralPaymentExecutorPrivateKey != "" {
 		return nil
 	}
@@ -299,8 +299,9 @@ func (input *InputCollector) CollectPrivateKeys() error {
 		return err
 	}
 
-	// Collect broker private key
-	if input.brokerDeployInput.privateKey == "" {
+	// Collect broker private key. Make sure we don't collect this on
+	// swarm-deploy
+	if input.brokerDeployInput.privateKey == "" && ctx.Command.Name != "swarm-deploy" {
 		if err := input.CollectBrokerPrivateKey(); err != nil {
 			return err
 		}
@@ -326,7 +327,7 @@ func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
 	fmt.Println(styles.ItalicText.Render("Collecting broker-deploy information...\n"))
 
 	// Collect private keys whenever they are not collected
-	if err := input.CollectPrivateKeys(); err != nil {
+	if err := input.CollectPrivateKeys(ctx); err != nil {
 		return err
 	}
 
@@ -437,7 +438,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 	fmt.Println(styles.ItalicText.Render("Collecting swarm-deploy information...\n"))
 
 	// Collect private keys whenever they are not collected
-	if err := input.CollectPrivateKeys(); err != nil {
+	if err := input.CollectPrivateKeys(ctx); err != nil {
 		return err
 	}
 
