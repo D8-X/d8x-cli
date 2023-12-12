@@ -72,6 +72,9 @@ type D8XConfig struct {
 	// Setup domain entered by user. Used to suggest subdomain names for
 	// services
 	SetupDomain string `json:"setup_domain"`
+
+	// Whether metrics services were deployed
+	MetricsDeployed bool `json:"metrics_deployed"`
 }
 
 type ReferralConfig struct {

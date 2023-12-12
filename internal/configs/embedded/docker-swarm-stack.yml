@@ -188,8 +188,6 @@ volumes:
   nfsvol:
     external: true
 configs:
-  prometheus_config:
-    external: true
   cfg_rpc:
     external: true
   cfg_rpc_referral:

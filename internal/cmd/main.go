@@ -133,6 +133,12 @@ func RunD8XCli() {
 				Usage:  "Attach ssh session to one of your servers",
 				Action: container.SSH,
 			},
+			{
+				Name:      "grafana-tunnel",
+				Usage:     "Create ssh tunnel to grafana service on manager",
+				Action:    container.TunnelGrafana,
+				ArgsUsage: "[port 8080]",
+			},
 		},
 		// Global flags accesible to all subcommands
 		Flags: []cli.Flag{
