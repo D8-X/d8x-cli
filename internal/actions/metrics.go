@@ -121,7 +121,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 }
 
 func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []string) ([]byte, error) {
-	CADVISOR_PORT := "8080"
+	CADVISOR_PORT := "4003"
 
 	mp := map[any]any{}
 	if err := yaml.Unmarshal(promYamlContents, &mp); err != nil {

@@ -124,8 +124,8 @@ resource "aws_security_group" "cadvisor_port" {
 
   ingress {
     cidr_blocks = local.subnets
-    from_port   = 8080
-    to_port     = 8080
+    from_port   = 4003
+    to_port     = 4003
     protocol    = "tcp"
   }
 

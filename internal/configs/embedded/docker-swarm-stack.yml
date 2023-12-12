@@ -159,10 +159,10 @@ services:
     deploy:
       mode: global
     ports:
-        # If port is changed, make sure to edit cadvisor_port security group
-        # port too
+        # If published port is changed, make sure to edit cadvisor_port security
+        # group port too
       - target: 8080
-        published: 8080
+        published: 4003
         protocol: tcp
         mode: host
     volumes:
