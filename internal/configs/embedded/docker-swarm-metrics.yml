@@ -24,6 +24,7 @@ services:
       - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
       # Default dashboard
       - ./grafana/chart.json:/var/lib/grafana/dashboards/chart.json
+      - ./grafana/chart-cadvisor.json:/var/lib/grafana/dashboards/chart-cadvisor.json
       # Persistence for grafana
       - 'grafana_data:/var/lib/grafana'
     networks:

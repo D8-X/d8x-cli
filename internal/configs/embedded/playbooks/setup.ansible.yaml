@@ -93,6 +93,7 @@
           - git
           - certbot
           - nfs-common
+          - iptables-persistent
         state: latest
         update_cache: true
     - name: Get Docker apt repo key

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
@@ -15,6 +16,9 @@ import (
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v2"
 )
+
+// Port that we expose cadvisor on
+var CADVISOR_PORT = 4003
 
 // Stack name for metrics services deployed on manager
 var dockerMetricsStackName = "metrics"
@@ -25,6 +29,11 @@ var dockerMetricsStackName = "metrics"
 // ansible setup)
 func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	fmt.Println("Deploying prometheus and grafana on manager...")
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -76,6 +85,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 
 		conn.SftpCopySrcDest{Src: "./grafana/datasource-prometheus.yml", Dst: "./grafana/datasource-prometheus.yml"},
 		conn.SftpCopySrcDest{Src: "./grafana/chart.json", Dst: "./grafana/chart.json"},
+		conn.SftpCopySrcDest{Src: "./grafana/chart-cadvisor.json", Dst: "./grafana/chart-cadvisor.json"},
 		conn.SftpCopySrcDest{Src: "./grafana/dashboards.yml", Dst: "./grafana/dashboards.yml"},
 	); err != nil {
 		return fmt.Errorf("copying prometheus config to manager: %w", err)
@@ -100,19 +110,63 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		fmt.Println("Prometheus service deployed")
 	}
 
-	// Update cfg
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
+	// Block access of cadvisor port for public ip servers providers
+	switch cfg.ServerProvider {
+	case configs.D8XServerProviderLinode:
+		workerIps, err := c.HostsCfg.GetWorkerIps()
+		if err != nil {
+			return err
+		}
+
+		pwd, err := c.GetPassword(ctx)
+		if err != nil {
+			return fmt.Errorf("getting sudo password: %w", err)
+		}
+
+		wg := sync.WaitGroup{}
+		for _, workerIp := range workerIps {
+			workerIp := workerIp
+			wg.Add(1)
+			go func(ip string) {
+				sh, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+				if err != nil {
+					fmt.Println(
+						styles.ErrorText.Render(
+							fmt.Sprintf("Connecting to worker %s: %s", ip, err.Error()),
+						),
+					)
+				}
+				// Drop connections from public Ip address to cadvisor port in
+				// swarm
+				check := "iptables -L -t raw | grep ':%d'"
+				check = fmt.Sprintf(check, CADVISOR_PORT)
+				// We only want to run additional iptables insert if cadvisor
+				// port was not found in grep
+				cmd := fmt.Sprintf(check+" || iptables -I PREROUTING 1 -t raw -p tcp -d %s --dport %d -j DROP && iptables-save > /etc/iptables/rules.v4", ip, CADVISOR_PORT)
+				out, err := sh.ExecCommand(
+					fmt.Sprintf(`echo '%s' | sudo -S bash -c '%s'`, pwd, cmd),
+				)
+				if err != nil {
+					fmt.Println(string(out))
+					fmt.Println(
+						styles.ErrorText.Render("[" + ip + "] Error blocking cadvisor port on worker: " + err.Error()),
+					)
+				}
+
+				wg.Done()
+			}(workerIp)
+		}
+		wg.Wait()
+
 	}
+
+	// Update cfg
 	cfg.MetricsDeployed = true
 
 	return c.ConfigRWriter.Write(cfg)
 }
 
 func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []string) ([]byte, error) {
-	// Port that we expose cadvisor on
-	CADVISOR_PORT := "4003"
 
 	mp := map[any]any{}
 	if err := yaml.Unmarshal(promYamlContents, &mp); err != nil {
@@ -122,7 +176,7 @@ func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []str
 	// We want to edit targets and remarshall the yaml
 	targets := make([]string, len(workers))
 	for i, w := range workers {
-		targets[i] = w + ":" + CADVISOR_PORT
+		targets[i] = w + ":" + strconv.Itoa(CADVISOR_PORT)
 	}
 	// This is horrible, but it works if we don't change our default prometheus config
 	mp["scrape_configs"].([]any)[0].(map[any]any)["static_configs"].([]any)[0].(map[any]any)["targets"] = targets
@@ -143,8 +197,9 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 
 	// Grafana port exposed on swarm node locally
 	grafanaPort := 4002
-	// UUID of our main chart (from chart.json)
+	// UUID of our main chart (from chart.json, chart-cadvisor.json)
 	grafanaD8XServicesDashboardUUID := "e0b3b284-5f62-40f8-9c85-421ef3e1d841"
+	grafanaCadvisorMetricsDashboardUUID := "e0b3b284-5f62-40f8-9c85-421ef3e1d842"
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -172,16 +227,21 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 		return fmt.Errorf("binding listener on port %s: %w", port, err)
 	}
 
-	info := fmt.Sprintf("Grafana is accessible at http://%s", addr)
+	fmt.Println("Grafana is accessible at:")
+	info := fmt.Sprintf("\thttp://%s", addr)
 	fmt.Println(styles.SuccessText.Render(info))
-	info = fmt.Sprintf("Main D8X Services dashboard is accessible at http://%s/d/%s", addr, grafanaD8XServicesDashboardUUID)
+	info = fmt.Sprintf("\thttp://%[1]s/d/%[2]s \n\thttp://%[1]s/d/%[3]s", addr, grafanaD8XServicesDashboardUUID, grafanaCadvisorMetricsDashboardUUID)
+	fmt.Println("Main D8X Services dashboards are accessible at:")
 	fmt.Println(styles.SuccessText.Render(info))
-	fmt.Printf("Default username: admin\nDefault password: admin\n")
+	fmt.Printf("Default username: admin\nDefault password: admin\n\n")
+
+	fmt.Println(styles.GrayText.Render("Press Ctrl+C to exit"))
 
 	cpFn := func(w io.Writer, r io.Reader) error {
 		_, err := io.Copy(w, r)
 		return err
 	}
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
