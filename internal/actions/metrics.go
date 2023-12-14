@@ -136,12 +136,11 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 						),
 					)
 				}
-				// Drop connections from public Ip address to cadvisor port in
-				// swarm
 				check := "iptables -L -t raw | grep ':%d'"
 				check = fmt.Sprintf(check, CADVISOR_PORT)
 				// We only want to run additional iptables insert if cadvisor
-				// port was not found in grep
+				// port was not found in grep. Here we'll add a drop rule to the
+				// raw table when destination port is our worker's public IP.
 				cmd := fmt.Sprintf(check+" || iptables -I PREROUTING 1 -t raw -p tcp -d %s --dport %d -j DROP && iptables-save > /etc/iptables/rules.v4", ip, CADVISOR_PORT)
 				out, err := sh.ExecCommand(
 					fmt.Sprintf(`echo '%s' | sudo -S bash -c '%s'`, pwd, cmd),
