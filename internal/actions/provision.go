@@ -16,6 +16,9 @@ const (
 	ServerProviderAws    SupportedServerProvider = "aws"
 )
 
+// Terraform files directory
+const TF_FILES_DIR = "./terraform"
+
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
 
@@ -36,6 +39,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Terraform init must run after we copy all the terraform files via
 	// BuildTerraformCMD
 	tfInit := exec.Command("terraform", "init")
+	tfInit.Dir = TF_FILES_DIR
 	connectCMDToCurrentTerm(tfInit)
 	if err := tfInit.Run(); err != nil {
 		return err

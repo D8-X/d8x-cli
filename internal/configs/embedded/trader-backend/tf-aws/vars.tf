@@ -59,3 +59,8 @@ variable "create_broker_server" {
   description = "Whether broker-server node should be created"
   default     = false
 }
+variable "create_swarm" {
+  type        = bool
+  description = "Whether swarm setup should be created"
+  default     = true
+}

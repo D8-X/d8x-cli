@@ -12,6 +12,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/jackc/pgx/v5"
 )
@@ -31,17 +32,32 @@ type awsConfigurer struct {
 }
 
 func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	if err := c.EmbedCopier.CopyMultiToDest(
-		configs.EmbededConfigs,
-		"./aws.tf",
-		"embedded/trader-backend/tf-aws/main.tf",
-		"embedded/trader-backend/tf-aws/routes.tf",
-		"embedded/trader-backend/tf-aws/sg.tf",
-		"embedded/trader-backend/tf-aws/pg.tf",
-		"embedded/trader-backend/tf-aws/vars.tf",
-		"embedded/trader-backend/tf-aws/output.tf",
+	// if err := c.EmbedCopier.CopyMultiToDest(
+	// 	configs.EmbededConfigs,
+	// 	"./aws.tf",
+	// 	"embedded/trader-backend/tf-aws/main.tf",
+	// 	"embedded/trader-backend/tf-aws/routes.tf",
+	// 	"embedded/trader-backend/tf-aws/sg.tf",
+	// 	"embedded/trader-backend/tf-aws/pg.tf",
+	// 	"embedded/trader-backend/tf-aws/vars.tf",
+	// 	"embedded/trader-backend/tf-aws/output.tf",
+	// ); err != nil {
+	// 	return nil, fmt.Errorf("generating aws.tf file: %w", err)
+	// }
+
+	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
+		files.EmbedCopierOp{
+			Src: "embedded/trader-backend/tf-aws",
+			Dst: "./terraform",
+			Dir: true,
+		},
+		files.EmbedCopierOp{
+			Src: "embedded/trader-backend/tf-aws/swarm",
+			Dst: "./terraform/swarm",
+			Dir: true,
+		},
 	); err != nil {
-		return nil, fmt.Errorf("generating aws.tf file: %w", err)
+		return nil, fmt.Errorf("generating terraform directory: %w", err)
 	}
 
 	return a.generateTerraformCommand(), nil
@@ -71,13 +87,16 @@ func (a *awsConfigurer) putManagerToKnownHosts(managerIpAddress string) error {
 
 // generateTerraformCommand generates terraform apply command for aws provider
 func (a *awsConfigurer) generateTerraformCommand() *exec.Cmd {
-	return exec.Command(
+	cmd := exec.Command(
 		"terraform",
 		append(
 			[]string{"apply", "-auto-approve"},
 			a.generateVariables()...,
 		)...,
 	)
+	cmd.Dir = TF_FILES_DIR
+
+	return cmd
 }
 
 // generateVariables generates terraform variables for aws provider
