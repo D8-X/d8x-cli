@@ -69,6 +69,8 @@ type ProvisioningInput struct {
 type InputCollectorSetupData struct {
 	// Whether to provision and deploy broker server
 	deployBroker bool
+	// Whether to provision and deploy swarm servers (+rds on aws)
+	deploySwarm bool
 
 	setupDomainEntered bool
 
@@ -182,12 +184,22 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 
 	// We must ask about broker server before collecting information for the
 	// actual provisioning step, since we need to know whether to ask for broker
-	// server size on linode. This prompt is under
+	// server size on linode.
 	createBrokerServer, err := input.TUI.NewPrompt("Do you want to provision a broker server?", true)
 	if err != nil {
 		return err
 	}
 	input.setup.deployBroker = createBrokerServer
+	// Same for swarm servers
+	deploySwarm, err := input.TUI.NewPrompt("Do you want to provision swarm servers?", true)
+	if err != nil {
+		return err
+	}
+	input.setup.deploySwarm = deploySwarm
+
+	if !input.setup.deployBroker && !input.setup.deploySwarm {
+		return fmt.Errorf("no servers selected for provisioning, quitting")
+	}
 
 	fmt.Println(styles.ItalicText.Render("Collecting provisioning information...\n"))
 

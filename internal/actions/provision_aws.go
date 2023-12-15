@@ -47,14 +47,16 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
 		files.EmbedCopierOp{
-			Src: "embedded/trader-backend/tf-aws",
-			Dst: "./terraform",
-			Dir: true,
+			Src:       "embedded/trader-backend/tf-aws",
+			Dst:       "./terraform",
+			Dir:       true,
+			Overwrite: true,
 		},
 		files.EmbedCopierOp{
-			Src: "embedded/trader-backend/tf-aws/swarm",
-			Dst: "./terraform/swarm",
-			Dir: true,
+			Src:       "embedded/trader-backend/tf-aws/swarm",
+			Dst:       "./terraform/swarm",
+			Dir:       true,
+			Overwrite: true,
 		},
 	); err != nil {
 		return nil, fmt.Errorf("generating terraform directory: %w", err)
@@ -111,6 +113,7 @@ func (a *awsConfigurer) generateVariables() []string {
 		"-var", fmt.Sprintf("db_instance_class=%s", a.RDSInstanceClass),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, a.CreateBrokerServer),
 		"-var", fmt.Sprintf(`rds_creds_filepath=%s`, RDS_CREDS_FILE),
+		"-var", fmt.Sprintf(`create_swarm=%t`, a.DeploySwarm),
 	}
 }
 
@@ -119,11 +122,13 @@ func (a *awsConfigurer) generateVariables() []string {
 func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsConfigurer, error) {
 	awsCfg := awsConfigurer{}
 
-	// Text field values
+	// Default text field values
 	awsKey := ""
 	awsSecret := ""
 	awsRDSInstanceClass := "db.t4g.small"
 	awsServerLabelPrefix := "d8x-cluster"
+	awsDefaultNumberWorkers := "4"
+
 	if cfg.AWSConfig != nil {
 		awsKey = cfg.AWSConfig.AccesKey
 		awsSecret = cfg.AWSConfig.SecretKey
@@ -133,7 +138,13 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 		if cfg.AWSConfig.LabelPrefix != "" {
 			awsServerLabelPrefix = cfg.AWSConfig.LabelPrefix
 		}
+		if cfg.AWSConfig.NumWorker != 0 {
+			awsDefaultNumberWorkers = strconv.Itoa(cfg.AWSConfig.NumWorker)
+		}
 	}
+
+	// Check for swarm deployment
+	awsCfg.DeploySwarm = c.setup.deploySwarm
 
 	fmt.Println("Enter your AWS Access Key: ")
 	accessKey, err := c.TUI.NewInput(
@@ -166,16 +177,6 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.Region = region
 
-	fmt.Println("Enter your AWS RDS DB instance class: ")
-	dbClass, err := c.TUI.NewInput(
-		components.TextInputOptValue(awsRDSInstanceClass),
-		components.TextInputOptPlaceholder("db.t3.medium"),
-	)
-	if err != nil {
-		return awsCfg, err
-	}
-	awsCfg.RDSInstanceClass = dbClass
-
 	fmt.Println("Enter server tag prefix (must be unique between deployments): ")
 	labelPrefix, err := c.TUI.NewInput(
 		components.TextInputOptValue(awsServerLabelPrefix),
@@ -186,6 +187,35 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.LabelPrefix = labelPrefix
 	awsCfg.CreateBrokerServer = c.setup.deployBroker
+
+	// Collect swarm details
+	if c.setup.deploySwarm {
+		fmt.Println("Enter your AWS RDS DB instance class: ")
+		dbClass, err := c.TUI.NewInput(
+			components.TextInputOptValue(awsRDSInstanceClass),
+			components.TextInputOptPlaceholder("db.t3.medium"),
+		)
+		if err != nil {
+			return awsCfg, err
+		}
+		awsCfg.RDSInstanceClass = dbClass
+
+		fmt.Println("Enter number of worker servers to create: ")
+		numWorkers, err := c.TUI.NewInput(
+			components.TextInputOptValue(awsDefaultNumberWorkers),
+			components.TextInputOptPlaceholder("4"),
+			components.TextInputOptValidation(func(s string) bool {
+				_, err := strconv.Atoi(s)
+				return err == nil
+			}, "please provide a valid number"),
+		)
+		if err != nil {
+			return awsCfg, err
+		}
+		// there will be no err here since we validate it in input
+		numWorkersInt, _ := strconv.Atoi(numWorkers)
+		awsCfg.NumWorker = numWorkersInt
+	}
 
 	// Update the config
 	cfg.AWSConfig = &awsCfg.D8XAWSConfig

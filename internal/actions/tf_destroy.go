@@ -56,6 +56,7 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 
 	cmd := exec.Command("terraform", args...)
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = TF_FILES_DIR
 
 	connectCMDToCurrentTerm(cmd)
 	return c.RunCmd(cmd)

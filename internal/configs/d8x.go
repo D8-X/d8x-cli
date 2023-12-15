@@ -114,6 +114,7 @@ type D8XLinodeConfig struct {
 	SwarmNodeSize      string `json:"swarm_node_size"`
 	BrokerServerSize   string `json:"broker_server_size"`
 	CreateBrokerServer bool   `json:"create_broker_server"`
+	DeploySwarm        bool   `json:"deploy_swarm"`
 }
 
 type D8XAWSConfig struct {
@@ -124,6 +125,9 @@ type D8XAWSConfig struct {
 	RDSInstanceClass       string `json:"rds_instance_class"`
 	CreateBrokerServer     bool   `json:"create_broker_server"`
 	RDSCredentialsFilePath string `json:"rds_credentials_file_path"`
+	DeploySwarm            bool   `json:"deploy_swarm"`
+	// Number of worker servers to deploy in swarm
+	NumWorker int `json:"num_worker"`
 }
 
 type D8XService struct {

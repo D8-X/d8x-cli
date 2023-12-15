@@ -38,7 +38,6 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-
 resource "aws_vpc" "d8x_cluster_vpc" {
   cidr_block           = "10.0.0.0/16"
   instance_tenancy     = "default"
@@ -68,19 +67,19 @@ resource "aws_subnet" "workers_subnet" {
   availability_zone = "${var.region}a"
 }
 
-// Aditional private subnet in different az for rds
-resource "aws_subnet" "private_subnet_2" {
-  vpc_id     = aws_vpc.d8x_cluster_vpc.id
-  cidr_block = local.subnets[2]
+
+// Create internet gateway for the vpc
+resource "aws_internet_gateway" "d8x_igw" {
+  vpc_id = aws_vpc.d8x_cluster_vpc.id
   tags = {
-    Name = "${var.server_label_prefix}-subnet_private_2"
+    Name = "${var.server_label_prefix}-igw"
   }
-  availability_zone = "${var.region}b"
 }
 
-# Create swarm manager and worker nodes
+# Create swarm manager and worker nodes + rds
 module "swarm_servers" {
   source = "./swarm"
+  count  = var.create_swarm ? 1 : 0
 
   server_label_prefix   = var.server_label_prefix
   vpc_id                = aws_vpc.d8x_cluster_vpc.id
@@ -91,39 +90,46 @@ module "swarm_servers" {
   keypair_name          = aws_key_pair.d8x_cluster_ssh_key.key_name
   public_subnet_id      = aws_subnet.public_subnet.id
   workers_subnet_id     = aws_subnet.workers_subnet.id
+  region                = var.region
+  // Manager must have ssh (public);docker swarm (internal);http (public);nfs (internal) ports open 
+  security_group_ids_manager = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id, aws_security_group.nfs_access.id]
+  security_group_ids_workers = [aws_security_group.ssh_docker_sg.id, aws_security_group.cadvisor_port.id]
+  subnets                    = local.subnets
+
+  // PG RDS vars
+  db_instance_class  = var.db_instance_class
+  rds_creds_filepath = var.rds_creds_filepath
+
+  depends_on = [aws_internet_gateway.d8x_igw, aws_subnet.public_subnet, aws_subnet.workers_subnet]
+
 }
 
 resource "aws_instance" "broker_server" {
-  count         = var.create_broker_server ? 1 : 0
+  count = var.create_broker_server ? 1 : 0
+
   ami           = data.aws_ami.ubuntu.id
   instance_type = var.worker_size
   key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
 
   subnet_id                   = aws_subnet.public_subnet.id
   associate_public_ip_address = true
-  security_groups             = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id]
+  vpc_security_group_ids      = [aws_security_group.ssh_docker_sg.id, aws_security_group.http_access.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "broker-server")
   }
 }
 
-
-variable "ssh_jump_host_cfg_path" {
-  default = "./manager_ssh_jump.conf"
-}
-
 # Geneate ansible inventory with jump host for workers
 resource "local_file" "hosts_cfg" {
-  depends_on = [module.swarm_servers.node, module.swarm_servers.manager]
-  content    = <<EOF
+  content = <<EOF
 %{if var.create_swarm}
 
 [managers]
-${module.swarm_servers.manager.public_ip} manager_private_ip=${module.swarm_servers.manager.private_ip} hostname=manager-1
+${module.swarm_servers[0].manager.public_ip} manager_private_ip=${module.swarm_servers[0].manager.private_ip} hostname=manager-1
 
 [workers]
-%{for index, ip in aws_instance.nodes[*].private_ip~}
+%{for index, ip in module.swarm_servers[0].workers[*].private_ip~}
 ${ip} worker_private_ip=${ip} hostname=${format("worker-%02d", index + 1)} 
 %{endfor~}
 
@@ -138,7 +144,7 @@ ${aws_instance.broker_server[0].public_ip} private_ip=${aws_instance.broker_serv
 %{endif~}
 EOF
 
-  filename = "hosts.cfg"
+  filename = var.host_cfg_path
 }
 
 # Template for manager as jump host ssh config. We can later use ProxyJump
@@ -156,7 +162,8 @@ variable "ssh_jump_host" {
 # Generate a small ssh config workaround for accessing workers through manager
 # as a ProxyJump
 resource "local_file" "jump_host_ssh_config" {
-  content  = format(var.ssh_jump_host, aws_instance.manager.public_ip)
+  count    = var.create_swarm ? 1 : 0
+  content  = format(var.ssh_jump_host, module.swarm_servers[0].manager.public_ip)
   filename = var.ssh_jump_host_cfg_path
 }
 

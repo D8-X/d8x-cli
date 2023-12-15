@@ -1,4 +1,3 @@
-
 output "manager" {
   value = aws_instance.manager
 }
