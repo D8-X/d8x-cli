@@ -15,7 +15,8 @@ provider "aws" {
 
 // Create d8x cluster keypair
 resource "aws_key_pair" "d8x_cluster_ssh_key" {
-  key_name   = format("%s-%s", var.server_label_prefix, "cluster-ssh-key")
+  // https://github.com/hashicorp/terraform-provider-aws/issues/10497
+  key_name   = format("%s-%s-%s", var.server_label_prefix, "cluster-ssh-key", md5(var.authorized_key))
   public_key = var.authorized_key
 }
 
@@ -101,7 +102,6 @@ module "swarm_servers" {
   rds_creds_filepath = var.rds_creds_filepath
 
   depends_on = [aws_internet_gateway.d8x_igw, aws_subnet.public_subnet, aws_subnet.workers_subnet]
-
 }
 
 resource "aws_instance" "broker_server" {

@@ -1065,15 +1065,15 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string) error {
 		fmt.Printf("SSH key %s was not found, creating new one...\n", sshKeyPath)
 		createKey = true
 	} else {
-		ok, err := c.TUI.NewPrompt(
-			fmt.Sprintf("SSH key %s was found, do you want to overwrite it with a new one?", sshKeyPath),
+		keep, err := c.TUI.NewPrompt(
+			fmt.Sprintf("SSH key %s was found, do you want to keep it? (Changing keypair forces servers re-creation)", sshKeyPath),
 			true,
 		)
 		if err != nil {
 			return err
 		}
 
-		if ok {
+		if !keep {
 			createKey = true
 		}
 	}

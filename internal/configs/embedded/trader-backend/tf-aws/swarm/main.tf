@@ -14,7 +14,6 @@ resource "aws_nat_gateway" "public_nat" {
   }
 }
 
-
 resource "aws_instance" "manager" {
   ami           = var.ami_image_id
   instance_type = var.manager_instance_type
