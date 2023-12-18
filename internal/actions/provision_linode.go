@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
@@ -47,15 +49,14 @@ type linodeConfigurer struct {
 // It also creates a ssh key pair via ssh-keygen which is used in cluster
 // servers for default user and does some other neccessary configuration.
 func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	// Copy terraform files to cwd/linode.tf
-	if err := c.EmbedCopier.CopyMultiToDest(
-		configs.EmbededConfigs,
-		// Dest
-		"./linode.tf",
-		// Embed paths must be in this order: main.tf output.tf vars.tf
-		"embedded/trader-backend/tf-linode/main.tf",
-		"embedded/trader-backend/tf-linode/output.tf",
-		"embedded/trader-backend/tf-linode/vars.tf",
+	// Copy tf configs
+	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
+		files.EmbedCopierOp{
+			Src:       "embedded/trader-backend/tf-linode",
+			Dst:       TF_FILES_DIR,
+			Dir:       true,
+			Overwrite: true,
+		},
 	); err != nil {
 		return nil, fmt.Errorf("generating lindode.tf file: %w", err)
 	}
@@ -65,6 +66,7 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	command := exec.Command("terraform", args...)
 	// for $HOME
 	command.Env = os.Environ()
+	command.Dir = TF_FILES_DIR
 	// Add linode tokens
 	command.Env = append(command.Env,
 		fmt.Sprintf("LINODE_TOKEN=%s", l.Token),
@@ -80,6 +82,8 @@ func (l linodeConfigurer) generateArgs() []string {
 		"-var", fmt.Sprintf(`region=%s`, l.Region),
 		"-var", fmt.Sprintf(`server_label_prefix=%s`, l.LabelPrefix),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, l.CreateBrokerServer),
+		"-var", fmt.Sprintf(`create_swarm=%t`, l.DeploySwarm),
+		"-var", fmt.Sprintf(`num_workers=%d`, l.NumWorker),
 	}
 
 	if l.DbId != "" {
@@ -131,6 +135,7 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 		defaultRegion             = ""
 		defaultSwarmNodeSize      = "g6-dedicated-2"
 		defaultBrokerSize         = "g6-dedicated-2"
+		defaultNumberOfWokers     = "4"
 	)
 
 	if cfg.ServerProvider == configs.D8XServerProviderLinode {
@@ -139,6 +144,10 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 			defaultDbId = cfg.LinodeConfig.DbId
 			defaultRegion = cfg.LinodeConfig.Region
 			defaultClusterLabelPrefix = cfg.LinodeConfig.LabelPrefix
+			defaultNumberOfWokers = strconv.Itoa(cfg.LinodeConfig.NumWorker)
+			if cfg.LinodeConfig.NumWorker <= 0 {
+				defaultNumberOfWokers = "4"
+			}
 		}
 	}
 
@@ -208,19 +217,8 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	// Broker-server
 	l.CreateBrokerServer = c.setup.deployBroker
-
-	// Servers sizes
-	fmt.Println("Swarm linode node size")
-	swarmNodeSize, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("g6-dedicated-2"),
-		components.TextInputOptValue(defaultSwarmNodeSize),
-	)
-	if err != nil {
-		return l, err
-	}
-	l.SwarmNodeSize = swarmNodeSize
-	fmt.Println("Broker linode node size")
-	if l.CreateBrokerServer {
+	if c.setup.deployBroker {
+		fmt.Println("Broker linode node size")
 		brokerNodeSize, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("g6-dedicated-2"),
 			components.TextInputOptValue(defaultBrokerSize),
@@ -229,6 +227,30 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 			return l, err
 		}
 		l.BrokerServerSize = brokerNodeSize
+	}
+
+	// Swarm details
+	if c.setup.deploySwarm {
+		l.DeploySwarm = true
+
+		// Servers sizes
+		fmt.Println("Swarm linode node size")
+		swarmNodeSize, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("g6-dedicated-2"),
+			components.TextInputOptValue(defaultSwarmNodeSize),
+		)
+		if err != nil {
+			return l, err
+		}
+		l.SwarmNodeSize = swarmNodeSize
+
+		// Number of workers
+		numWorkers, err := c.CollectNumberOfWorkers(defaultNumberOfWokers)
+		if err != nil {
+			return l, fmt.Errorf("incorrect number of workers: %w", err)
+		}
+		l.NumWorker = numWorkers
+
 	}
 
 	c.provisioning.collectedLinodeConfigurer = &l

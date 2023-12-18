@@ -54,7 +54,7 @@ variable "security_group_ids_workers" {
 }
 
 variable "keypair_name" {
-  type        = any
+  type        = string
   description = "AWS keypair to be used for manager and workers"
 }
 

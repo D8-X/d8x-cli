@@ -48,13 +48,13 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-aws",
-			Dst:       "./terraform",
+			Dst:       TF_FILES_DIR,
 			Dir:       true,
 			Overwrite: true,
 		},
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-aws/swarm",
-			Dst:       "./terraform/swarm",
+			Dst:       TF_FILES_DIR + "/swarm",
 			Dir:       true,
 			Overwrite: true,
 		},
@@ -114,6 +114,7 @@ func (a *awsConfigurer) generateVariables() []string {
 		"-var", fmt.Sprintf(`create_broker_server=%t`, a.CreateBrokerServer),
 		"-var", fmt.Sprintf(`rds_creds_filepath=%s`, RDS_CREDS_FILE),
 		"-var", fmt.Sprintf(`create_swarm=%t`, a.DeploySwarm),
+		"-var", fmt.Sprintf(`num_workers=%d`, a.NumWorker),
 	}
 }
 
@@ -200,21 +201,11 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 		}
 		awsCfg.RDSInstanceClass = dbClass
 
-		fmt.Println("Enter number of worker servers to create: ")
-		numWorkers, err := c.TUI.NewInput(
-			components.TextInputOptValue(awsDefaultNumberWorkers),
-			components.TextInputOptPlaceholder("4"),
-			components.TextInputOptValidation(func(s string) bool {
-				_, err := strconv.Atoi(s)
-				return err == nil
-			}, "please provide a valid number"),
-		)
+		numWorkers, err := c.CollectNumberOfWorkers(awsDefaultNumberWorkers)
 		if err != nil {
-			return awsCfg, err
+			return awsCfg, fmt.Errorf("incorrect number of workers: %w", err)
 		}
-		// there will be no err here since we validate it in input
-		numWorkersInt, _ := strconv.Atoi(numWorkers)
-		awsCfg.NumWorker = numWorkersInt
+		awsCfg.NumWorker = numWorkers
 	}
 
 	// Update the config

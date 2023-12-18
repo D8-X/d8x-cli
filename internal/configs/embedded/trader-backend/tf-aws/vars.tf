@@ -62,11 +62,15 @@ variable "create_swarm" {
   default     = true
 }
 
-variable "ssh_jump_host_cfg_path" {
+# tf files are usually in ./terraform directory, but jump config must be placed
+# in ../ for ansible. Therfore we will append path prefix manually depending on
+# the context.
+variable "ssh_jump_host_cfg_filename" {
   type        = string
   description = "Path to ssh jump host config file"
-  default     = "../manager_ssh_jump.conf"
+  default     = "manager_ssh_jump.conf"
 }
+
 variable "host_cfg_path" {
   type        = string
   description = "Path to ssh jump host config file"

@@ -44,9 +44,6 @@ type D8XConfig struct {
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
-	// Whether broker server is deployed
-	BrokerDeployed bool `json:"broker_deployed"`
-
 	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
 
 	ReferralConfig ReferralConfig `json:"referral_config"`
@@ -75,6 +72,10 @@ type D8XConfig struct {
 
 	// Whether metrics services were deployed
 	MetricsDeployed bool `json:"metrics_deployed"`
+	// Whether broker server is deployed
+	BrokerDeployed bool `json:"broker_deployed"`
+	// Whether swarm is deployed
+	SwarmDeployed bool `json:"swarm_deployed"`
 }
 
 type ReferralConfig struct {
@@ -115,6 +116,8 @@ type D8XLinodeConfig struct {
 	BrokerServerSize   string `json:"broker_server_size"`
 	CreateBrokerServer bool   `json:"create_broker_server"`
 	DeploySwarm        bool   `json:"deploy_swarm"`
+	// Number of worker servers to deploy in swarm
+	NumWorker int `json:"num_worker"`
 }
 
 type D8XAWSConfig struct {

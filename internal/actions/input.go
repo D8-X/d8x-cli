@@ -155,19 +155,21 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 	}
 
 	// Swarm deployment inputs
-	if err := input.CollectSwarmDeployInputs(ctx); err != nil {
-		return err
-	}
-	// Swarm nginx inputs
-	if err := input.CollectSwarmNginxInputs(ctx); err != nil {
-		return err
-	}
+	if input.setup.deploySwarm {
+		if err := input.CollectSwarmDeployInputs(ctx); err != nil {
+			return err
+		}
+		// Swarm nginx inputs
+		if err := input.CollectSwarmNginxInputs(ctx); err != nil {
+			return err
+		}
 
-	deployMetrics, err := input.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
-	if err != nil {
-		return err
+		deployMetrics, err := input.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
+		if err != nil {
+			return err
+		}
+		input.setup.deployMetrics = deployMetrics
 	}
-	input.setup.deployMetrics = deployMetrics
 
 	return nil
 }
@@ -986,6 +988,7 @@ func (c *InputCollector) CollectCertbotEmail(cfg *configs.D8XConfig) (string, er
 	fmt.Println("Enter your email address for certbot notifications: ")
 	email, err := c.TUI.NewInput(
 		components.TextInputOptPlaceholder("my-email@domain.com"),
+		components.TextInputOptDenyEmpty(),
 	)
 	if err != nil {
 		return "", err

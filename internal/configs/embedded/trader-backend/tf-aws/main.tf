@@ -134,7 +134,7 @@ ${ip} worker_private_ip=${ip} hostname=${format("worker-%02d", index + 1)}
 %{endfor~}
 
 [workers:vars]
-ansible_ssh_common_args="-J jump_host -F ${var.ssh_jump_host_cfg_path}"
+ansible_ssh_common_args="-J jump_host -F ${var.ssh_jump_host_cfg_filename}"
 
 %{endif~}
 
@@ -164,6 +164,6 @@ variable "ssh_jump_host" {
 resource "local_file" "jump_host_ssh_config" {
   count    = var.create_swarm ? 1 : 0
   content  = format(var.ssh_jump_host, module.swarm_servers[0].manager.public_ip)
-  filename = var.ssh_jump_host_cfg_path
+  filename = "../${var.ssh_jump_host_cfg_filename}"
 }
 

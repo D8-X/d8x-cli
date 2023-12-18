@@ -130,7 +130,7 @@
 
     # Docker swarm setup
     - name: Init a new swarm on manager with private ip address
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
       community.docker.docker_swarm:
         state: present
         advertise_addr: "{{ manager_ip }}"
@@ -140,19 +140,18 @@
     - name: Delete default ingress network
       ansible.builtin.shell:
         cmd: yes | docker network rm -f ingress
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
     - name: Create ingress network
       ansible.builtin.shell:
         cmd: docker network create --driver overlay --ingress --subnet="{{ docker_ingress_subnet }}" ingress
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
     - name: Set manager availability to DRAIN
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
       community.docker.docker_node:
         hostname: "{{ manager_hostname }}"
         availability: "drain"
-
     - name: Join swarm as worker
-      when: inventory_hostname in groups["workers"]
+      when: groups.workers is defined and inventory_hostname in groups["workers"]
       community.docker.docker_swarm:
         state: join
         join_token: "{{ swarm_result.swarm_facts.JoinTokens.Worker }}"

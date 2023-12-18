@@ -81,12 +81,14 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
-	if err := c.SwarmDeploy(ctx); err != nil {
-		return err
-	}
+	if c.Input.setup.deploySwarm {
+		if err := c.SwarmDeploy(ctx); err != nil {
+			return err
+		}
 
-	if err := c.SwarmNginx(ctx); err != nil {
-		return err
+		if err := c.SwarmNginx(ctx); err != nil {
+			return err
+		}
 	}
 
 	if ok, _ := c.TUI.NewPrompt("Do you want to perform services healthchecks?", true); ok {
