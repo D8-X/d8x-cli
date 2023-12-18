@@ -140,7 +140,7 @@ func RunD8XCli() {
 				ArgsUsage: "[port 8080]",
 			},
 		},
-		// Global flags accesible to all subcommands
+		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name: flags.ConfigDir,
