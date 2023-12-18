@@ -8,7 +8,7 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "1k"
+        max-size: "10m"
         max-file: "10"
     networks:
       - d8x_backend
@@ -44,6 +44,11 @@ services:
       - d8x_backend
     deploy:
       replicas: 2
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "10"
   history:
     image: ghcr.io/d8-x/d8x-trader-history:main
     environment:
@@ -59,8 +64,8 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "25m"
-        max-file: "20"
+        max-size: "5m"
+        max-file: "10"
     deploy:
       replicas: 1
     configs:
@@ -95,7 +100,7 @@ services:
     logging:
       driver: "json-file"
       options:
-        max-size: "5000k"
+        max-size: "5m"
         max-file: "10"
     configs:
       - cfg_rpc_referral
@@ -118,7 +123,7 @@ services:
       - d8x_backend
     logging:
       options:
-        max-size: "10m"
+        max-size: "5m"
         max-file: "10"
     configs:
       - cfg_prices
@@ -142,12 +147,30 @@ services:
       - d8x_backend
     logging:
       options:
-        max-size: "10m"
+        max-size: "5m"
         max-file: "10"
     configs:
       - cfg_prices
     deploy:
       replicas: 1
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    hostname: "{{ .Node.Hostname }}"
+    deploy:
+      mode: global
+    ports:
+        # If published port is changed, make sure to edit cadvisor_port security
+        # group port too
+      - target: 8080
+        published: 4003
+        protocol: tcp
+        mode: host
+    volumes:
+      - /var/lib/docker:/var/lib/docker:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run
+      - /sys:/sys:ro
+      - /dev/disk/:/dev/disk:ro
 
 networks:
   d8x_backend:

@@ -114,3 +114,26 @@ resource "aws_security_group" "nfs_access" {
   }
 }
 
+resource "aws_security_group" "cadvisor_port" {
+  name_prefix = "d8x-cluster-nfs-sg"
+  vpc_id      = aws_vpc.d8x_cluster_vpc.id
+
+  tags = {
+    Name = "d8x-cluster-cadvisor-sg"
+  }
+
+  ingress {
+    cidr_blocks = local.subnets
+    from_port   = 4003
+    to_port     = 4003
+    protocol    = "tcp"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+

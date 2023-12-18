@@ -257,7 +257,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		if ok {
 			fmt.Println(styles.ItalicText.Render("Removing existing stack..."))
 			out, err := managerSSHConn.ExecCommand(
-				fmt.Sprintf(`echo "%s"| sudo -S docker stack rm %s`, pwd, dockerStackName),
+				fmt.Sprintf(`docker stack rm %s`, dockerStackName),
 			)
 			fmt.Println(string(out))
 			if err != nil {
@@ -296,6 +296,13 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("temp storage of /etc/exports file failed: %w", err)
 	}
 
+	managedConfigNames := []string{
+		"cfg_rpc",
+		"cfg_rpc_referral",
+		"cfg_rpc_history",
+		"cfg_referral",
+		"cfg_prices",
+	}
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
@@ -304,6 +311,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
 		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
+
+		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
@@ -380,7 +389,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	// Recreate configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err := managerSSHConn.ExecCommand(
-		`docker config ls --format "{{.Name}}" | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
+		"echo -e '" + strings.Join(managedConfigNames, "\n") + `' | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
 	)
 	fmt.Println(string(out))
 	if err != nil {

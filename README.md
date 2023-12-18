@@ -242,6 +242,23 @@ d8x tf-destroy
 
 </details>
 
+
+<details>
+  <summary><h2>Metrics</h2></summary>
+
+If you choose to deploy metrics services, grafana and prometheus will be
+deployed with docker compose on manager node. You can use subcommand
+`grafana-tunnel` to create a tunnel to manager node's grafana service. This will
+expose the grafana service on your local machine and you will be able to inspect
+the metrics.
+
+Metrics are scraped from each worker node's `cadvisor` service.
+
+Note that default grafana installation has username and password set to `admin`.
+You will be prompted to change the password on first login.
+
+</details>
+
 ## SSH into machines
 
 `d8x` cli can be used to quickly ssh into your provisioned machines.
@@ -387,3 +404,22 @@ D8X-CLI is not tested on Windows and will probably not work, we would
 recommend using WSL2 to run D8X-CLI on Windows.
 
 </details>
+
+
+# Metrics
+
+Metrics is advanced feature and is not required to run the trader backend.
+However, we do recommend to deploy metrics stack in order to be able to monitor
+resource usage of deployed services.
+
+Metrics stack will be deployed automatically when running `d8x setup` command.
+Or you can manually deploy metrics via `d8x setup metrics-deploy` command.
+
+## Metrics services ports
+
+- Grafana is published at `127.0.0.1` on port `4002` on manager node
+- Cadvisor instances are deployed on port `4003` on each worker node.
+
+By default Prometheus instance is not published and is only accessible from
+grafana instance. Grafana and cadvisor ports are not accessible to the public
+network.

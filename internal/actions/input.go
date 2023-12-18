@@ -73,6 +73,8 @@ type InputCollectorSetupData struct {
 	setupDomainEntered bool
 
 	certbotEmailEntered bool
+
+	deployMetrics bool
 }
 
 type BrokerDeployInput struct {
@@ -158,6 +160,12 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 	if err := input.CollectSwarmNginxInputs(ctx); err != nil {
 		return err
 	}
+
+	deployMetrics, err := input.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
+	if err != nil {
+		return err
+	}
+	input.setup.deployMetrics = deployMetrics
 
 	return nil
 }

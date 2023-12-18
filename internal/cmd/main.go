@@ -99,6 +99,12 @@ func RunD8XCli() {
 						Action:      container.SwarmNginx,
 						Description: SwarmNginxDescription,
 					},
+					{
+						Name:        "metrics-deploy",
+						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
+						Action:      container.DeployMetrics,
+						Description: DeployMetricsDescription,
+					},
 				},
 			},
 			{
@@ -127,8 +133,14 @@ func RunD8XCli() {
 				Usage:  "Attach ssh session to one of your servers",
 				Action: container.SSH,
 			},
+			{
+				Name:      "grafana-tunnel",
+				Usage:     "Create ssh tunnel to grafana service on manager",
+				Action:    container.TunnelGrafana,
+				ArgsUsage: "[port 8080]",
+			},
 		},
-		// Global flags accesible to all subcommands
+		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name: flags.ConfigDir,

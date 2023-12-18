@@ -119,6 +119,12 @@ resource "aws_instance" "manager" {
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "manager")
   }
+
+
+  # Set 30 GB for worker nodes
+  root_block_device {
+    volume_size = 30
+  }
 }
 
 resource "aws_instance" "broker_server" {
@@ -144,10 +150,15 @@ resource "aws_instance" "nodes" {
   key_name      = aws_key_pair.d8x_cluster_ssh_key.key_name
   subnet_id     = aws_subnet.workers_subnet.id
 
-  security_groups = [aws_security_group.ssh_docker_sg.id]
+  security_groups = [aws_security_group.ssh_docker_sg.id, aws_security_group.cadvisor_port.id]
 
   tags = {
     Name = format("%s-%s", var.server_label_prefix, "worker-${count.index + 1}")
+  }
+
+  # Set 25 GB for worker nodes
+  root_block_device {
+    volume_size = 25
   }
 }
 

@@ -64,6 +64,13 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
+	// Deploy metrics stack if user wants to
+	if c.Input.setup.deployMetrics {
+		if err := c.DeployMetrics(ctx); err != nil {
+			return err
+		}
+	}
+
 	if c.Input.setup.deployBroker {
 		if err := c.BrokerDeploy(ctx); err != nil {
 			return err
