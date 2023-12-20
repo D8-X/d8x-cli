@@ -73,9 +73,14 @@ type D8XConfig struct {
 	// Whether metrics services were deployed
 	MetricsDeployed bool `json:"metrics_deployed"`
 	// Whether broker server is deployed
-	BrokerDeployed bool `json:"broker_deployed"`
+	BrokerDeployed        bool `json:"broker_deployed"`
+	BrokerNginxDeployed   bool `json:"broker_nginx_deployed"`
+	BrokerCertbotDeployed bool `json:"broker_certbot_deployed"`
+
 	// Whether swarm is deployed
-	SwarmDeployed bool `json:"swarm_deployed"`
+	SwarmDeployed        bool `json:"swarm_deployed"`
+	SwarmNginxDeployed   bool `json:"swarm_nginx_deployed"`
+	SwarmCertbotDeployed bool `json:"swarm_certbot_deployed"`
 
 	// MD5 hash of last created ssh private key, empty string initially
 	SSHKeyMD5 string `json:"ssh_key_hash"`

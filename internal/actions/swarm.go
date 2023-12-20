@@ -570,6 +570,9 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	} else {
 		fmt.Println(styles.SuccessText.Render("Manager node nginx setup done!"))
+
+		// Update sate
+		cfg.SwarmNginxDeployed = true
 	}
 
 	if setupCertbot {
@@ -598,6 +601,8 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 			return fmt.Errorf("certbot setup failed: %w", err)
 		} else {
 			fmt.Println(styles.SuccessText.Render("Manager server certificates setup done!"))
+
+			cfg.SwarmCertbotDeployed = true
 		}
 	}
 

@@ -159,8 +159,8 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 	// collected. Here we'll determine if broker/swarm was deployed previously
 	// and only if it was - don't mark it to run the nginx+certbot setup if key
 	// did not change. Otherwise we want to prompt user to run nginx+certbot
-	input.runBrokerNginxCertbot = input.sshKeyChanged || (!isBrokerDeployed && input.setup.deployBroker)
-	input.runSwarmNginxCertbot = input.sshKeyChanged || (!isSwarmDeployed && input.setup.deploySwarm)
+	input.runBrokerNginxCertbot = input.sshKeyChanged || (!isBrokerDeployed && input.setup.deployBroker && !cfg.BrokerNginxDeployed && !cfg.BrokerCertbotDeployed)
+	input.runSwarmNginxCertbot = input.sshKeyChanged || (!isSwarmDeployed && input.setup.deploySwarm && !cfg.SwarmNginxDeployed && !cfg.SwarmCertbotDeployed)
 
 	// Collect private keys whenever they are not collected
 	if err := input.CollectPrivateKeys(ctx); err != nil {

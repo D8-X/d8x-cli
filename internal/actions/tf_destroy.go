@@ -68,5 +68,11 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	cfg.BrokerDeployed = false
 	cfg.SwarmDeployed = false
 
+	cfg.SwarmCertbotDeployed = false
+	cfg.BrokerCertbotDeployed = false
+
+	cfg.SwarmNginxDeployed = false
+	cfg.BrokerNginxDeployed = false
+
 	return c.ConfigRWriter.Write(cfg)
 }
