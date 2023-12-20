@@ -119,6 +119,8 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 			LabelPrefix:        "prefix",
 			RDSInstanceClass:   "db.t4g.small",
 			CreateBrokerServer: true,
+			NumWorker:          89,
+			DeploySwarm:        true,
 		},
 	}
 	wantVars := []string{
@@ -130,6 +132,8 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 		"-var", "db_instance_class=db.t4g.small",
 		"-var", "create_broker_server=true",
 		"-var", "rds_creds_filepath=" + RDS_CREDS_FILE,
+		"-var", "create_swarm=true",
+		"-var", "num_workers=89",
 	}
 
 	assert.Equal(t, wantVars, a.generateVariables())

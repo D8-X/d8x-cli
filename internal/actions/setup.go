@@ -76,8 +76,10 @@ func (c *Container) Setup(ctx *cli.Context) error {
 			return err
 		}
 
-		if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
-			return err
+		if c.Input.runBrokerNginxCertbot {
+			if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -86,8 +88,10 @@ func (c *Container) Setup(ctx *cli.Context) error {
 			return err
 		}
 
-		if err := c.SwarmNginx(ctx); err != nil {
-			return err
+		if c.Input.runSwarmNginxCertbot {
+			if err := c.SwarmNginx(ctx); err != nil {
+				return err
+			}
 		}
 	}
 

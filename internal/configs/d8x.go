@@ -76,6 +76,9 @@ type D8XConfig struct {
 	BrokerDeployed bool `json:"broker_deployed"`
 	// Whether swarm is deployed
 	SwarmDeployed bool `json:"swarm_deployed"`
+
+	// MD5 hash of last created ssh private key, empty string initially
+	SSHKeyMD5 string `json:"ssh_key_hash"`
 }
 
 type ReferralConfig struct {

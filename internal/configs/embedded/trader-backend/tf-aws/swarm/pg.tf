@@ -78,7 +78,8 @@ password: %s
 resource "local_file" "rds_db_password" {
   depends_on = [aws_db_instance.pg]
   content    = format(var.pg_details, aws_db_instance.pg.address, aws_db_instance.pg.username, aws_db_instance.pg.port, random_password.db_password.result)
-  filename   = var.rds_creds_filepath
+  // Outside terraform dir
+  filename = "../${var.rds_creds_filepath}"
 }
 
 

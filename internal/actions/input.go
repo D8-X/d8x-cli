@@ -2,6 +2,7 @@ package actions
 
 import (
 	"bytes"
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"os"
@@ -35,6 +36,9 @@ type InputCollector struct {
 
 	// Default ssh key path
 	SSHKeyPath string
+	// Whenever ssh key hash changes - this will be set to true. SSH key change
+	// implies that all servers will be reprovisioned.
+	sshKeyChanged bool
 
 	TUI components.ComponentsRunner
 
@@ -55,6 +59,11 @@ type InputCollector struct {
 	swarmDeployInput SwarmDeployInput
 	// Collected swarm nginx setup data
 	swarmNginxInput SwarmNginxInput
+
+	// Whether we should run the nginx+certbot setup for broker/swarm servers.
+	// Only when ssh key changes, or when broker/swarm was not deployed before.
+	runBrokerNginxCertbot bool
+	runSwarmNginxCertbot  bool
 }
 
 type ProvisioningInput struct {
@@ -130,11 +139,28 @@ type SwarmNginxInput struct {
 // and broker server deployments. This does not include credentials collection for
 // server provider setup.
 func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
+	// Collect initial values of deployment status. These values will reflect
+	// the state of broker/swarm/metrics deployments before any setup actions
+	// are run. This cfg should not be used after determining deployment
+	// statuses since the actual cfg will be updated within setup actions.
+	cfg, err := input.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	isBrokerDeployed := cfg.BrokerDeployed
+	isSwarmDeployed := cfg.SwarmDeployed
 
 	// Collect server provider related provisioning data
 	if err := input.CollectProvisioningData(ctx); err != nil {
 		return err
 	}
+
+	// input.sshKeyChanged  will be updated after provisioning data is
+	// collected. Here we'll determine if broker/swarm was deployed previously
+	// and only if it was - don't mark it to run the nginx+certbot setup if key
+	// did not change. Otherwise we want to prompt user to run nginx+certbot
+	input.runBrokerNginxCertbot = input.sshKeyChanged || (!isBrokerDeployed && input.setup.deployBroker)
+	input.runSwarmNginxCertbot = input.sshKeyChanged || (!isSwarmDeployed && input.setup.deploySwarm)
 
 	// Collect private keys whenever they are not collected
 	if err := input.CollectPrivateKeys(ctx); err != nil {
@@ -148,9 +174,12 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 			return err
 		}
 
-		// Nginx+certbot info
-		if err := input.CollectBrokerNginxInput(ctx); err != nil {
-			return err
+		// Whenever ssh key changes or broker was not deployed yet - collect and
+		// run nginx+certbot setup for broker
+		if input.runBrokerNginxCertbot {
+			if err := input.CollectBrokerNginxInput(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -159,9 +188,11 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 		if err := input.CollectSwarmDeployInputs(ctx); err != nil {
 			return err
 		}
-		// Swarm nginx inputs
-		if err := input.CollectSwarmNginxInputs(ctx); err != nil {
-			return err
+
+		if input.runSwarmNginxCertbot {
+			if err := input.CollectSwarmNginxInputs(ctx); err != nil {
+				return err
+			}
 		}
 
 		deployMetrics, err := input.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
@@ -219,7 +250,7 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 	}
 	input.provisioning.selectedServerProvider = SupportedServerProvider(selectedProvider[0])
 
-	if err := input.EnsureSSHKeyPresent(input.SSHKeyPath); err != nil {
+	if err := input.EnsureSSHKeyPresent(input.SSHKeyPath, cfg); err != nil {
 		return fmt.Errorf("ensuring ssh key is present: %w", err)
 	} else {
 		// Print a line because ssh-keygen output can be long
@@ -1058,8 +1089,10 @@ func (c *InputCollector) SwarmNginxCollectDomains(cfg *configs.D8XConfig) ([]hos
 }
 
 // EnsureSSHKeyPresent prompts user to create or override new ssh key pair in
-// default provided sshKeyPath location
-func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string) error {
+// default provided sshKeyPath location. Config cfg is updated with changed
+// SSHKeyMd5 hash on key change, but updates are not persisted to disk, only to
+// cfg object.
+func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8XConfig) error {
 	// By default, we assume key exists, if it doesn't - we will create it
 	// without prompting for users's constent, otherwise we prompt for consent.
 	createKey := false
@@ -1094,6 +1127,21 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string) error {
 		if err := cmd.Run(); err != nil {
 			return err
 		}
+
+		// Update md5 hash of private key
+		h := md5.New()
+		privateKey, err := os.ReadFile(sshKeyPath)
+		if err != nil {
+			return fmt.Errorf("reading private key: %w", err)
+		}
+		if _, err := h.Write(privateKey); err != nil {
+			return err
+		}
+		md5Hash := fmt.Sprintf("%x", h.Sum(nil))
+		if md5Hash != cfg.SSHKeyMD5 {
+			c.sshKeyChanged = true
+		}
+		cfg.SSHKeyMD5 = md5Hash
 	}
 	return nil
 }

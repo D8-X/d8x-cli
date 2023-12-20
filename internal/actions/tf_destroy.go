@@ -68,5 +68,5 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	cfg.BrokerDeployed = false
 	cfg.SwarmDeployed = false
 
-	return nil
+	return c.ConfigRWriter.Write(cfg)
 }
