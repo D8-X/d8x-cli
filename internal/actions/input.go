@@ -546,8 +546,9 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			}
 			// Lastly, prepopulate with available value from broker-nginx setup
 			if value == "" && input.brokerNginxInput.domainName != "" {
-				value = EnsureHttpsPrefixExists(input.brokerNginxInput.domainName)
+				value = input.brokerNginxInput.domainName
 			}
+			value = EnsureHttpsPrefixExists(value)
 
 			fmt.Println("Enter remote broker http url:")
 			brokerUrl, err := input.TUI.NewInput(
