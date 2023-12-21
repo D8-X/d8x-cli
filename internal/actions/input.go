@@ -202,12 +202,6 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 		input.setup.deployMetrics = deployMetrics
 	}
 
-	deployMetrics, err := input.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
-	if err != nil {
-		return err
-	}
-	input.setup.deployMetrics = deployMetrics
-
 	return nil
 }
 

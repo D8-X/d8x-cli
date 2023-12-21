@@ -27,7 +27,6 @@ resource "aws_instance" "manager" {
     Name = format("%s-%s", var.server_label_prefix, "manager")
   }
 
-
   # Set 30 GB for worker nodes
   root_block_device {
     volume_size = 30

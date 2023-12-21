@@ -32,19 +32,6 @@ type awsConfigurer struct {
 }
 
 func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	// if err := c.EmbedCopier.CopyMultiToDest(
-	// 	configs.EmbededConfigs,
-	// 	"./aws.tf",
-	// 	"embedded/trader-backend/tf-aws/main.tf",
-	// 	"embedded/trader-backend/tf-aws/routes.tf",
-	// 	"embedded/trader-backend/tf-aws/sg.tf",
-	// 	"embedded/trader-backend/tf-aws/pg.tf",
-	// 	"embedded/trader-backend/tf-aws/vars.tf",
-	// 	"embedded/trader-backend/tf-aws/output.tf",
-	// ); err != nil {
-	// 	return nil, fmt.Errorf("generating aws.tf file: %w", err)
-	// }
-
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-aws",
