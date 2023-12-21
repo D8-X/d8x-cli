@@ -91,8 +91,6 @@ type InputCollectorSetupData struct {
 type BrokerDeployInput struct {
 	// Is data already collected
 	collected bool
-	// whether user selected to be guided through configuration by cli
-	guideConfig bool
 
 	// Broker private key
 	privateKey string
@@ -379,7 +377,8 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 }
 
 // CollectBrokerDeployInput collects all the input required for broker-deploy
-// action
+// action. For broker deployment we do not collect chain id or rpc urls since
+// broker is chain agnostic.
 func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
 	if input.brokerDeployInput.collected {
 		return nil
@@ -390,30 +389,6 @@ func (input *InputCollector) CollectBrokerDeployInput(ctx *cli.Context) error {
 	// Collect private keys whenever they are not collected
 	if err := input.CollectPrivateKeys(ctx); err != nil {
 		return err
-	}
-
-	// Check with user if we want to go through configuration via CLI
-	guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through the broker-deploy configuration?", true)
-	if err != nil {
-		return err
-	}
-	input.brokerDeployInput.guideConfig = guideUser
-	if guideUser {
-		cfg, err := input.ConfigRWriter.Read()
-		if err != nil {
-			return err
-		}
-		// Make sure chain id is present in config
-		chainId, err := input.GetChainId(cfg, ctx)
-		if err != nil {
-			return err
-		}
-		chainIdStr := strconv.Itoa(int(chainId))
-
-		// Collect HTTP rpc endpoints
-		if err := input.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
-			return err
-		}
 	}
 
 	tbpsFromPercentage, err := input.CollectBrokerFee()
@@ -463,8 +438,9 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 		}
 	}
 
-	// Collect broker server domain
-	domainValue := cfg.SuggestSubdomain(configs.D8XServiceBrokerServer, input.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))))
+	// Collect broker server domain. Broker does not use chain id, so we will
+	// not use SuggestSubdomain, but simply suggest broker.domain
+	domainValue := "broker." + cfg.SetupDomain
 	if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
 		if v.HostName != "" {
 			domainValue = v.HostName

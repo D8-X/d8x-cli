@@ -234,7 +234,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		return err
 	}
 
-	// See broker.go for broker server setup
+	// See broker.go for broker server setup directory
 	brokerDir := "./broker"
 
 	ipBroker, err := c.HostsCfg.GetBrokerPublicIp()
