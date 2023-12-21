@@ -59,8 +59,15 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	// If configuration fails we might still want to proceed with other actions
 	// in case this is a retry
 	if err := c.Configure(ctx); err != nil {
-		if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
-			return err
+		// On linode: when subsequent setup runs are performed, old servers will
+		// not be accessible because of permit root login is set to false and we
+		// can't provide dynamic user list to ansible.
+		if cfg.ServerProvider == configs.D8XServerProviderLinode && (cfg.SwarmDeployed || cfg.BrokerDeployed) {
+			fmt.Println("Some configuration steps failed, but we will continue with other actions...")
+		} else {
+			if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
+				return err
+			}
 		}
 	}
 

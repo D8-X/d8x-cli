@@ -55,6 +55,11 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		styles.SuccessText.Render("Password was stored in ./password.txt file"),
 	)
 
+	configureUser := cfg.GetAnsibleUser()
+
+	// For linode when subsequent configuration is performed, we need to use the
+	// cluster user and provide become_pass for old servers
+
 	// Generate ansible-playbook args
 	args := []string{
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, privKeyPath),
@@ -63,7 +68,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
 		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, c.UserPassword),
 		"-i", "./hosts.cfg",
-		"-u", cfg.GetAnsibleUser(),
+		"-u", configureUser,
 		"./playbooks/setup.ansible.yaml",
 	}
 

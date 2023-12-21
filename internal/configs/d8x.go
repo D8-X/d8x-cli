@@ -101,7 +101,7 @@ func (d *D8XConfig) GetAnsibleUser() string {
 	if d.ServerProvider == D8XServerProviderLinode {
 		return "root"
 	} else if d.ServerProvider == D8XServerProviderAWS {
-		// In case used image changes - we should also chane the user!
+		// In case used image changes - we should also change the user!
 		return "ubuntu"
 	}
 	return ""
