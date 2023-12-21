@@ -421,5 +421,5 @@ Or you can manually deploy metrics via `d8x setup metrics-deploy` command.
 - Cadvisor instances are deployed on port `4003` on each worker node.
 
 By default Prometheus instance is not published and is only accessible from
-grafana instance. Grafana and cadvisor ports are not accesible to the public
+grafana instance. Grafana and cadvisor ports are not accessible to the public
 network.
