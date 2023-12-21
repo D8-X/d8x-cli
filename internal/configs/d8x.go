@@ -44,9 +44,6 @@ type D8XConfig struct {
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
-	// Whether broker server is deployed
-	BrokerDeployed bool `json:"broker_deployed"`
-
 	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
 
 	ReferralConfig ReferralConfig `json:"referral_config"`
@@ -75,6 +72,18 @@ type D8XConfig struct {
 
 	// Whether metrics services were deployed
 	MetricsDeployed bool `json:"metrics_deployed"`
+	// Whether broker server is deployed
+	BrokerDeployed        bool `json:"broker_deployed"`
+	BrokerNginxDeployed   bool `json:"broker_nginx_deployed"`
+	BrokerCertbotDeployed bool `json:"broker_certbot_deployed"`
+
+	// Whether swarm is deployed
+	SwarmDeployed        bool `json:"swarm_deployed"`
+	SwarmNginxDeployed   bool `json:"swarm_nginx_deployed"`
+	SwarmCertbotDeployed bool `json:"swarm_certbot_deployed"`
+
+	// MD5 hash of last created ssh private key, empty string initially
+	SSHKeyMD5 string `json:"ssh_key_hash"`
 }
 
 type ReferralConfig struct {
@@ -114,6 +123,9 @@ type D8XLinodeConfig struct {
 	SwarmNodeSize      string `json:"swarm_node_size"`
 	BrokerServerSize   string `json:"broker_server_size"`
 	CreateBrokerServer bool   `json:"create_broker_server"`
+	DeploySwarm        bool   `json:"deploy_swarm"`
+	// Number of worker servers to deploy in swarm
+	NumWorker int `json:"num_worker"`
 }
 
 type D8XAWSConfig struct {
@@ -124,6 +136,9 @@ type D8XAWSConfig struct {
 	RDSInstanceClass       string `json:"rds_instance_class"`
 	CreateBrokerServer     bool   `json:"create_broker_server"`
 	RDSCredentialsFilePath string `json:"rds_credentials_file_path"`
+	DeploySwarm            bool   `json:"deploy_swarm"`
+	// Number of worker servers to deploy in swarm
+	NumWorker int `json:"num_worker"`
 }
 
 type D8XService struct {

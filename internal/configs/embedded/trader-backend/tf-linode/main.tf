@@ -10,6 +10,7 @@ terraform {
 provider "linode" {}
 
 resource "linode_instance" "manager" {
+  count           = var.create_swarm ? 1 : 0
   type            = var.worker_size
   region          = var.region
   private_ip      = true
@@ -20,7 +21,7 @@ resource "linode_instance" "manager" {
 }
 
 resource "linode_instance" "nodes" {
-  count = var.num_workers
+  count = var.create_swarm ? var.num_workers : 0
 
   type            = var.worker_size
   region          = var.region
@@ -49,20 +50,22 @@ resource "linode_database_access_controls" "pgdb" {
   database_id   = var.linode_db_cluster_id
   database_type = "postgresql"
   depends_on    = [linode_instance.manager, linode_instance.nodes]
-  allow_list    = concat(linode_instance.nodes.*.private_ip_address, [linode_instance.manager.private_ip_address])
+  allow_list    = concat(linode_instance.nodes.*.private_ip_address, linode_instance.manager.*.private_ip_address)
 }
 
 # Geneate ansible inventory
 resource "local_file" "hosts_cfg" {
   depends_on = [linode_instance.manager, linode_instance.nodes]
   content    = <<EOF
+%{if var.create_swarm}
 [managers]
-${linode_instance.manager.ip_address} manager_private_ip=${linode_instance.manager.private_ip_address} hostname=manager-1
+${linode_instance.manager[0].ip_address} manager_private_ip=${linode_instance.manager[0].private_ip_address} hostname=manager-1
 
 [workers]
 %{for index, ip in linode_instance.nodes.*.ip_address~}
 ${ip} worker_private_ip=${linode_instance.nodes[index].private_ip_address} hostname=${format("worker-%02d", index + 1)}
 %{endfor~}
+%{endif~}
 
 %{if var.create_broker_server}
 [broker]
@@ -70,7 +73,7 @@ ${linode_instance.broker_server[0].ip_address} private_ip=${linode_instance.brok
 %{endif~}
   EOF
 
-  filename = "hosts.cfg"
+  filename = "../hosts.cfg"
 }
 
 

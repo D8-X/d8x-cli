@@ -1,10 +1,10 @@
 // Allow ssh access to anyone, and docker-swarm ports between cluster nodes only
 resource "aws_security_group" "ssh_docker_sg" {
-  name_prefix = "d8x-cluster-sg"
+  name_prefix = "${var.server_label_prefix}-sg"
   vpc_id      = aws_vpc.d8x_cluster_vpc.id
 
   tags = {
-    Name = "d8x-cluster-allow-ssh-docker-swarm"
+    Name = "${var.server_label_prefix}-allow-ssh-docker-swarm"
   }
 
   // Allow ssh port
@@ -53,11 +53,11 @@ resource "aws_security_group" "ssh_docker_sg" {
 
 
 resource "aws_security_group" "http_access" {
-  name_prefix = "d8x-cluster-http-sg"
+  name_prefix = "${var.server_label_prefix}-http-sg"
   vpc_id      = aws_vpc.d8x_cluster_vpc.id
 
   tags = {
-    Name = "d8x-cluster-http-sg"
+    Name = "${var.server_label_prefix}-http-sg"
   }
 
   ingress {
@@ -85,11 +85,11 @@ resource "aws_security_group" "http_access" {
 
 // nfs server access from nodes to manager
 resource "aws_security_group" "nfs_access" {
-  name_prefix = "d8x-cluster-nfs-sg"
+  name_prefix = "${var.server_label_prefix}-nfs-sg"
   vpc_id      = aws_vpc.d8x_cluster_vpc.id
 
   tags = {
-    Name = "d8x-cluster-nfs-sg"
+    Name = "${var.server_label_prefix}-nfs-sg"
   }
 
   ingress {
@@ -115,11 +115,11 @@ resource "aws_security_group" "nfs_access" {
 }
 
 resource "aws_security_group" "cadvisor_port" {
-  name_prefix = "d8x-cluster-nfs-sg"
+  name_prefix = "${var.server_label_prefix}-nfs-sg"
   vpc_id      = aws_vpc.d8x_cluster_vpc.id
 
   tags = {
-    Name = "d8x-cluster-cadvisor-sg"
+    Name = "${var.server_label_prefix}-cadvisor-sg"
   }
 
   ingress {

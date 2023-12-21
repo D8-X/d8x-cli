@@ -130,29 +130,48 @@
 
     # Docker swarm setup
     - name: Init a new swarm on manager with private ip address
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
       community.docker.docker_swarm:
         state: present
         advertise_addr: "{{ manager_ip }}"
       register: swarm_result
       # Only one manager should run this, otherwsie register results in when condition output
       run_once: true
+
     - name: Delete default ingress network
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
       ansible.builtin.shell:
         cmd: yes | docker network rm -f ingress
-      when: inventory_hostname in groups["managers"]
+      # Whenever non first setup is ran, if any services are deployed, this
+      # will fail since ingress will be used by some servcies. Therefore, we
+      # should ignore this error
+      register: rm_ingress_output
+      changed_when: false
+      failed_when:
+        - rm_ingress_output.rc != 0
+        # Possible error shape: "ingress network cannot be removed because service
+        # 0atg9bidrn17cfzbic1xxmam8 depends on it"
+        - '"ingress network cannot be removed" not in rm_ingress_output.stderr'
+
     - name: Create ingress network
       ansible.builtin.shell:
         cmd: docker network create --driver overlay --ingress --subnet="{{ docker_ingress_subnet }}" ingress
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
+      register: create_ingress_output
+      changed_when: false
+      failed_when:
+        - create_ingress_output.rc != 0
+        # Possible error shape: "Error response from daemon: network with name
+        # ingress already exists"
+        - '"network with name ingress already exists" not in create_ingress_output.stderr'
+
     - name: Set manager availability to DRAIN
-      when: inventory_hostname in groups["managers"]
+      when: groups.managers is defined and inventory_hostname in groups["managers"]
       community.docker.docker_node:
         hostname: "{{ manager_hostname }}"
         availability: "drain"
-
     - name: Join swarm as worker
-      when: inventory_hostname in groups["workers"]
+      when: groups.workers is defined and inventory_hostname in groups["workers"]
       community.docker.docker_swarm:
         state: join
         join_token: "{{ swarm_result.swarm_facts.JoinTokens.Worker }}"

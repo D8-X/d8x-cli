@@ -56,7 +56,23 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 
 	cmd := exec.Command("terraform", args...)
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = TF_FILES_DIR
 
 	connectCMDToCurrentTerm(cmd)
-	return c.RunCmd(cmd)
+	if err := c.RunCmd(cmd); err != nil {
+		return err
+	}
+
+	// Update d8x config values and set deployment statuses to false
+	cfg.MetricsDeployed = false
+	cfg.BrokerDeployed = false
+	cfg.SwarmDeployed = false
+
+	cfg.SwarmCertbotDeployed = false
+	cfg.BrokerCertbotDeployed = false
+
+	cfg.SwarmNginxDeployed = false
+	cfg.BrokerNginxDeployed = false
+
+	return c.ConfigRWriter.Write(cfg)
 }

@@ -331,6 +331,9 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 				Name:     configs.D8XServiceBrokerServer,
 				HostName: brokerServerName,
 			}
+
+			// Update state
+			cfg.BrokerNginxDeployed = true
 		}
 	}
 
@@ -367,6 +370,8 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 				cfg.Services[configs.D8XServiceBrokerServer] = val
 			}
 
+			// Update state
+			cfg.BrokerCertbotDeployed = true
 		}
 	}
 

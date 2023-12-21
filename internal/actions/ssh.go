@@ -23,15 +23,11 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	}
 
 	serverName := ctx.Args().First()
-	ipManager, err := c.HostsCfg.GetMangerPublicIp()
-	if err != nil {
-		return fmt.Errorf("could not find manager ip address: %w", err)
-	}
 	ip := ""
 	isWorker := false
 	switch serverName {
 	case "manager":
-		ip = ipManager
+		ip, err = c.HostsCfg.GetMangerPublicIp()
 	case "broker":
 		ip, err = c.HostsCfg.GetBrokerPublicIp()
 	default:

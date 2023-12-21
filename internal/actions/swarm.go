@@ -106,6 +106,13 @@ func UpdateCandlesPriceConfigPriceServices(priceServiceWSEndpoints []string, pri
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
+	// Find manager ip before we start collecting data in case manager is not
+	// available.
+	managerIp, err := c.HostsCfg.GetMangerPublicIp()
+	if err != nil {
+		return fmt.Errorf("finding manager ip address: %w", err)
+	}
+
 	if err := c.Input.CollectSwarmDeployInputs(ctx); err != nil {
 		return err
 	}
@@ -226,11 +233,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		fmt.Println(f.Dst)
 	}
 	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
-
-	managerIp, err := c.HostsCfg.GetMangerPublicIp()
-	if err != nil {
-		return fmt.Errorf("finding manager ip address: %w", err)
-	}
 
 	pwd, err := c.GetPassword(ctx)
 	if err != nil {
@@ -472,7 +474,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 	fmt.Println(styles.SuccessText.Render("D8X-trader-backend swarm was deployed"))
 
-	return nil
+	// Update config
+	cfg.SwarmDeployed = true
+	return c.ConfigRWriter.Write(cfg)
 }
 
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
@@ -566,6 +570,9 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	} else {
 		fmt.Println(styles.SuccessText.Render("Manager node nginx setup done!"))
+
+		// Update sate
+		cfg.SwarmNginxDeployed = true
 	}
 
 	if setupCertbot {
@@ -594,6 +601,8 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 			return fmt.Errorf("certbot setup failed: %w", err)
 		} else {
 			fmt.Println(styles.SuccessText.Render("Manager server certificates setup done!"))
+
+			cfg.SwarmCertbotDeployed = true
 		}
 	}
 

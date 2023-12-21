@@ -13,25 +13,9 @@ resource "aws_route" "internet" {
   gateway_id             = aws_internet_gateway.d8x_igw.id
 }
 
-resource "aws_route_table_association" "manager_association" {
+// Associate public subnets with public route table for internet access through
+// igw
+resource "aws_route_table_association" "public_internet" {
   subnet_id      = aws_subnet.public_subnet.id
   route_table_id = aws_route_table.public.id
-}
-
-// Configure internet access for private subnet (for worker nodes)
-resource "aws_route_table" "workers_internet" {
-  vpc_id = aws_vpc.d8x_cluster_vpc.id
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.public_nat.id
-  }
-
-  tags = {
-    Name = "d8x-cluster-private-route-table"
-  }
-}
-
-resource "aws_route_table_association" "workers_internet" {
-  subnet_id      = aws_subnet.workers_subnet.id
-  route_table_id = aws_route_table.workers_internet.id
 }

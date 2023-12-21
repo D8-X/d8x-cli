@@ -3,8 +3,10 @@ package actions
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"time"
 
+	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -15,6 +17,9 @@ const (
 	ServerProviderLinode SupportedServerProvider = "linode"
 	ServerProviderAws    SupportedServerProvider = "aws"
 )
+
+// Terraform files directory without trailing slash
+const TF_FILES_DIR = "./terraform"
 
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
@@ -36,6 +41,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Terraform init must run after we copy all the terraform files via
 	// BuildTerraformCMD
 	tfInit := exec.Command("terraform", "init")
+	tfInit.Dir = TF_FILES_DIR
 	connectCMDToCurrentTerm(tfInit)
 	if err := tfInit.Run(); err != nil {
 		return err
@@ -77,4 +83,21 @@ type ServerProviderConfigurer interface {
 	// successfuly. This method is used to perform provider specific actions
 	// after the provisioning.
 	PostProvisioningAction(*Container) error
+}
+
+// CollectNumberOfWorkers collects number of workers input from user
+func (c *InputCollector) CollectNumberOfWorkers(defaultNum string) (int, error) {
+	fmt.Println("Enter number of worker servers to create: ")
+	numWorkers, err := c.TUI.NewInput(
+		components.TextInputOptValue(defaultNum),
+		components.TextInputOptPlaceholder("4"),
+		components.TextInputOptValidation(func(s string) bool {
+			_, err := strconv.Atoi(s)
+			return err == nil
+		}, "please provide a valid number"),
+	)
+	if err != nil {
+		return -1, err
+	}
+	return strconv.Atoi(numWorkers)
 }
