@@ -169,19 +169,21 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 	}
 	l.Token = token
 
-	// DB
-	if ok, err := c.TUI.NewPrompt("Do you want to use an external database? (choose no if you have a legacy Linode DB cluster)", true); err == nil && !ok {
-		fmt.Println("Enter your Linode database cluster ID")
-		dbId, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("12345678"),
-			components.TextInputOptValue(defaultDbId),
-		)
-		if err != nil {
-			return l, err
+	// DB for swarm
+	if c.setup.deploySwarm {
+		if ok, err := c.TUI.NewPrompt("Do you want to use an external database? (choose no if you have a legacy Linode DB cluster)", true); err == nil && !ok {
+			fmt.Println("Enter your Linode database cluster ID")
+			dbId, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("12345678"),
+				components.TextInputOptValue(defaultDbId),
+			)
+			if err != nil {
+				return l, err
+			}
+			l.DbId = dbId
+		} else {
+			fmt.Println("Not using Linode database. Make sure you provision your own external Postgres instances!")
 		}
-		l.DbId = dbId
-	} else {
-		fmt.Println("Not using Linode database. Make sure you provision your own external Postgres instances!")
 	}
 
 	// Region

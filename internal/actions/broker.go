@@ -22,31 +22,29 @@ const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 const BROKER_KEY_VOL_NAME = "keyvol"
 
 // UpdateBrokerChainConfigAllowedExecutors is updateFn for UpdateConfig for
-// broker-server/chainConfig.json configuration
-func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string, chainId int) func(*[]map[string]any) error {
+// broker-server/chainConfig.json configuration. It updates allowedExecutors
+// field and appends allowedExecutorAddress to the list for all chain ids.
+func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string) func(*[]map[string]any) error {
 	return func(chainConfig *[]map[string]any) error {
 		for i, conf := range *chainConfig {
-			if int(conf["chainId"].(float64)) == chainId {
-				executors := []string{}
-				if len(allowedExecutorAddress) > 0 {
-					executors = append(executors, allowedExecutorAddress)
-				}
+			executors := []string{}
+			if len(allowedExecutorAddress) > 0 {
+				executors = append(executors, allowedExecutorAddress)
+			}
 
-				// Make sure we don't overwrite existing allowedExecutors
-				v, ok := conf["allowedExecutors"].([]any)
-				if ok {
-					for _, executorAddr := range v {
-						if a, ok2 := executorAddr.(string); ok2 {
-							executors = append(executors, a)
-						}
+			// Make sure we don't overwrite existing allowedExecutors
+			v, ok := conf["allowedExecutors"].([]any)
+			if ok {
+				for _, executorAddr := range v {
+					if a, ok2 := executorAddr.(string); ok2 {
+						executors = append(executors, a)
 					}
 				}
-				executors = slices.Compact(executors)
-				conf["allowedExecutors"] = executors
-				// Update the entry
-				(*chainConfig)[i] = conf
-				break
 			}
+			executors = slices.Compact(executors)
+			conf["allowedExecutors"] = executors
+			// Update the entry
+			(*chainConfig)[i] = conf
 		}
 		return nil
 	}
@@ -127,36 +125,15 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	if c.Input.brokerDeployInput.guideConfig {
-		// Upate rpc.json config
-		rpconfigFilePath := "./broker-server/rpc.json"
-		httpRpcs, _ := DistributeRpcs(
-			// Broker is #3 in the list
-			3,
-			strconv.Itoa(int(cfg.ChainId)),
-			cfg,
-		)
-
-		fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-		if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, nil, httpRpcs); err != nil {
-			fmt.Println(
-				styles.ErrorText.Render(
-					fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
-				),
-			)
-		}
-
-		// Update chainConfig.json
-		fmt.Printf("Updating %s config...\n", chainConfig)
-		if err := UpdateConfig[[]map[string]any](
-			chainConfig,
-			UpdateBrokerChainConfigAllowedExecutors(
-				cfg.BrokerServerConfig.ExecutorAddress,
-				int(cfg.ChainId),
-			),
-		); err != nil {
-			return err
-		}
+	// Update chainConfig.json with referral executor address
+	fmt.Printf("Updating %s config...\n", chainConfig)
+	if err := UpdateConfig[[]map[string]any](
+		chainConfig,
+		UpdateBrokerChainConfigAllowedExecutors(
+			cfg.BrokerServerConfig.ExecutorAddress,
+		),
+	); err != nil {
+		return err
 	}
 
 	absChainConfig, err := filepath.Abs(chainConfig)
