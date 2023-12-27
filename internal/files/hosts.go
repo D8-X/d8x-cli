@@ -14,6 +14,13 @@ type HostsFileInteractor interface {
 	GetMangerPrivateIp() (string, error)
 	GetWorkerIps() ([]string, error)
 	GetWorkerPrivateIps() ([]string, error)
+	GetAllPublicIps() []string
+
+	// GetLines retrieves all lines from hosts file
+	GetLines() ([]string, error)
+
+	// WriteLines writes the provided lines to hosts file
+	WriteLines([]string) error
 }
 
 func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
@@ -40,6 +47,24 @@ func (f *fsHostFileInteractor) ensureFileLoaded() error {
 	return nil
 }
 
+func (f *fsHostFileInteractor) GetAllPublicIps() []string {
+	ret := []string{}
+
+	brokerIp, err := f.GetBrokerPublicIp()
+	if err == nil {
+		ret = append(ret, brokerIp)
+	}
+	managerIp, err := f.GetMangerPublicIp()
+	if err == nil {
+		ret = append(ret, managerIp)
+	}
+	workerIps, err := f.GetWorkerIps()
+	if err == nil {
+		ret = append(ret, workerIps...)
+	}
+
+	return ret
+}
 func (f *fsHostFileInteractor) GetBrokerPublicIp() (string, error) {
 	if err := f.ensureFileLoaded(); err != nil {
 		return "", err
@@ -69,6 +94,40 @@ func (f *fsHostFileInteractor) GetWorkerPrivateIps() ([]string, error) {
 		return nil, err
 	}
 	return f.cached.GetWorkerPrivateIps()
+}
+
+func (f *fsHostFileInteractor) GetLines() ([]string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return nil, err
+	}
+
+	return f.cached.lines, nil
+}
+
+func (f *fsHostFileInteractor) WriteLines(lines []string) error {
+	// Write the lines to file and update the cache
+	if err := WriteHostsLinesToFile(lines, f.filePath); err != nil {
+		return err
+	}
+
+	// Update the cache
+	h, err := LoadHostsFileFromFS(f.filePath)
+	if err != nil {
+		return err
+	}
+	f.cached = h
+
+	return nil
+}
+
+func WriteHostsLinesToFile(hostsCfgLines []string, hostsFile string) error {
+	contents := strings.Join(hostsCfgLines, "\n")
+
+	if err := os.WriteFile(hostsFile, []byte(contents), 0644); err != nil {
+		return fmt.Errorf("updating hosts inventory file: %w", err)
+	}
+
+	return nil
 }
 
 // HostsFileLoader attempts to load and parse give file as HostsFile (hosts.cfg)

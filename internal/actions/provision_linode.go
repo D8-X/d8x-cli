@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -295,10 +297,48 @@ find the public ip addresses of your servers.
 }
 
 func (i linodeConfigurer) PostProvisioningAction(c *Container) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
 	// Show external db messages
 	i.noLinodeDbCheck(c)
 
+	// Whenever this is not the first time provisioning (after at least 1
+	// configuration is done) Update linode inventory hosts.cfg file to use
+	// cluster user name for ssh login before configuration is started, since
+	// terraform always overwrites the hosts.cfg
+	if cfg.ConfigDetails.Done && len(cfg.ConfigDetails.ConfiguredServers) > 0 {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// Set ansible_user variable to linode hosts.cfg inventory file for all servers
+// which public ip address is within the provided ipAddresses list
+func (c *Container) LinodeInventorySetUserVar(ipAddresses []string, sshUser string) error {
+	hostLines, err := c.HostsCfg.GetLines()
+	if err != nil {
+		return fmt.Errorf("retrieving hosts contents: %w", err)
+	}
+
+	ipv4Pattern := regexp.MustCompile(`^(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])`)
+
+	// Update existing server lines and append ansible_user to them
+	for i, line := range hostLines {
+		if ipv4Pattern.MatchString(line) && !strings.Contains(line, "ansible_user=") {
+			publicIp := ipv4Pattern.FindString(line)
+			if slices.Contains(ipAddresses, publicIp) {
+				hostLines[i] = fmt.Sprintf("%s ansible_user=%s", line, sshUser)
+			}
+		}
+	}
+
+	return c.HostsCfg.WriteLines(hostLines)
 }
 
 // fetchLinodeAPIRequest sends GET request to linode api endpoint and reads the
