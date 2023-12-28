@@ -58,7 +58,8 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	configureUser := cfg.GetAnsibleUser()
 
 	// For linode when subsequent configuration is performed, we need to use the
-	// cluster user and provide become_pass for old servers
+	// cluster user and provide become_pass for old servers, but new servers
+	// need root.
 
 	// Generate ansible-playbook args
 	args := []string{
@@ -72,17 +73,41 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"./playbooks/setup.ansible.yaml",
 	}
 
-	// For AWS, we don't want to setup UFW, since firewall is already handled by
-	// AWS itself
-	if cfg.ServerProvider == configs.D8XServerProviderAWS {
+	switch cfg.ServerProvider {
+	case configs.D8XServerProviderAWS:
+		// For AWS, we don't want to setup UFW, since firewall is already handled by
+		// AWS itself
 		args = append(args, "--extra-vars", "no_ufw=true")
+
+	case configs.D8XServerProviderLinode:
+		// For linode - pass become_pass for subsequent configuration runs.
+		if cfg.ConfigDetails.Done {
+			args = append(args,
+				"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, c.UserPassword),
+			)
+		}
 	}
 
 	cmd := exec.Command("ansible-playbook", args...)
 	cmd.Env = os.Environ()
 	connectCMDToCurrentTerm(cmd)
 
-	return c.RunCmd(cmd)
+	if err := c.RunCmd(cmd); err != nil {
+		return err
+	}
+
+	// Update configuration details
+	cfg.ConfigDetails.Done = true
+	cfg.ConfigDetails.ConfiguredServers = c.HostsCfg.GetAllPublicIps()
+
+	// Update hosts.cfg for linode provider
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
+	}
+
+	return c.ConfigRWriter.Write(cfg)
 }
 
 func generatePassword(n int) (string, error) {

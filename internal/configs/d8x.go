@@ -84,6 +84,36 @@ type D8XConfig struct {
 
 	// MD5 hash of last created ssh private key, empty string initially
 	SSHKeyMD5 string `json:"ssh_key_hash"`
+
+	// Ansible related configuration details
+	ConfigDetails ConfigurationDetails `json:"configuration_details"`
+}
+
+type ConfigurationDetails struct {
+	// Whether at least 1 time configuration was done successfully
+	Done bool `json:"done"`
+
+	// List of IP addresses of servers which were configured previously. This is
+	// important for linode configuration step when non-first time setup is
+	// performed. We use this list to mark which servers should use cluster user
+	// instead of root for ssh access in configure action.
+	ConfiguredServers []string `json:"configured_server_ip_addresses"`
+}
+
+// ResetDeploymentStatus cleans up deployment status of all services/servers,
+// etc. Should be called and stored after tf-destroy.
+func (d *D8XConfig) ResetDeploymentStatus() {
+	d.MetricsDeployed = false
+	d.BrokerDeployed = false
+	d.BrokerNginxDeployed = false
+	d.BrokerCertbotDeployed = false
+	d.SwarmDeployed = false
+	d.SwarmNginxDeployed = false
+	d.SwarmCertbotDeployed = false
+	d.ConfigDetails = ConfigurationDetails{
+		Done:              false,
+		ConfiguredServers: []string{},
+	}
 }
 
 type ReferralConfig struct {
