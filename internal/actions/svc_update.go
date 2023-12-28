@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/containers/image/types"
 	"github.com/distribution/reference"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/net/html"
 )
 
 type DokcerStackFileServices struct {
@@ -106,7 +108,7 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		fmt.Printf("Updating service %s\n", svcToUpdate)
 
 		img := services[svcToUpdate].Image
-		tags, err := getTags(img)
+		tags, err := getImageDigests(svcToUpdate, img)
 		// If tags cannot be fetched - show error, but do not exit the update
 		// process, since this is only local error on users' machine
 		if err != nil {
@@ -334,6 +336,63 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 	}
 
 	return nil
+}
+
+// See docker-swarm-stack.yml and github packages for urls
+var githubPackageVersionsPage = map[string]string{
+	"api": "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-main/versions",
+}
+
+// getImageDigests is a hacky way for us to gather the sha hashes of the given
+// image from github packages version page. If version page url is found - we
+// try to parse the html and find ul li items with tag button <a>. The common
+// parent node of <a> with tag name contains another child with sha256 hash
+func getImageDigests(svcName, imgUrl string) (fullTags []string, err error) {
+	tags, err := getTags(imgUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	packageUrl, ok := githubPackageVersionsPage[svcName]
+	if !ok {
+		fmt.Println("Could not find package url for service", svcName)
+		return tags, nil
+	}
+
+	resp, err := http.DefaultClient.Get(packageUrl)
+	if err != nil {
+		return tags, nil
+	}
+	defer resp.Body.Close()
+
+	htmlTree, err := html.Parse(resp.Body)
+	if err != nil {
+		return tags, nil
+	}
+
+	// Inspect the github version page html to see the structure. First we'll
+	// find <li> with Box-row class.
+	// intialTree := htmlTree
+	htmlTree.FirstChild = htmlTree.FirstChild.NextSibling
+
+	var findLi func(*html.Node)
+	findLi = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "li" {
+			for _, attr := range n.Attr {
+				if attr.Key == "class" && strings.Contains(attr.Val, "Box-row") {
+					// Li found
+				}
+			}
+			fmt.Printf("Found <li>: %+v\n", n.Attr)
+		}
+
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			findLi(c)
+		}
+	}
+	findLi(htmlTree)
+
+	return tags, nil
 }
 
 // getTags retrieves available tags for given image
