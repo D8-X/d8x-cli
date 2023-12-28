@@ -100,9 +100,11 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	cfg.ConfigDetails.Done = true
 	cfg.ConfigDetails.ConfiguredServers = c.HostsCfg.GetAllPublicIps()
 
-	// Update hosts.cfg
-	if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
-		return fmt.Errorf("updating linode inventory file: %w", err)
+	// Update hosts.cfg for linode provider
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
 	}
 
 	return c.ConfigRWriter.Write(cfg)
