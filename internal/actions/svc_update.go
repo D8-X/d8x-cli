@@ -108,7 +108,7 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		fmt.Printf("Updating service %s\n", svcToUpdate)
 
 		img := services[svcToUpdate].Image
-		tags, err := getImageDigests(svcToUpdate, img)
+		tags, err := getTagsWithHashes(svcToUpdate, img)
 		// If tags cannot be fetched - show error, but do not exit the update
 		// process, since this is only local error on users' machine
 		if err != nil {
@@ -116,21 +116,45 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 			tags = []string{}
 		}
 
-		fmt.Printf("Available tags: %s\n\n", strings.Join(tags, ", "))
-
-		fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
-		info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
-		fmt.Println(styles.GrayText.Render(info))
-		info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
-		fmt.Println(styles.GrayText.Render(info))
-
-		fmt.Println("Enter image to update to:")
-		imgToUse, err := c.TUI.NewInput(
-			components.TextInputOptValue(img),
-			components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
+		// Show selection of available tags (with latest sha hashes whenever
+		// possible) to update to
+		enterManuallyOption := "Enter image reference manually"
+		imagesSelection := make([]string, len(tags))
+		for i, tag := range tags {
+			imagesSelection[i] = img + ":" + tag
+		}
+		// Manual entry option
+		imagesSelection = append(imagesSelection, enterManuallyOption)
+		fmt.Println("Choose which image reference to update to")
+		selectedImageToUpdate, err := c.TUI.NewSelection(
+			imagesSelection,
+			components.SelectionOptAllowOnlySingleItem(),
+			components.SelectionOptRequireSelection(),
 		)
 		if err != nil {
 			return err
+		}
+
+		imgToUse := selectedImageToUpdate[0]
+
+		if imgToUse != enterManuallyOption {
+			fmt.Printf("Using image: %s\n", selectedImageToUpdate[0])
+		} else {
+			fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
+			info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
+			fmt.Println(styles.GrayText.Render(info))
+			info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
+			fmt.Println(styles.GrayText.Render(info))
+
+			fmt.Println("Enter image to update to:")
+			enteredImage, err := c.TUI.NewInput(
+				components.TextInputOptValue(img),
+				components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
+			)
+			if err != nil {
+				return err
+			}
+			imgToUse = enteredImage
 		}
 
 		// For referral system - we need to update the referral executor private
@@ -340,14 +364,20 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 
 // See docker-swarm-stack.yml and github packages for urls
 var githubPackageVersionsPage = map[string]string{
-	"api": "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-main/versions",
+	"api":                 "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-main/versions",
+	"history":             "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-history/versions",
+	"referral":            "https://github.com/D8-X/referral-system/pkgs/container/d8x-referral-system/versions",
+	"candles-pyth-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-pyth-client/versions",
+	"candles-ws-server":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-ws-server/versions",
 }
 
-// getImageDigests is a hacky way for us to gather the sha hashes of the given
-// image from github packages version page. If version page url is found - we
-// try to parse the html and find ul li items with tag button <a>. The common
-// parent node of <a> with tag name contains another child with sha256 hash
-func getImageDigests(svcName, imgUrl string) (fullTags []string, err error) {
+// getTagsWithHashes is a hacky way for us to gather the sha digest hashes of
+// the given image from github packages version page. If version page url is
+// found - we try to parse the html and find ul li items with tag button <a>.
+// The common parent node (<li>) of <a> with tag name contains another child
+// with sha256 hash. Returned fullTags slice will contain the sha256 hash
+// appended to the tag name.
+func getTagsWithHashes(svcName, imgUrl string) (fullTags []string, err error) {
 	tags, err := getTags(imgUrl)
 	if err != nil {
 		return nil, err
@@ -355,7 +385,9 @@ func getImageDigests(svcName, imgUrl string) (fullTags []string, err error) {
 
 	packageUrl, ok := githubPackageVersionsPage[svcName]
 	if !ok {
-		fmt.Println("Could not find package url for service", svcName)
+		fmt.Println(
+			styles.ErrorText.Render("Could not find package url for service " + svcName + ". Image "),
+		)
 		return tags, nil
 	}
 
@@ -371,28 +403,90 @@ func getImageDigests(svcName, imgUrl string) (fullTags []string, err error) {
 	}
 
 	// Inspect the github version page html to see the structure. First we'll
-	// find <li> with Box-row class.
-	// intialTree := htmlTree
-	htmlTree.FirstChild = htmlTree.FirstChild.NextSibling
+	// find <li> with Box-row class. intialTree := htmlTree
+	liItems := []*html.Node{}
+	findHtmlNodes(htmlTree, ghTagLiFinder, &liItems)
 
-	var findLi func(*html.Node)
-	findLi = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "li" {
-			for _, attr := range n.Attr {
-				if attr.Key == "class" && strings.Contains(attr.Val, "Box-row") {
-					// Li found
-				}
+	// Modify tags slice in place and append sha hashes found from the github
+	// packages version pages
+	for _, li := range liItems {
+		for i, tag := range tags {
+			foundHash := ghLiTagShaHashFinder(li, tag)
+			if foundHash != "" {
+				tags[i] = tag + "@" + foundHash
 			}
-			fmt.Printf("Found <li>: %+v\n", n.Attr)
-		}
-
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			findLi(c)
 		}
 	}
-	findLi(htmlTree)
 
 	return tags, nil
+}
+
+// htmlFinderFunc is a function that finds matching  node and a bool indicating
+// that node was found.
+type htmlFinderFunc func(*html.Node) (*html.Node, bool)
+
+// ghTagLiFinder finds li.Box-row elements which contain the sha hashes of image
+// versions.
+func ghTagLiFinder(n *html.Node) (*html.Node, bool) {
+	if n.Type == html.ElementNode && n.Data == "li" {
+		for _, attr := range n.Attr {
+			if attr.Key == "class" && strings.Contains(attr.Val, "Box-row") {
+				return n, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// ghLiTagShaHashFinder finds html element which contains link and also text to
+// givent gitTag
+func ghLiTagShaHashFinder(li *html.Node, gitTags string) string {
+	// Find the <a> tag with href containing the gitTag
+	res := []*html.Node{}
+	findHtmlNodes(li, func(n *html.Node) (*html.Node, bool) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, attr := range n.Attr {
+				if attr.Key == "href" && strings.Contains(strings.ToLower(attr.Val), "?tag="+gitTags) {
+					return n, true
+				}
+			}
+		}
+		return nil, false
+	}, &res)
+
+	// Find any element inside our li node which hash the sha256 hash text
+	if len(res) > 0 {
+		hashNode := []*html.Node{}
+		lastSavedHahs := ""
+		findHtmlNodes(li, func(n *html.Node) (*html.Node, bool) {
+			if n.Type == html.TextNode {
+				innerText := strings.TrimSpace(n.Data)
+				if strings.HasPrefix(innerText, "sha256:") {
+					lastSavedHahs = innerText
+					return n, true
+				}
+			}
+			return nil, false
+		}, &hashNode)
+
+		if len(hashNode) > 0 {
+			return lastSavedHahs
+		}
+	}
+
+	return ""
+}
+
+func findHtmlNodes(parent *html.Node, f htmlFinderFunc, result *[]*html.Node) {
+	foundNode, found := f(parent)
+
+	if found {
+		*result = append(*result, foundNode)
+	}
+
+	for c := parent.FirstChild; c != nil; c = c.NextSibling {
+		findHtmlNodes(c, f, result)
+	}
 }
 
 // getTags retrieves available tags for given image
