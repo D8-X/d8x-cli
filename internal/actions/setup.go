@@ -2,6 +2,7 @@ package actions
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -11,6 +12,12 @@ import (
 
 func (c *Container) Setup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Running full setup...")
+
+	pth, err := filepath.Abs(c.ProvisioningTfDir)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("c.ProvisioningTfDir: %s\n", pth)
 
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {

@@ -55,7 +55,7 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-linode",
-			Dst:       TF_FILES_DIR,
+			Dst:       c.ProvisioningTfDir,
 			Dir:       true,
 			Overwrite: true,
 		},
@@ -68,7 +68,7 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	command := exec.Command("terraform", args...)
 	// for $HOME
 	command.Env = os.Environ()
-	command.Dir = TF_FILES_DIR
+	command.Dir = c.ProvisioningTfDir
 	// Add linode tokens
 	command.Env = append(command.Env,
 		fmt.Sprintf("LINODE_TOKEN=%s", l.Token),

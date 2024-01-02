@@ -31,22 +31,30 @@ type awsConfigurer struct {
 	authorizedKey string
 }
 
-func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
+func (c *Container) CopyAWSTFFiles() error {
+	err := c.EmbedCopier.Copy(configs.EmbededConfigs,
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-aws",
-			Dst:       TF_FILES_DIR,
+			Dst:       c.ProvisioningTfDir,
 			Dir:       true,
 			Overwrite: true,
 		},
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-aws/swarm",
-			Dst:       TF_FILES_DIR + "/swarm",
+			Dst:       c.ProvisioningTfDir + "/swarm",
 			Dir:       true,
 			Overwrite: true,
 		},
-	); err != nil {
-		return nil, fmt.Errorf("generating terraform directory: %w", err)
+	)
+	if err != nil {
+		return fmt.Errorf("generating terraform directory: %w", err)
+	}
+	return nil
+}
+
+func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
+	if err := c.CopyAWSTFFiles(); err != nil {
+		return nil, err
 	}
 
 	return a.generateTerraformCommand(), nil
@@ -83,7 +91,6 @@ func (a *awsConfigurer) generateTerraformCommand() *exec.Cmd {
 			a.generateVariables()...,
 		)...,
 	)
-	cmd.Dir = TF_FILES_DIR
 
 	return cmd
 }

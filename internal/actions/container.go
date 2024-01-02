@@ -54,6 +54,10 @@ type Container struct {
 	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
+	// Directory to the terraform files. Defaults to ./terraform but can be
+	// overriden by --tf-dir flag
+	ProvisioningTfDir string
+
 	EmbedCopier files.EmbedFileCopier
 
 	FS files.FSInteractor
@@ -102,6 +106,7 @@ func NewDefaultContainer() (*Container, error) {
 		RunCmd: func(c *exec.Cmd) error {
 			return c.Run()
 		},
+		ProvisioningTfDir: TF_FILES_DIR,
 	}, nil
 }
 
