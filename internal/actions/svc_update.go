@@ -438,8 +438,8 @@ func ghTagLiFinder(n *html.Node) (*html.Node, bool) {
 	return nil, false
 }
 
-// ghLiTagShaHashFinder finds html element which contains link and also text to
-// givent gitTag
+// ghLiTagShaHashFinder finds html element which contains link and also text of
+// given gitTag
 func ghLiTagShaHashFinder(li *html.Node, gitTags string) string {
 	// Find the <a> tag with href containing the gitTag
 	res := []*html.Node{}

@@ -69,4 +69,8 @@ func TestFindGithubShaHashes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, tree)
 
+	res2 := []*html.Node{}
+	findHtmlNodes(tree, ghTagLiFinder, &res2)
+	assert.Len(t, res2, 1)
+
 }
