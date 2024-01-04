@@ -158,6 +158,13 @@ func RunD8XCli() {
 				Action:    container.TunnelGrafana,
 				ArgsUsage: "[port 8080]",
 			},
+			{
+				Name:        "cp-configs",
+				ArgsUsage:   "swarm|broker",
+				Action:      container.CopyConfigs,
+				Usage:       "Copy configuration files to current working directory",
+				Description: "Copy specified services configuration files to current working directory. Available services are swarm and broker. You can pass multiple services at once.",
+			},
 		},
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{

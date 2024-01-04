@@ -103,6 +103,31 @@ func UpdateCandlesPriceConfigPriceServices(priceServiceWSEndpoints []string, pri
 	}
 }
 
+var swarmDeployConfigFilesToCopy = []files.EmbedCopierOp{
+	// Trader backend configs
+	// Note that .env.example is not recognized in embed.FS
+	{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
+	{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
+	{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
+	{Src: "embedded/trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json", Overwrite: false},
+	{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
+	// Candles configs
+	{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
+
+	// All configs below should not be interesting for the user - hence we
+	// will be overwriting them and not showing in the information text.
+
+	// Docker swarm file
+	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
+}
+
+func (c *Container) CopySwarmDeployConfigs() error {
+	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, swarmDeployConfigFilesToCopy...); err != nil {
+		return fmt.Errorf("copying configs to local file system: %w", err)
+	}
+	return nil
+}
+
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
@@ -122,25 +147,8 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return err
 	}
 	// Copy embed files before starting
-	filesToCopy := []files.EmbedCopierOp{
-		// Trader backend configs
-		// Note that .env.example is not recognized in embed.FS
-		{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
-		{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
-		{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
-		{Src: "embedded/trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json", Overwrite: false},
-		{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
-		// Candles configs
-		{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
-
-		// All configs below should not be interesting for the user - hence we
-		// will be overwriting them and not showing in the information text.
-
-		// Docker swarm file
-		{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
-	}
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
-		return fmt.Errorf("copying configs to local file system: %w", err)
+	if err := c.CopySwarmDeployConfigs(); err != nil {
+		return err
 	}
 
 	if c.Input.swarmDeployInput.guideConfig {
@@ -229,7 +237,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 	fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
 	fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-	for _, f := range filesToCopy[:6] {
+	for _, f := range swarmDeployConfigFilesToCopy[:6] {
 		fmt.Println(f.Dst)
 	}
 	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
