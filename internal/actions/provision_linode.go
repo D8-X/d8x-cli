@@ -47,19 +47,24 @@ type linodeConfigurer struct {
 	authorizedKey string
 }
 
-// BuildTerraformCMD builds terraform configuration for linode cluster creation.
-// It also creates a ssh key pair via ssh-keygen which is used in cluster
-// servers for default user and does some other neccessary configuration.
-func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	// Copy tf configs
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs,
+func (c *Container) CopyLinodeTFFiles() error {
+	return c.EmbedCopier.Copy(configs.EmbededConfigs,
 		files.EmbedCopierOp{
 			Src:       "embedded/trader-backend/tf-linode",
 			Dst:       c.ProvisioningTfDir,
 			Dir:       true,
 			Overwrite: true,
 		},
-	); err != nil {
+	)
+
+}
+
+// BuildTerraformCMD builds terraform configuration for linode cluster creation.
+// It also creates a ssh key pair via ssh-keygen which is used in cluster
+// servers for default user and does some other neccessary configuration.
+func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
+	// Copy tf configs
+	if err := c.CopyLinodeTFFiles(); err != nil {
 		return nil, fmt.Errorf("generating lindode.tf file: %w", err)
 	}
 

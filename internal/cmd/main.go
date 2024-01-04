@@ -122,11 +122,6 @@ func RunD8XCli() {
 				},
 			},
 			{
-				Name:        "migrate-helper",
-				Description: "Migrate from old version of cli to newer one",
-				Action:      container.MigrateHelper,
-			},
-			{
 				Name:   "update",
 				Usage:  "Update service with new image version",
 				Action: container.ServiceUpdate,
@@ -160,10 +155,10 @@ func RunD8XCli() {
 			},
 			{
 				Name:        "cp-configs",
-				ArgsUsage:   "swarm|broker",
+				ArgsUsage:   "swarm|broker|tf-aws|tf-linode",
 				Action:      container.CopyConfigs,
 				Usage:       "Copy configuration files to current working directory",
-				Description: "Copy specified services configuration files to current working directory. Available services are swarm and broker. You can pass multiple services at once.",
+				Description: "Copy specified configuration files to current working directory. Available configs are swarm, broker, tf-aws, tf-linode.",
 			},
 		},
 		// Global flags accessible to all subcommands
