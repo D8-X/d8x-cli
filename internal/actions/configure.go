@@ -22,6 +22,14 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		return err
 	}
 
+	// Update hosts.cfg for linode provider in case d8x config was changed
+	// manually
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
+	}
+
 	// Copy the playbooks file
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,

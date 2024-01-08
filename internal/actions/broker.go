@@ -79,6 +79,24 @@ func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath str
 	return allowedExecutors, nil
 }
 
+var (
+	brokerDeployChainConfig   = "./broker-server/chainConfig.json"
+	brokerDeployRpcConfig     = "./broker-server/rpc.json"
+	brokerDeployDockerCompose = "./broker-server/docker-compose.yml"
+)
+
+func (c *Container) CopyBrokerDeployConfigs() error {
+	if err := c.EmbedCopier.Copy(
+		configs.EmbededConfigs,
+		files.EmbedCopierOp{Src: "embedded/broker-server/rpc.json", Dst: brokerDeployRpcConfig, Overwrite: false},
+		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: brokerDeployChainConfig, Overwrite: false},
+		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: brokerDeployDockerCompose, Overwrite: true},
+	); err != nil {
+		return fmt.Errorf("copying configs to local file system: %w", err)
+	}
+	return nil
+}
+
 // BrokerDeploy collects information related to broker-server
 // deploymend, copies the configurations files to remote broker host and deploys
 // the docker-compose d8x-broker-server setup.
@@ -110,25 +128,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	bsd.brokerServerIpAddr = brokerIpAddr
 
 	// Dest filenames for copying from embed. TODO - centralize this via flags
-	var (
-		chainConfig   = "./broker-server/chainConfig.json"
-		rpcConfig     = "./broker-server/rpc.json"
-		dockerCompose = "./broker-server/docker-compose.yml"
-	)
-	// Copy the config files and nudge user to review them
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/broker-server/rpc.json", Dst: rpcConfig, Overwrite: false},
-		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: chainConfig, Overwrite: false},
-		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: dockerCompose, Overwrite: true},
-	); err != nil {
+	if err := c.CopyBrokerDeployConfigs(); err != nil {
 		return err
 	}
 
 	// Update chainConfig.json with referral executor address
-	fmt.Printf("Updating %s config...\n", chainConfig)
+	fmt.Printf("Updating %s config...\n", brokerDeployChainConfig)
 	if err := UpdateConfig[[]map[string]any](
-		chainConfig,
+		brokerDeployChainConfig,
 		UpdateBrokerChainConfigAllowedExecutors(
 			cfg.BrokerServerConfig.ExecutorAddress,
 		),
@@ -136,11 +143,11 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return err
 	}
 
-	absChainConfig, err := filepath.Abs(chainConfig)
+	absChainConfig, err := filepath.Abs(brokerDeployChainConfig)
 	if err != nil {
 		return err
 	}
-	absRpcConfig, err := filepath.Abs(rpcConfig)
+	absRpcConfig, err := filepath.Abs(brokerDeployRpcConfig)
 	if err != nil {
 		return err
 	}
@@ -176,9 +183,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("establishing ssh connection: %w", err)
 	}
 	if err := sshClient.CopyFilesOverSftp(
-		conn.SftpCopySrcDest{Src: chainConfig, Dst: "./broker/chainConfig.json"},
-		conn.SftpCopySrcDest{Src: rpcConfig, Dst: "./broker/rpc.json"},
-		conn.SftpCopySrcDest{Src: dockerCompose, Dst: "./broker/docker-compose.yml"},
+		conn.SftpCopySrcDest{Src: brokerDeployChainConfig, Dst: "./broker/chainConfig.json"},
+		conn.SftpCopySrcDest{Src: brokerDeployRpcConfig, Dst: "./broker/rpc.json"},
+		conn.SftpCopySrcDest{Src: brokerDeployDockerCompose, Dst: "./broker/docker-compose.yml"},
 	); err != nil {
 		return err
 	}

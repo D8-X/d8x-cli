@@ -34,6 +34,17 @@ func RunD8XCli() {
 		log.Fatal(err)
 	}
 
+	// Shared flags below
+
+	// Default terraform files and state directory (./terraform)
+	provisionTfDirFlag := &cli.StringFlag{
+		Name:        "tf-dir",
+		Value:       "./terraform",
+		Required:    false,
+		Usage:       "Terraform files directory path. Used for backwards compatibility only.",
+		Destination: &container.ProvisioningTfDir,
+	}
+
 	// Initialize cli application and its subcommands and bind default values
 	// for ac (via flags.Destination)
 	app := &cli.App{
@@ -43,6 +54,7 @@ func RunD8XCli() {
 		Description:          MainDescription,
 		EnableBashCompletion: true,
 		Commands: []*cli.Command{
+
 			{
 				Name:   "init",
 				Action: container.Init,
@@ -64,12 +76,14 @@ func RunD8XCli() {
 					}
 					return nil
 				},
+				Flags: []cli.Flag{provisionTfDirFlag},
 				Subcommands: []*cli.Command{
 					{
 						Name:        "provision",
 						Usage:       "Provision server resources with terraform",
 						Action:      container.Provision,
 						Description: ProvisionDescription,
+						Flags:       []cli.Flag{provisionTfDirFlag},
 					},
 					{
 						Name:        "configure",
@@ -138,6 +152,13 @@ func RunD8XCli() {
 				Usage:     "Create ssh tunnel to grafana service on manager",
 				Action:    container.TunnelGrafana,
 				ArgsUsage: "[port 8080]",
+			},
+			{
+				Name:        "cp-configs",
+				ArgsUsage:   "swarm|broker|tf-aws|tf-linode",
+				Action:      container.CopyConfigs,
+				Usage:       "Copy configuration files to current working directory",
+				Description: "Copy specified configuration files to current working directory. Available configs are swarm, broker, tf-aws, tf-linode.",
 			},
 		},
 		// Global flags accessible to all subcommands

@@ -18,7 +18,7 @@ const (
 	ServerProviderAws    SupportedServerProvider = "aws"
 )
 
-// Terraform files directory without trailing slash
+// Default terraform files directory without trailing slash
 const TF_FILES_DIR = "./terraform"
 
 func (c *Container) Provision(ctx *cli.Context) error {
@@ -41,13 +41,16 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Terraform init must run after we copy all the terraform files via
 	// BuildTerraformCMD
 	tfInit := exec.Command("terraform", "init")
-	tfInit.Dir = TF_FILES_DIR
+	tfInit.Dir = c.ProvisioningTfDir
 	connectCMDToCurrentTerm(tfInit)
 	if err := tfInit.Run(); err != nil {
 		return err
 	}
 
 	if tfCmd != nil {
+		// Set the tf dir
+		tfCmd.Dir = c.ProvisioningTfDir
+
 		connectCMDToCurrentTerm(tfCmd)
 		err := tfCmd.Run()
 		if err != nil {
