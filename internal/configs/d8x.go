@@ -89,6 +89,20 @@ type D8XConfig struct {
 	ConfigDetails ConfigurationDetails `json:"configuration_details"`
 }
 
+func (c *D8XConfig) GetServersLabel() string {
+	switch c.ServerProvider {
+	case D8XServerProviderAWS:
+		if c.AWSConfig != nil {
+			return c.AWSConfig.LabelPrefix
+		}
+	case D8XServerProviderLinode:
+		if c.LinodeConfig != nil {
+			return c.LinodeConfig.LabelPrefix
+		}
+	}
+	return "d8x-cluster"
+}
+
 type ConfigurationDetails struct {
 	// Whether at least 1 time configuration was done successfully
 	Done bool `json:"done"`
