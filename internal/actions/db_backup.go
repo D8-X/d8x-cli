@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/conn"
+	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/pkg/sftp"
 	"github.com/urfave/cli/v2"
@@ -14,6 +16,8 @@ import (
 
 // BackupDb performs database backup
 func (c *Container) BackupDb(ctx *cli.Context) error {
+	styles.PrintCommandTitle("Backing up database...")
+
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
@@ -44,16 +48,29 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	// Make sure pg dump is installed on the manager
-	cmd := fmt.Sprintf(
-		`echo "%s" | sudo -S apt-get install -y postgresql-client-common`,
-		pwd,
-	)
-	managerConn.ExecCommand(cmd)
 
-	// Run pg dump for the database
-	backupFileName := fmt.Sprintf("backup-%s-%s.dump", cfg.GetServersLabel(), time.Now().Format("2006-01-02-15-04-05"))
-	backupCmd := "PGPASSWORD=%s pg_dump -h %s -p %d -U %s -d %s -F c -f %s"
+	// Make sure pg dump (postgres 15) is installed on the manager. Let's use
+	// the public postgres apt repo and set it up. It contains all latest
+	// versions of postgres
+	fmt.Println("Ensuring pg_dump is installed on manager server")
+	installScriptSteps := []string{
+		`echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list`,
+		"wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -",
+		"apt-get update -y",
+		"apt-get -y install postgresql-client-15",
+	}
+	for _, s := range installScriptSteps {
+		cmd := fmt.Sprintf(`echo "%s" | sudo -S bash -c '%s'`, pwd, s)
+		if out, err := managerConn.ExecCommand(cmd); err != nil {
+			fmt.Println(string(out))
+			return fmt.Errorf("setting up pg_dump on manager server: %w", err)
+		}
+	}
+
+	// Run pg dump for the database. Create a normal SQL (non-archive) backup
+	// file which can be used directly with psql
+	backupFileName := fmt.Sprintf("backup-%s-%s.dump.sql", cfg.GetServersLabel(), time.Now().Format("2006-01-02-15-04-05"))
+	backupCmd := "PGPASSWORD=%s pg_dump -h %s -p %d -U %s -d %s -f %s"
 	backupCmd = fmt.Sprintf(backupCmd, pgCfg.Password, pgCfg.Host, pgCfg.Port, pgCfg.User, pgCfg.Database, backupFileName)
 
 	// TODO handle different versions and incompatible pg_dump and postgres
@@ -63,7 +80,6 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 		return fmt.Errorf("running pg_dump: %w", err)
 	}
 
-	fmt.Println("Copying backup file to local machine")
 	// Use scp or similar library to copy the backup to given location on the
 	// local machine
 	scp, err := sftp.NewClient(managerConn.GetClient())
@@ -74,18 +90,48 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("opening backup file on manager: %w", err)
 	}
-
-	// Create backup file in current dir
-	// TOODO use directory flag
-	fout, err := os.OpenFile(backupFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	fstat, err := f.Stat()
 	if err != nil {
 		return err
 	}
+	sizeMb := float64(fstat.Size()) / float64(1024*1024)
+	fmt.Printf("Backup file size: %f MB\n", sizeMb)
+
+	// Show a small download animation so user doesn't think that download
+	// process is stuck
+	stopDownloadSpinner := make(chan struct{})
+	go c.TUI.NewSpinner(stopDownloadSpinner, "Downloading backup file to local machine")
+
+	fullBackupPath := backupFileName
+	if outDir := ctx.String("output-dir"); outDir != "" {
+		fullBackupPath = filepath.Join(outDir, fullBackupPath)
+	}
+	fullBackupPath, err = filepath.Abs(fullBackupPath)
+	if err != nil {
+		return err
+	}
+
+	// Create backup file in target path
+	fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+
 	if _, err := io.Copy(fout, f); err != nil {
 		return err
 	}
 
-	fmt.Printf("Backup file %s was downloaded", backupFileName)
+	stopDownloadSpinner <- struct{}{}
+
+	info := fmt.Sprintf("Database %s backup file was downloaded and copied to %s", pgCfg.Database, fullBackupPath)
+	fmt.Println(styles.SuccessText.Render(info))
+
+	// Rm database backup from manager server
+	fmt.Println("Removing backup file from server")
+	if out, err := managerConn.ExecCommand("rm " + backupFileName); err != nil {
+		fmt.Println(string(out))
+		return fmt.Errorf("removing backup file from manager: %w", err)
+	}
 
 	return nil
 }

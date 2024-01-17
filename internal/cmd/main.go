@@ -165,6 +165,7 @@ func RunD8XCli() {
 				Action: container.BackupDb,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
+						Name:  "output-dir",
 						Usage: "Backup directory path. Backup files will be saved in this directory.",
 					},
 				},

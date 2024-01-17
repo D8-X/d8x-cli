@@ -16,6 +16,9 @@ type model struct {
 	spinner  spinner.Model
 	quitting bool
 	err      error
+
+	text string
+	done chan struct{}
 }
 
 func initialModel() model {
@@ -42,6 +45,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	default:
+		// Check if we should quit
+		select {
+		case <-m.done:
+			return m, tea.Quit
+		default:
+		}
+
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
@@ -49,11 +59,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return m.spinner.View()
+	return m.spinner.View() + " " + m.text
 }
 
-func newSpinner() error {
-	p := tea.NewProgram(initialModel())
+func newSpinner(done chan struct{}, text string) error {
+	m := initialModel()
+	m.text = text
+	m.done = done
+
+	p := tea.NewProgram(m)
 	out, err := p.Run()
 
 	if v, ok := out.(exitModel); ok {
