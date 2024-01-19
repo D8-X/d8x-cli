@@ -160,6 +160,17 @@ func RunD8XCli() {
 				Usage:       "Copy configuration files to current working directory",
 				Description: "Copy specified configuration files to current working directory. Available configs are swarm, broker, tf-aws, tf-linode.",
 			},
+			{
+				Name:   "backup-db",
+				Action: container.BackupDb,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "output-dir",
+						Usage: "Backup directory path. Backup files will be saved in this directory.",
+					},
+				},
+				Description: "Backup database to local machine. Database credentials are read from d8x.conf.json file.",
+			},
 		},
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{

@@ -423,3 +423,68 @@ Or you can manually deploy metrics via `d8x setup metrics-deploy` command.
 By default Prometheus instance is not published and is only accessible from
 grafana instance. Grafana and cadvisor ports are not accessible to the public
 network.
+
+
+# Database backups
+
+You can use cli subcommand `backup-db` to backup the database that you provided
+during the setup process. The `backup-db` will take the database dsn from your
+`d8x.conf.json` file and connect via ssh to the manager server to create a
+backup. Backup SQL dump will be downloaded in your current working directory, or
+to directory specified by `--output-dir` flag. 
+
+Backup files will be named in the following format:
+`backup-<server-label-prefix>-<date-time>.dump.sql` for example
+`backup-d8x-cluster-test-1234-2024-01-17-19-23-50.dump.sql`
+
+Example
+```bash
+$ d8x backup-db
+
+Backing up database...
+
+Determining postgres version
+Postgres server at pg-30826a8f-quantena-6be1.a.aivencloud.com version: 13.13
+Ensuring pg_dump is installed on manager server (postgresql-client-16)
+Creating database defaultdb backup
+Backup file size: 0.389526 MB
+Database defaultdb backup file was downloaded and copied to /home/d8x/deployment/backup-d8x-cluster-test-1234-2024-01-17-20-16-09.dump.sql
+Removing backup file from server
+```
+
+## Using `backup-db` as cronjob
+
+You can add a crontab entry on your local machine to periodicaly backup your
+database. When adding crontab entry we recommend to use `--chdir` global flag to
+specify absolute path to your deployment directory. Otherwise, `backup-db` might
+fail to find the deployment directory. If you also specify the `--output-dir`
+with `--chdir` flag, the output directory will be relative (unless absolute path
+is specified) to the directory specified by `--chdir`.
+
+For example, if your deployment is in /my/deployment/dir and you want to store
+the backups in /my/deployment/dir/db-backups you would run a command like this:
+
+```bash
+d8x --chdir /my/deployment/dir backup-db --output-dir db-backups
+```
+
+To run the command above as a cronjob every day at 16:00 you would add the
+following entry to your crontab:
+```bash
+0 16 * * * d8x --chdir /my/deployment/dir backup-db --output-dir db-backups
+```
+
+Note that the machine where you add the crontab entry must be powered on in
+order for the cronjob to run.
+
+## Restoring the backups
+Backups are plain sql scripts created with `pg_dump`. You can use `psql` or any
+other postgres client to load the database backup into a database. **Note** that
+you should always use empty database when restoring a backup. If you attempt to
+load the database backup into an existing database, your data might get
+corrupted.
+
+To restore a backup:
+```bash
+psql -U user -h host -p port -d databasename < /path/to/your-backup.dump.sql
+```

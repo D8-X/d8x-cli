@@ -14,7 +14,7 @@ type ComponentsRunner interface {
 	NewList(listItems []ListItem, listTitle string, opts ...ListOpt) (ListItem, error)
 	NewPrompt(question string, confirmed bool) (bool, error)
 	NewSelection(selection []string, opts ...SelectionOpts) ([]string, error)
-	NewSpinner() error
+	NewSpinner(done chan struct{}, text string) error
 	NewTimer(timeout time.Duration, title string) error
 }
 
@@ -43,8 +43,8 @@ func (InteractiveRunner) NewSelection(selection []string, opts ...SelectionOpts)
 	return newSelection(selection, opts...)
 }
 
-func (InteractiveRunner) NewSpinner() error {
-	return newSpinner()
+func (InteractiveRunner) NewSpinner(done chan struct{}, text string) error {
+	return newSpinner(done, text)
 }
 
 func (InteractiveRunner) NewTimer(timeout time.Duration, title string) error {

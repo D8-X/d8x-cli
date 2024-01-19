@@ -97,6 +97,20 @@ func (m *MockHostsFileInteractor) EXPECT() *MockHostsFileInteractorMockRecorder 
 	return m.recorder
 }
 
+// GetAllPublicIps mocks base method.
+func (m *MockHostsFileInteractor) GetAllPublicIps() []string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllPublicIps")
+	ret0, _ := ret[0].([]string)
+	return ret0
+}
+
+// GetAllPublicIps indicates an expected call of GetAllPublicIps.
+func (mr *MockHostsFileInteractorMockRecorder) GetAllPublicIps() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllPublicIps", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetAllPublicIps))
+}
+
 // GetBrokerPublicIp mocks base method.
 func (m *MockHostsFileInteractor) GetBrokerPublicIp() (string, error) {
 	m.ctrl.T.Helper()
@@ -112,6 +126,36 @@ func (mr *MockHostsFileInteractorMockRecorder) GetBrokerPublicIp() *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBrokerPublicIp", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetBrokerPublicIp))
 }
 
+// GetLines mocks base method.
+func (m *MockHostsFileInteractor) GetLines() ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLines")
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetLines indicates an expected call of GetLines.
+func (mr *MockHostsFileInteractorMockRecorder) GetLines() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLines", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetLines))
+}
+
+// GetMangerPrivateIp mocks base method.
+func (m *MockHostsFileInteractor) GetMangerPrivateIp() (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMangerPrivateIp")
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMangerPrivateIp indicates an expected call of GetMangerPrivateIp.
+func (mr *MockHostsFileInteractorMockRecorder) GetMangerPrivateIp() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMangerPrivateIp", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetMangerPrivateIp))
+}
+
 // GetMangerPublicIp mocks base method.
 func (m *MockHostsFileInteractor) GetMangerPublicIp() (string, error) {
 	m.ctrl.T.Helper()
@@ -125,6 +169,50 @@ func (m *MockHostsFileInteractor) GetMangerPublicIp() (string, error) {
 func (mr *MockHostsFileInteractorMockRecorder) GetMangerPublicIp() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMangerPublicIp", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetMangerPublicIp))
+}
+
+// GetWorkerIps mocks base method.
+func (m *MockHostsFileInteractor) GetWorkerIps() ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetWorkerIps")
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetWorkerIps indicates an expected call of GetWorkerIps.
+func (mr *MockHostsFileInteractorMockRecorder) GetWorkerIps() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWorkerIps", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetWorkerIps))
+}
+
+// GetWorkerPrivateIps mocks base method.
+func (m *MockHostsFileInteractor) GetWorkerPrivateIps() ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetWorkerPrivateIps")
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetWorkerPrivateIps indicates an expected call of GetWorkerPrivateIps.
+func (mr *MockHostsFileInteractorMockRecorder) GetWorkerPrivateIps() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWorkerPrivateIps", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetWorkerPrivateIps))
+}
+
+// WriteLines mocks base method.
+func (m *MockHostsFileInteractor) WriteLines(arg0 []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteLines", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WriteLines indicates an expected call of WriteLines.
+func (mr *MockHostsFileInteractorMockRecorder) WriteLines(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteLines", reflect.TypeOf((*MockHostsFileInteractor)(nil).WriteLines), arg0)
 }
 
 // MockFSInteractor is a mock of FSInteractor interface.
