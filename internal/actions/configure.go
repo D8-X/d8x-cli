@@ -11,6 +11,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Configure performs initials hosts setup and configuration with ansible
@@ -69,13 +70,21 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	// cluster user and provide become_pass for old servers, but new servers
 	// need root.
 
+	// Hash password for ansible
+	h, err := bcrypt.GenerateFromPassword([]byte(c.UserPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("generating hashed password: %w", err)
+	}
+	hashedPassword := string(h)
+	fmt.Printf("hashed user password: %s\n", hashedPassword)
+
 	// Generate ansible-playbook args
 	args := []string{
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, privKeyPath),
 		"--extra-vars", "ansible_host_key_checking=false",
 		"--extra-vars", fmt.Sprintf(`user_public_key='%s'`, pubKey),
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
-		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, c.UserPassword),
+		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, hashedPassword),
 		"-i", "./hosts.cfg",
 		"-u", configureUser,
 		"./playbooks/setup.ansible.yaml",
