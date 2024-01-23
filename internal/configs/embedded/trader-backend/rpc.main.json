@@ -1,12 +1,8 @@
 [
   {
-    "chainId": 80001,
-    "HTTP": [
-      "https://polygon-testnet-rpc.allthatnode.com:8545",
-      "https://matic-mumbai.chainstacklabs.com",
-      "https://rpc-mumbai.maticvigil.com"
-    ],
-    "WS": []
+    "chainId": 195,
+    "HTTP": ["https://testrpc.x1.tech/", "https://x1testrpc.okx.com/"],
+    "WS": ["wss://x1testws.okx.com", "wss://testws.x1.tech"]
   },
   {
     "chainId": 1442,

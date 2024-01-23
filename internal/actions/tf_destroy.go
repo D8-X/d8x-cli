@@ -42,7 +42,7 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		if a == nil {
 			return fmt.Errorf("aws config is not defined")
 		}
-		authorizedKey, err := c.getPublicKey()
+		authorizedKey, err := getPublicKey(c.SshKeyPath)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,15 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 
 	cmd := exec.Command("terraform", args...)
 	cmd.Env = append(os.Environ(), env...)
+	cmd.Dir = c.ProvisioningTfDir
 
 	connectCMDToCurrentTerm(cmd)
-	return c.RunCmd(cmd)
+	if err := c.RunCmd(cmd); err != nil {
+		return err
+	}
+
+	// Update d8x config values and set deployment statuses to false
+	cfg.ResetDeploymentStatus()
+
+	return c.ConfigRWriter.Write(cfg)
 }

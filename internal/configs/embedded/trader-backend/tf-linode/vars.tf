@@ -44,3 +44,9 @@ variable "server_label_prefix" {
   description = "Prefix that will be used in server label's"
   default     = "d8x-cluster"
 }
+
+variable "create_swarm" {
+  type        = bool
+  description = "Whether swarm setup should be created (manager, workers)"
+  default     = true
+}

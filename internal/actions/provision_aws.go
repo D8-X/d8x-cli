@@ -12,6 +12,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/jackc/pgx/v5"
 )
@@ -30,18 +31,30 @@ type awsConfigurer struct {
 	authorizedKey string
 }
 
+func (c *Container) CopyAWSTFFiles() error {
+	err := c.EmbedCopier.Copy(configs.EmbededConfigs,
+		files.EmbedCopierOp{
+			Src:       "embedded/trader-backend/tf-aws",
+			Dst:       c.ProvisioningTfDir,
+			Dir:       true,
+			Overwrite: true,
+		},
+		files.EmbedCopierOp{
+			Src:       "embedded/trader-backend/tf-aws/swarm",
+			Dst:       c.ProvisioningTfDir + "/swarm",
+			Dir:       true,
+			Overwrite: true,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("generating terraform directory: %w", err)
+	}
+	return nil
+}
+
 func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	if err := c.EmbedCopier.CopyMultiToDest(
-		configs.EmbededConfigs,
-		"./aws.tf",
-		"embedded/trader-backend/tf-aws/main.tf",
-		"embedded/trader-backend/tf-aws/routes.tf",
-		"embedded/trader-backend/tf-aws/sg.tf",
-		"embedded/trader-backend/tf-aws/pg.tf",
-		"embedded/trader-backend/tf-aws/vars.tf",
-		"embedded/trader-backend/tf-aws/output.tf",
-	); err != nil {
-		return nil, fmt.Errorf("generating aws.tf file: %w", err)
+	if err := c.CopyAWSTFFiles(); err != nil {
+		return nil, err
 	}
 
 	return a.generateTerraformCommand(), nil
@@ -71,13 +84,15 @@ func (a *awsConfigurer) putManagerToKnownHosts(managerIpAddress string) error {
 
 // generateTerraformCommand generates terraform apply command for aws provider
 func (a *awsConfigurer) generateTerraformCommand() *exec.Cmd {
-	return exec.Command(
+	cmd := exec.Command(
 		"terraform",
 		append(
 			[]string{"apply", "-auto-approve"},
 			a.generateVariables()...,
 		)...,
 	)
+
+	return cmd
 }
 
 // generateVariables generates terraform variables for aws provider
@@ -92,22 +107,23 @@ func (a *awsConfigurer) generateVariables() []string {
 		"-var", fmt.Sprintf("db_instance_class=%s", a.RDSInstanceClass),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, a.CreateBrokerServer),
 		"-var", fmt.Sprintf(`rds_creds_filepath=%s`, RDS_CREDS_FILE),
+		"-var", fmt.Sprintf(`create_swarm=%t`, a.DeploySwarm),
+		"-var", fmt.Sprintf(`num_workers=%d`, a.NumWorker),
 	}
 }
 
-// createAWSServerConfigurer creates new awsConfigurer from user input
-func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error) {
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return nil, err
-	}
+// CollectAwProviderDetails collects aws provider details from user input,
+// creates a new awsConfigurer and fills in configuration details to cfg.
+func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsConfigurer, error) {
+	awsCfg := awsConfigurer{}
 
-	awsCfg := &awsConfigurer{}
-	// Text field values
+	// Default text field values
 	awsKey := ""
 	awsSecret := ""
 	awsRDSInstanceClass := "db.t4g.small"
 	awsServerLabelPrefix := "d8x-cluster"
+	awsDefaultNumberWorkers := "4"
+
 	if cfg.AWSConfig != nil {
 		awsKey = cfg.AWSConfig.AccesKey
 		awsSecret = cfg.AWSConfig.SecretKey
@@ -117,7 +133,13 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		if cfg.AWSConfig.LabelPrefix != "" {
 			awsServerLabelPrefix = cfg.AWSConfig.LabelPrefix
 		}
+		if cfg.AWSConfig.NumWorker != 0 {
+			awsDefaultNumberWorkers = strconv.Itoa(cfg.AWSConfig.NumWorker)
+		}
 	}
+
+	// Check for swarm deployment
+	awsCfg.DeploySwarm = c.setup.deploySwarm
 
 	fmt.Println("Enter your AWS Access Key: ")
 	accessKey, err := c.TUI.NewInput(
@@ -125,7 +147,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.AccesKey = accessKey
 
@@ -136,7 +158,7 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.SecretKey = secretKey
 
@@ -146,19 +168,9 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("us-west-1"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.Region = region
-
-	fmt.Println("Enter your AWS RDS DB instance class: ")
-	dbClass, err := c.TUI.NewInput(
-		components.TextInputOptValue(awsRDSInstanceClass),
-		components.TextInputOptPlaceholder("db.t3.medium"),
-	)
-	if err != nil {
-		return nil, err
-	}
-	awsCfg.RDSInstanceClass = dbClass
 
 	fmt.Println("Enter server tag prefix (must be unique between deployments): ")
 	labelPrefix, err := c.TUI.NewInput(
@@ -166,35 +178,33 @@ func (c *Container) createAWSServerConfigurer() (ServerProviderConfigurer, error
 		components.TextInputOptPlaceholder("my-cluster"),
 	)
 	if err != nil {
-		return nil, err
+		return awsCfg, err
 	}
 	awsCfg.LabelPrefix = labelPrefix
+	awsCfg.CreateBrokerServer = c.setup.deployBroker
 
-	// Broker-server
-	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker server?", true)
-	if err != nil {
-		return nil, err
-	}
-	awsCfg.CreateBrokerServer = createBrokerServer
-	// Set to deploy in container for current session
-	c.CreateBrokerServer = createBrokerServer
+	// Collect swarm details
+	if c.setup.deploySwarm {
+		fmt.Println("Enter your AWS RDS DB instance class: ")
+		dbClass, err := c.TUI.NewInput(
+			components.TextInputOptValue(awsRDSInstanceClass),
+			components.TextInputOptPlaceholder("db.t3.medium"),
+		)
+		if err != nil {
+			return awsCfg, err
+		}
+		awsCfg.RDSInstanceClass = dbClass
 
-	// SSH key check
-	if err := c.ensureSSHKeyPresent(); err != nil {
-		return nil, err
+		numWorkers, err := c.CollectNumberOfWorkers(awsDefaultNumberWorkers)
+		if err != nil {
+			return awsCfg, fmt.Errorf("incorrect number of workers: %w", err)
+		}
+		awsCfg.NumWorker = numWorkers
 	}
-	pub, err := c.getPublicKey()
-	if err != nil {
-		return nil, err
-	}
-	awsCfg.authorizedKey = pub
 
-	// Store aws details in configuration file
-	cfg.ServerProvider = configs.D8XServerProviderAWS
+	// Update the config
 	cfg.AWSConfig = &awsCfg.D8XAWSConfig
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return nil, err
-	}
+	cfg.ServerProvider = configs.D8XServerProviderAWS
 
 	return awsCfg, nil
 }

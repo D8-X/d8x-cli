@@ -3,6 +3,7 @@ package actions
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -17,31 +18,18 @@ const (
 	ServerProviderAws    SupportedServerProvider = "aws"
 )
 
+// Default terraform files directory without trailing slash
+const TF_FILES_DIR = "./terraform"
+
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
 
-	fmt.Println("Select your server provider")
-
-	// List of supported server providers
-	selected, err := c.TUI.NewSelection([]string{
-		string(ServerProviderLinode),
-		string(ServerProviderAws),
-	},
-		components.SelectionOptAllowOnlySingleItem(),
-		components.SelectionOptRequireSelection(),
-	)
-
-	if err != nil {
+	if err := c.Input.CollectProvisioningData(ctx); err != nil {
 		return err
 	}
-
-	if len(selected) <= 0 {
-		return fmt.Errorf("at least one server provider must be selected")
-	}
-
-	providerConfigurer, err := c.configureServerProviderForTF(SupportedServerProvider(selected[0]))
-	if err != nil {
-		return fmt.Errorf("collecting server provider details: %w", err)
+	providerConfigurer := c.Input.GetServerProviderConfigurer()
+	if providerConfigurer == nil {
+		return fmt.Errorf("misconfigured server provider details")
 	}
 
 	// Terraform apply for selected server provider
@@ -53,12 +41,16 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Terraform init must run after we copy all the terraform files via
 	// BuildTerraformCMD
 	tfInit := exec.Command("terraform", "init")
+	tfInit.Dir = c.ProvisioningTfDir
 	connectCMDToCurrentTerm(tfInit)
 	if err := tfInit.Run(); err != nil {
 		return err
 	}
 
 	if tfCmd != nil {
+		// Set the tf dir
+		tfCmd.Dir = c.ProvisioningTfDir
+
 		connectCMDToCurrentTerm(tfCmd)
 		err := tfCmd.Run()
 		if err != nil {
@@ -72,6 +64,11 @@ func (c *Container) Provision(ctx *cli.Context) error {
 
 	// Perform provider dependent actions
 	if err := providerConfigurer.PostProvisioningAction(c); err != nil {
+		return err
+	}
+
+	// Update the input
+	if err := c.Input.PostProvisioningHook(); err != nil {
 		return err
 	}
 
@@ -91,15 +88,19 @@ type ServerProviderConfigurer interface {
 	PostProvisioningAction(*Container) error
 }
 
-// configureServerProviderForTF collects details about user specified provider
-// and returns a server configurer
-func (c *Container) configureServerProviderForTF(provider SupportedServerProvider) (ServerProviderConfigurer, error) {
-	switch provider {
-	case ServerProviderLinode:
-		return c.createLinodeServerConfigurer()
-	case ServerProviderAws:
-		return c.createAWSServerConfigurer()
+// CollectNumberOfWorkers collects number of workers input from user
+func (c *InputCollector) CollectNumberOfWorkers(defaultNum string) (int, error) {
+	fmt.Println("Enter number of worker servers to create: ")
+	numWorkers, err := c.TUI.NewInput(
+		components.TextInputOptValue(defaultNum),
+		components.TextInputOptPlaceholder("4"),
+		components.TextInputOptValidation(func(s string) bool {
+			_, err := strconv.Atoi(s)
+			return err == nil
+		}, "please provide a valid number"),
+	)
+	if err != nil {
+		return -1, err
 	}
-
-	return nil, nil
+	return strconv.Atoi(numWorkers)
 }

@@ -49,13 +49,36 @@ variable "db_instance_class" {
   description = "Postgres database instance size"
 }
 
-variable "rds_creds_filepath" {
-  type        = string
-  description = "RDS Postgres database credentials file path"
-}
 
 variable "create_broker_server" {
   type        = bool
   description = "Whether broker-server node should be created"
   default     = false
+}
+
+variable "create_swarm" {
+  type        = bool
+  description = "Whether swarm setup should be created (manager, workers, rds)"
+  default     = true
+}
+
+# tf files are usually in ./terraform directory, but jump config must be placed
+# in ../ for ansible. Therfore we will append path prefix manually depending on
+# the context.
+variable "ssh_jump_host_cfg_filename" {
+  type        = string
+  description = "Path to ssh jump host config file"
+  default     = "manager_ssh_jump.conf"
+}
+
+variable "host_cfg_path" {
+  type        = string
+  description = "Path to ssh jump host config file"
+  default     = "../hosts.cfg"
+}
+
+variable "rds_creds_filepath" {
+  type        = string
+  description = "RDS Postgres database credentials file path"
+  default     = "../aws_rds_postgres.txt"
 }

@@ -124,17 +124,17 @@ func (mr *MockComponentsRunnerMockRecorder) NewSelection(arg0 interface{}, arg1 
 }
 
 // NewSpinner mocks base method.
-func (m *MockComponentsRunner) NewSpinner() error {
+func (m *MockComponentsRunner) NewSpinner(arg0 chan struct{}, arg1 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "NewSpinner")
+	ret := m.ctrl.Call(m, "NewSpinner", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // NewSpinner indicates an expected call of NewSpinner.
-func (mr *MockComponentsRunnerMockRecorder) NewSpinner() *gomock.Call {
+func (mr *MockComponentsRunnerMockRecorder) NewSpinner(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewSpinner", reflect.TypeOf((*MockComponentsRunner)(nil).NewSpinner))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewSpinner", reflect.TypeOf((*MockComponentsRunner)(nil).NewSpinner), arg0, arg1)
 }
 
 // NewTimer mocks base method.

@@ -11,6 +11,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Configure performs initials hosts setup and configuration with ansible
@@ -22,6 +23,14 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		return err
 	}
 
+	// Update hosts.cfg for linode provider in case d8x config was changed
+	// manually
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
+	}
+
 	// Copy the playbooks file
 	if err := c.EmbedCopier.Copy(
 		configs.EmbededConfigs,
@@ -30,7 +39,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		return err
 	}
 
-	pubKey, err := c.getPublicKey()
+	pubKey, err := getPublicKey(c.SshKeyPath)
 	if err != nil {
 		return fmt.Errorf("retrieving public key: %w", err)
 	}
@@ -38,7 +47,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 
 	// Generate password when not provided
 	if c.UserPassword == "" {
-		password, err := c.generatePassword(16)
+		password, err := generatePassword(16)
 		if err != nil {
 			return err
 		}
@@ -55,32 +64,70 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		styles.SuccessText.Render("Password was stored in ./password.txt file"),
 	)
 
+	configureUser := cfg.GetAnsibleUser()
+
+	// For linode when subsequent configuration is performed, we need to use the
+	// cluster user and provide become_pass for old servers, but new servers
+	// need root.
+
+	// Hash password for ansible
+	h, err := bcrypt.GenerateFromPassword([]byte(c.UserPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("generating hashed password: %w", err)
+	}
+	hashedPassword := string(h)
+	fmt.Printf("hashed user password: %s\n", hashedPassword)
+
 	// Generate ansible-playbook args
 	args := []string{
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, privKeyPath),
 		"--extra-vars", "ansible_host_key_checking=false",
 		"--extra-vars", fmt.Sprintf(`user_public_key='%s'`, pubKey),
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
-		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, c.UserPassword),
+		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, hashedPassword),
 		"-i", "./hosts.cfg",
-		"-u", cfg.GetAnsibleUser(),
+		"-u", configureUser,
 		"./playbooks/setup.ansible.yaml",
 	}
 
-	// For AWS, we don't want to setup UFW, since firewall is already handled by
-	// AWS itself
-	if cfg.ServerProvider == configs.D8XServerProviderAWS {
+	switch cfg.ServerProvider {
+	case configs.D8XServerProviderAWS:
+		// For AWS, we don't want to setup UFW, since firewall is already handled by
+		// AWS itself
 		args = append(args, "--extra-vars", "no_ufw=true")
+
+	case configs.D8XServerProviderLinode:
+		// For linode - pass become_pass for subsequent configuration runs.
+		if cfg.ConfigDetails.Done {
+			args = append(args,
+				"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, c.UserPassword),
+			)
+		}
 	}
 
 	cmd := exec.Command("ansible-playbook", args...)
 	cmd.Env = os.Environ()
 	connectCMDToCurrentTerm(cmd)
 
-	return c.RunCmd(cmd)
+	if err := c.RunCmd(cmd); err != nil {
+		return err
+	}
+
+	// Update configuration details
+	cfg.ConfigDetails.Done = true
+	cfg.ConfigDetails.ConfiguredServers = c.HostsCfg.GetAllPublicIps()
+
+	// Update hosts.cfg for linode provider
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
+	}
+
+	return c.ConfigRWriter.Write(cfg)
 }
 
-func (c *Container) generatePassword(n int) (string, error) {
+func generatePassword(n int) (string, error) {
 	set := "_1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	l := len(set)
 	pwd := ""

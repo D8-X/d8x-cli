@@ -44,9 +44,6 @@ type D8XConfig struct {
 	LinodeConfig *D8XLinodeConfig `json:"linode_config"`
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
-	// Whether broker server is deployed
-	BrokerDeployed bool `json:"broker_deployed"`
-
 	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
 
 	ReferralConfig ReferralConfig `json:"referral_config"`
@@ -71,7 +68,66 @@ type D8XConfig struct {
 
 	// Setup domain entered by user. Used to suggest subdomain names for
 	// services
-	SetupDomain string `setup_domain`
+	SetupDomain string `json:"setup_domain"`
+
+	// Whether metrics services were deployed
+	MetricsDeployed bool `json:"metrics_deployed"`
+	// Whether broker server is deployed
+	BrokerDeployed        bool `json:"broker_deployed"`
+	BrokerNginxDeployed   bool `json:"broker_nginx_deployed"`
+	BrokerCertbotDeployed bool `json:"broker_certbot_deployed"`
+
+	// Whether swarm is deployed
+	SwarmDeployed        bool `json:"swarm_deployed"`
+	SwarmNginxDeployed   bool `json:"swarm_nginx_deployed"`
+	SwarmCertbotDeployed bool `json:"swarm_certbot_deployed"`
+
+	// MD5 hash of last created ssh private key, empty string initially
+	SSHKeyMD5 string `json:"ssh_key_hash"`
+
+	// Ansible related configuration details
+	ConfigDetails ConfigurationDetails `json:"configuration_details"`
+}
+
+func (c *D8XConfig) GetServersLabel() string {
+	switch c.ServerProvider {
+	case D8XServerProviderAWS:
+		if c.AWSConfig != nil {
+			return c.AWSConfig.LabelPrefix
+		}
+	case D8XServerProviderLinode:
+		if c.LinodeConfig != nil {
+			return c.LinodeConfig.LabelPrefix
+		}
+	}
+	return "d8x-cluster"
+}
+
+type ConfigurationDetails struct {
+	// Whether at least 1 time configuration was done successfully
+	Done bool `json:"done"`
+
+	// List of IP addresses of servers which were configured previously. This is
+	// important for linode configuration step when non-first time setup is
+	// performed. We use this list to mark which servers should use cluster user
+	// instead of root for ssh access in configure action.
+	ConfiguredServers []string `json:"configured_server_ip_addresses"`
+}
+
+// ResetDeploymentStatus cleans up deployment status of all services/servers,
+// etc. Should be called and stored after tf-destroy.
+func (d *D8XConfig) ResetDeploymentStatus() {
+	d.MetricsDeployed = false
+	d.BrokerDeployed = false
+	d.BrokerNginxDeployed = false
+	d.BrokerCertbotDeployed = false
+	d.SwarmDeployed = false
+	d.SwarmNginxDeployed = false
+	d.SwarmCertbotDeployed = false
+	d.ConfigDetails = ConfigurationDetails{
+		Done:              false,
+		ConfiguredServers: []string{},
+	}
 }
 
 type ReferralConfig struct {
@@ -89,7 +145,7 @@ func (d *D8XConfig) GetAnsibleUser() string {
 	if d.ServerProvider == D8XServerProviderLinode {
 		return "root"
 	} else if d.ServerProvider == D8XServerProviderAWS {
-		// In case used image changes - we should also chane the user!
+		// In case used image changes - we should also change the user!
 		return "ubuntu"
 	}
 	return ""
@@ -111,6 +167,9 @@ type D8XLinodeConfig struct {
 	SwarmNodeSize      string `json:"swarm_node_size"`
 	BrokerServerSize   string `json:"broker_server_size"`
 	CreateBrokerServer bool   `json:"create_broker_server"`
+	DeploySwarm        bool   `json:"deploy_swarm"`
+	// Number of worker servers to deploy in swarm
+	NumWorker int `json:"num_worker"`
 }
 
 type D8XAWSConfig struct {
@@ -121,6 +180,9 @@ type D8XAWSConfig struct {
 	RDSInstanceClass       string `json:"rds_instance_class"`
 	CreateBrokerServer     bool   `json:"create_broker_server"`
 	RDSCredentialsFilePath string `json:"rds_credentials_file_path"`
+	DeploySwarm            bool   `json:"deploy_swarm"`
+	// Number of worker servers to deploy in swarm
+	NumWorker int `json:"num_worker"`
 }
 
 type D8XService struct {
@@ -133,7 +195,10 @@ type D8XService struct {
 }
 
 type D8XBrokerServerConfig struct {
-	FeeTBPS       string `json:"fee_tbps"`
+	FeeTBPS string `json:"fee_tbps"`
+	// User supplied Fee value in percent
+	FeeInputPercent string `json:"fee_input_percent"`
+
 	RedisPassword string `json:"redis_password"`
 
 	// Executor address must match the provided Executor private key in swarm

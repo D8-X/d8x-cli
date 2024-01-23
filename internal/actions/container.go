@@ -1,11 +1,9 @@
 package actions
 
 import (
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,12 +23,14 @@ type ChainInfo struct {
 var ALLOWED_CHAINS_STRINGS = []string{
 	"zkEVM testnet (1442)",
 	"zkEVM mainnet (1101)",
+	"x1 testnet (195)",
 }
 
 // Chain ids which are allowed to enter
 var ALLOWED_CHAINS_MAP = map[string]string{
 	"zkEVM testnet (1442)": "1442",
 	"zkEVM mainnet (1101)": "1101",
+	"x1 testnet (195)":     "195",
 }
 
 type SSHConnectionMaker func()
@@ -54,6 +54,10 @@ type Container struct {
 	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
+	// Directory to the terraform files. Defaults to ./terraform but can be
+	// overriden by --tf-dir flag
+	ProvisioningTfDir string
+
 	EmbedCopier files.EmbedFileCopier
 
 	FS files.FSInteractor
@@ -62,10 +66,6 @@ type Container struct {
 	// configuration. If provisioning was not done in current cli session, this
 	// will not be set.
 	provisioningTime time.Time
-
-	// Whether broker server should be provisioned and d8x-broker-server
-	// deployed.
-	CreateBrokerServer bool
 
 	HostsCfg files.HostsFileInteractor
 
@@ -88,11 +88,11 @@ type Container struct {
 	// Cached parsed chain.json contents
 	cachedChainJson ChainJson
 
-	// Whether user was already asked to set up the chain id in current session
-	chainIdAlreadyEntered bool
+	// Global input state
+	Input *InputCollector
 }
 
-func NewDefaultContainer() *Container {
+func NewDefaultContainer() (*Container, error) {
 
 	httpClient := http.DefaultClient
 	return &Container{
@@ -106,7 +106,8 @@ func NewDefaultContainer() *Container {
 		RunCmd: func(c *exec.Cmd) error {
 			return c.Run()
 		},
-	}
+		ProvisioningTfDir: TF_FILES_DIR,
+	}, nil
 }
 
 // expandCMD expands input string to argument slice suitable for exec.Command
@@ -120,56 +121,4 @@ func connectCMDToCurrentTerm(c *exec.Cmd) {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
-}
-
-// GetChainId attempts to retrieve the chain id from config, if that is not
-// possible, prompts use to enter it and stores the value in config
-func (c *Container) GetChainId(ctx *cli.Context) (uint, error) {
-	// TODO read chain id from flags
-
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return 0, err
-	}
-
-	if cfg.ChainId != 0 {
-		if c.chainIdAlreadyEntered {
-			return cfg.ChainId, nil
-		}
-
-		info := fmt.Sprintf("Currently using chain id: %d. Keep using this chain id?", cfg.ChainId)
-		keep, err := c.TUI.NewPrompt(info, true)
-		if err != nil {
-			return 0, err
-		}
-		if keep {
-			return cfg.ChainId, nil
-		}
-	}
-
-	fmt.Println("Select chain id:")
-	// Allow to input chain id if DEBUG_ALLOW_CHAINID_INPUT variable is set
-	var chainId string
-	if _, allowInput := os.LookupEnv("DEBUG_ALLOW_CHAINID_INPUT"); !allowInput {
-		chains, err := c.TUI.NewSelection(ALLOWED_CHAINS_STRINGS, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
-		if err != nil {
-			return 0, err
-		}
-		chainId = ALLOWED_CHAINS_MAP[chains[0]]
-	} else {
-		chain, err := c.TUI.NewInput(components.TextInputOptPlaceholder("1101"))
-		if err != nil {
-			return 0, err
-		}
-		chainId = chain
-	}
-
-	chainIdUint, err := strconv.Atoi(chainId)
-	if err != nil {
-		return 0, err
-	}
-
-	c.chainIdAlreadyEntered = true
-	cfg.ChainId = uint(chainIdUint)
-	return cfg.ChainId, c.ConfigRWriter.Write(cfg)
 }

@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/containers/image/types"
 	"github.com/distribution/reference"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/net/html"
 )
 
 type DokcerStackFileServices struct {
@@ -75,6 +77,19 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 }
 
 func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+	if len(selectedSwarmServicesToUpdate) == 0 {
+		return nil
+	}
+
+	workerIps, err := c.HostsCfg.GetWorkerIps()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Pruning unused resources on worker servers...")
+	if err := c.PurgeWorkers(workerIps); err != nil {
+		return err
+	}
 
 	password, err := c.GetPassword(ctx)
 	if err != nil {
@@ -93,27 +108,53 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		fmt.Printf("Updating service %s\n", svcToUpdate)
 
 		img := services[svcToUpdate].Image
-		tags, err := getTags(img)
+		tags, err := getTagsWithHashes(svcToUpdate, img)
+		// If tags cannot be fetched - show error, but do not exit the update
+		// process, since this is only local error on users' machine
 		if err != nil {
 			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not get tags for %s: %s\n", img, err.Error())))
-			continue
+			tags = []string{}
 		}
 
-		fmt.Printf("Available tags: %s\n\n", strings.Join(tags, ", "))
-
-		fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
-		info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
-		fmt.Println(styles.GrayText.Render(info))
-		info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
-		fmt.Println(styles.GrayText.Render(info))
-
-		fmt.Println("Enter image to update to:")
-		imgToUse, err := c.TUI.NewInput(
-			components.TextInputOptValue(img),
-			components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
+		// Show selection of available tags (with latest sha hashes whenever
+		// possible) to update to
+		enterManuallyOption := "Enter image reference manually"
+		imagesSelection := make([]string, len(tags))
+		for i, tag := range tags {
+			imagesSelection[i] = img + ":" + tag
+		}
+		// Manual entry option
+		imagesSelection = append(imagesSelection, enterManuallyOption)
+		fmt.Println("Choose which image reference to update to")
+		selectedImageToUpdate, err := c.TUI.NewSelection(
+			imagesSelection,
+			components.SelectionOptAllowOnlySingleItem(),
+			components.SelectionOptRequireSelection(),
 		)
 		if err != nil {
 			return err
+		}
+
+		imgToUse := selectedImageToUpdate[0]
+
+		if imgToUse != enterManuallyOption {
+			fmt.Printf("Using image: %s\n", selectedImageToUpdate[0])
+		} else {
+			fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
+			info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
+			fmt.Println(styles.GrayText.Render(info))
+			info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
+			fmt.Println(styles.GrayText.Render(info))
+
+			fmt.Println("Enter image to update to:")
+			enteredImage, err := c.TUI.NewInput(
+				components.TextInputOptValue(img),
+				components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
+			)
+			if err != nil {
+				return err
+			}
+			imgToUse = enteredImage
 		}
 
 		// For referral system - we need to update the referral executor private
@@ -219,7 +260,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		return err
 	}
 
-	// See broker.go for broker server setup
+	// See broker.go for broker server setup directory
 	brokerDir := "./broker"
 
 	ipBroker, err := c.HostsCfg.GetBrokerPublicIp()
@@ -231,12 +272,16 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		return err
 	}
 
+	fmt.Println("Pruning unused resources on broker server...")
+	out, err := dockerPrune(sshConn)
+	fmt.Println(string(out))
+	if err != nil {
+		return fmt.Errorf("docker prune on broker server failed: %w", err)
+	}
+	fmt.Println(styles.SuccessText.Render("Docker prune on broker server completed successfully"))
+
 	// Ask for private key
-	fmt.Println("Enter your broker private key:")
-	pk, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-		components.TextInputOptMasked(),
-	)
+	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
 	if err != nil {
 		return err
 	}
@@ -246,7 +291,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 	redisPassword := ""
 	feeTBPS := ""
 	if !cfg.BrokerDeployed {
-		fmt.Println(styles.ErrorText.Render("Broker server configuration not found"))
+		fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
 		fmt.Println("Enter your broker redis password:")
 		pwd, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
@@ -256,10 +301,7 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		}
 		redisPassword = pwd
 
-		fmt.Println("Enter your broker fee tbps value:")
-		fee, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("60"),
-		)
+		fee, err := c.Input.CollectBrokerFee()
 		if err != nil {
 			return err
 		}
@@ -320,6 +362,133 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 	return nil
 }
 
+// See docker-swarm-stack.yml and github packages for urls
+var githubPackageVersionsPage = map[string]string{
+	"api":                 "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-main/versions",
+	"history":             "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-history/versions",
+	"referral":            "https://github.com/D8-X/referral-system/pkgs/container/d8x-referral-system/versions",
+	"candles-pyth-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-pyth-client/versions",
+	"candles-ws-server":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-ws-server/versions",
+}
+
+// getTagsWithHashes is a hacky way for us to gather the sha digest hashes of
+// the given image from github packages version page. If version page url is
+// found - we try to parse the html and find ul li items with tag button <a>.
+// The common parent node (<li>) of <a> with tag name contains another child
+// with sha256 hash. Returned fullTags slice will contain the sha256 hash
+// appended to the tag name.
+func getTagsWithHashes(svcName, imgUrl string) (fullTags []string, err error) {
+	tags, err := getTags(imgUrl)
+	if err != nil {
+		return nil, err
+	}
+
+	packageUrl, ok := githubPackageVersionsPage[svcName]
+	if !ok {
+		fmt.Println(
+			styles.ErrorText.Render("Could not find package url for service " + svcName + ". Image "),
+		)
+		return tags, nil
+	}
+
+	resp, err := http.DefaultClient.Get(packageUrl)
+	if err != nil {
+		return tags, nil
+	}
+	defer resp.Body.Close()
+
+	htmlTree, err := html.Parse(resp.Body)
+	if err != nil {
+		return tags, nil
+	}
+
+	// Inspect the github version page html to see the structure. First we'll
+	// find <li> with Box-row class. intialTree := htmlTree
+	liItems := []*html.Node{}
+	findHtmlNodes(htmlTree, ghTagLiFinder, &liItems)
+
+	// Modify tags slice in place and append sha hashes found from the github
+	// packages version pages
+	for _, li := range liItems {
+		for i, tag := range tags {
+			foundHash := ghLiTagShaHashFinder(li, tag)
+			if foundHash != "" {
+				tags[i] = tag + "@" + foundHash
+			}
+		}
+	}
+
+	return tags, nil
+}
+
+// htmlFinderFunc is a function that finds matching  node and a bool indicating
+// that node was found.
+type htmlFinderFunc func(*html.Node) (*html.Node, bool)
+
+// ghTagLiFinder finds li.Box-row elements which contain the sha hashes of image
+// versions.
+func ghTagLiFinder(n *html.Node) (*html.Node, bool) {
+	if n.Type == html.ElementNode && n.Data == "li" {
+		for _, attr := range n.Attr {
+			if attr.Key == "class" && strings.Contains(attr.Val, "Box-row") {
+				return n, true
+			}
+		}
+	}
+	return nil, false
+}
+
+// ghLiTagShaHashFinder finds html element which contains link and also text of
+// given gitTag
+func ghLiTagShaHashFinder(li *html.Node, gitTags string) string {
+	// Find the <a> tag with href containing the gitTag
+	res := []*html.Node{}
+	findHtmlNodes(li, func(n *html.Node) (*html.Node, bool) {
+		if n.Type == html.ElementNode && n.Data == "a" {
+			for _, attr := range n.Attr {
+				if attr.Key == "href" && strings.Contains(strings.ToLower(attr.Val), "?tag="+gitTags) {
+					return n, true
+				}
+			}
+		}
+		return nil, false
+	}, &res)
+
+	// Find any element inside our li node which hash the sha256 hash text
+	if len(res) > 0 {
+		hashNode := []*html.Node{}
+		lastSavedHahs := ""
+		findHtmlNodes(li, func(n *html.Node) (*html.Node, bool) {
+			if n.Type == html.TextNode {
+				innerText := strings.TrimSpace(n.Data)
+				if strings.HasPrefix(innerText, "sha256:") {
+					lastSavedHahs = innerText
+					return n, true
+				}
+			}
+			return nil, false
+		}, &hashNode)
+
+		if len(hashNode) > 0 {
+			return lastSavedHahs
+		}
+	}
+
+	return ""
+}
+
+func findHtmlNodes(parent *html.Node, f htmlFinderFunc, result *[]*html.Node) {
+	foundNode, found := f(parent)
+
+	if found {
+		*result = append(*result, foundNode)
+	}
+
+	for c := parent.FirstChild; c != nil; c = c.NextSibling {
+		findHtmlNodes(c, f, result)
+	}
+}
+
 // getTags retrieves available tags for given image
 func getTags(imgUrl string) ([]string, error) {
 	ref, err := reference.ParseNormalizedNamed(imgUrl)
@@ -337,4 +506,34 @@ func getTags(imgUrl string) ([]string, error) {
 		&types.SystemContext{},
 		imgRef,
 	)
+}
+
+// PurgeWorkers removes all all docker artifacts on each worker
+func (c *Container) PurgeWorkers(workersIps []string) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
+	for workerIndex, workerIp := range workersIps {
+		fmt.Printf("Running docker prune on worker-%d:\n", workerIndex+1)
+		worker, err := c.GetWorkerConnection(workerIp, cfg)
+		if err != nil {
+			return err
+		}
+
+		output, err := dockerPrune(worker)
+		fmt.Println(string(output))
+		if err != nil {
+			return fmt.Errorf("docker prune on worker %d failed: %w", workerIndex+1, err)
+		} else {
+			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Docker prune on worker %d completed successfully", workerIndex+1)))
+		}
+	}
+
+	return nil
+}
+
+func dockerPrune(server conn.SSHConnection) ([]byte, error) {
+	return server.ExecCommand("docker system prune -a -f --volumes && docker volume prune -f")
 }

@@ -1,0 +1,45 @@
+# This configuration is used as compose file for collecting metrics from docker
+# swarm nodes. Deployed on swarm manager as compose (non swarm).
+version: "3.8"
+services:
+  prometheus: 
+    image: prom/prometheus:v2.47.2
+    # ports:
+    #   - 4001:9090
+    configs:  
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus_data_vol:/prometheus
+    networks:
+      - metrics_net
+  grafana: 
+    image: grafana/grafana
+    ports: 
+      - 127.0.0.1:4002:3000
+    volumes:  
+      # Default prometheus service data source
+      - ./grafana/datasource-prometheus.yml:/etc/grafana/provisioning/datasources/prometheus.yml
+      # Dashboards config
+      - ./grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml
+      # Default dashboard
+      - ./grafana/chart.json:/var/lib/grafana/dashboards/chart.json
+      - ./grafana/chart-cadvisor.json:/var/lib/grafana/dashboards/chart-cadvisor.json
+      # Persistence for grafana
+      - 'grafana_data:/var/lib/grafana'
+    networks:
+      - metrics_net
+
+configs:
+  prometheus_config:
+    file: ./prometheus.yml
+
+volumes:  
+  prometheus_data_vol:  
+    external: true
+  grafana_data:
+networks:
+  metrics_net:
+    ipam:
+      config:
+        - subnet: 172.16.4.0/24

@@ -15,14 +15,16 @@ import (
 )
 
 type ChainJsonEntry struct {
-	SDKNetwork            string `json:"sdkNetwork"`
-	PriceFeedNetwork      string `json:"priceFeedNetwork"`
-	DefaultPythWSEndpoint string `json:"priceServiceWSEndpoint"`
+	SDKNetwork               string `json:"sdkNetwork"`
+	PriceFeedNetwork         string `json:"priceFeedNetwork"`
+	DefaultPythWSEndpoint    string `json:"priceServiceWSEndpoint"`
+	DefaultPythHTTPSEndpoint string `json:"priceServiceHTTPSEndpoint"`
 	// Chain type is either testnet or mainnet
 	Type string `json:"type"`
 }
 
-// trader-backend/chain.json structure. This must always contain "default" key.
+// trader-backend/chain.json structure. This must always contain "default" key
+// with values.
 type ChainJson map[string]ChainJsonEntry
 
 type rpcTransport string
@@ -39,10 +41,10 @@ const (
 	rpcTransportWS   rpcTransport = "ws"
 )
 
-// RPCUrlCollector collects RPC urls from the user
-func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int) ([]string, error) {
+// RPCUrlCollector collects RPC urls from the user. Slice suggestions is a list
+// of RPC suggestions which will be added as initial value to the input field.
+func (c *InputCollector) RPCUrlCollector(protocol rpcTransport, chainId string, requireAtLeast, recommended int, suggestions []string) ([]string, error) {
 	transportUpper := strings.ToUpper(string(protocol))
-	transportLower := strings.ToLower(string(protocol))
 	endpoints := []string{}
 
 	validate := func(endpoint string) error {
@@ -60,10 +62,17 @@ func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requi
 	}
 
 	for {
+		// If suggestions are provided, use them as initial value
+		val := ""
+		if len(endpoints) < len(suggestions) {
+			val = suggestions[len(endpoints)]
+		}
+
 		fmt.Printf("Enter %s RPC url #%d for chain id %s\n", transportUpper, len(endpoints)+1, chainId)
 		endpoint, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder(transportLower+"://localhost:8545"),
+			components.TextInputOptPlaceholder(protocol.SecureProtocolPrefix()+"your-rpc-provider.com"),
 			components.TextInputOptDenyEmpty(),
+			components.TextInputOptValue(val),
 		)
 		if err != nil {
 			return nil, err
@@ -105,12 +114,12 @@ func (c *Container) RPCUrlCollector(protocol rpcTransport, chainId string, requi
 
 // CollectHTTPRPCUrls collects http rpc urls and writes them into the config
 // file
-func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) error {
+func (input *InputCollector) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) error {
 	collectHttpRPCS := true
 	httpRpcs, exists := cfg.HttpRpcList[chainId]
 	if exists {
 		fmt.Printf("The following HTTP RPC urls were found: \n%s \n", strings.Join(httpRpcs, "\n"))
-		keep, err := c.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
+		keep, err := input.TUI.NewPrompt("Do you want to keep these HTTP RPC urls?", true)
 		if err != nil {
 			return err
 		}
@@ -119,19 +128,19 @@ func (c *Container) CollectHTTPRPCUrls(cfg *configs.D8XConfig, chainId string) e
 		}
 	}
 	if collectHttpRPCS {
-		httpRpcs, err := c.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5)
+		httpRpcs, err := input.RPCUrlCollector(rpcTransportHTTP, chainId, 3, 5, []string{})
 		if err != nil {
 			return err
 		}
 		cfg.HttpRpcList[chainId] = slices.Compact(httpRpcs)
 	}
 
-	return c.ConfigRWriter.Write(cfg)
+	return input.ConfigRWriter.Write(cfg)
 }
 
 // CollectWebsocketRPCUrls collects websocket rpc urls and writes them into the
 // config file
-func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId string) error {
+func (c *InputCollector) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId string) error {
 	collectWSRPCS := true
 	wspRpcs, exists := cfg.WsRpcList[chainId]
 	if exists {
@@ -144,8 +153,23 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 			collectWSRPCS = false
 		}
 	}
+
+	// When http rpcs are provided - make a suggestion list for websocket rpcs
+	// by changing http(s):// to wss:// prefix
+	suggestions := []string{}
+	if httpRpcs, ok := cfg.HttpRpcList[chainId]; ok {
+		for _, rpc := range httpRpcs {
+			suggestions = append(suggestions,
+				"wss://"+strings.TrimPrefix(
+					strings.TrimPrefix(rpc, "http://"),
+					"https://",
+				),
+			)
+		}
+	}
+
 	if collectWSRPCS {
-		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2)
+		wsRpcs, err := c.RPCUrlCollector(rpcTransportWS, chainId, 1, 2, suggestions)
 		if err != nil {
 			return err
 		}
@@ -154,68 +178,79 @@ func (c *Container) CollectWebsocketRPCUrls(cfg *configs.D8XConfig, chainId stri
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// LoadChainJson loads the chain.json file from the embedded configs and caches
-// it on Container instance.
-func (c *Container) LoadChainJson() error {
-	if c.cachedChainJson == nil {
-		contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
-		if err != nil {
-			return err
-		}
+// LoadChainJson loads the chain.json file contents from the embedded configs
+func LoadChainJson() (ChainJson, error) {
+	chainJson := ChainJson{}
 
-		chainJson := ChainJson{}
-		if err := json.Unmarshal(contents, &chainJson); err != nil {
-			return fmt.Errorf("unmarshalling chain.json: %w", err)
-		}
-
-		c.cachedChainJson = chainJson
+	contents, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/chain.json")
+	if err != nil {
+		return chainJson, err
 	}
 
-	return nil
+	if err := json.Unmarshal(contents, &chainJson); err != nil {
+		return chainJson, fmt.Errorf("unmarshalling chain.json: %w", err)
+	}
+
+	return chainJson, err
+}
+
+// LoadChainJson loads and caches ChainJson data
+func (c *Container) LoadChainJson() (ChainJson, error) {
+	if c.cachedChainJson == nil {
+		chjs, err := LoadChainJson()
+		if err != nil {
+			return nil, err
+		}
+		c.cachedChainJson = chjs
+	}
+
+	return c.cachedChainJson, nil
 }
 
 // getChainSDKName retrieves the SDK compatible SDK_CONFIG_NAME
-func (c *Container) getChainSDKName(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getChainSDKName(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].SDKNetwork
+		return c["default"].SDKNetwork
 	}
-	return chainJson.SDKNetwork
+	return entry.SDKNetwork
 }
 
 // getChainPriceFeedName retrieves the python compatible NETWORK_NAME
-func (c *Container) getChainPriceFeedName(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getChainPriceFeedName(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].PriceFeedNetwork
+		return c["default"].PriceFeedNetwork
 	}
-	return chainJson.PriceFeedNetwork
+	return entry.PriceFeedNetwork
 }
 
 // getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
 // chain.json config
-func (c *Container) getDefaultPythWSEndpoint(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+func (c ChainJson) getDefaultPythWSEndpoint(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].DefaultPythWSEndpoint
+		return c["default"].DefaultPythWSEndpoint
 	}
-	return chainJson.DefaultPythWSEndpoint
+	return entry.DefaultPythWSEndpoint
 }
 
-func (c *Container) getChainType(chainId string) string {
-	c.LoadChainJson()
-
-	chainJson, exists := c.cachedChainJson[chainId]
+// getDefaultPythHTTPSEndpoint retrieves the default pyth https endpoint from
+// chain.json config
+func (c ChainJson) getDefaultPythHTTPSEndpoint(chainId string) string {
+	entry, exists := c[chainId]
 	if !exists {
-		return c.cachedChainJson["default"].Type
+		return c["default"].DefaultPythHTTPSEndpoint
 	}
-	return chainJson.Type
+	return entry.DefaultPythHTTPSEndpoint
+}
+
+func (c ChainJson) GetChainType(chainId string) string {
+	entry, exists := c[chainId]
+	if !exists {
+		return c["default"].Type
+	}
+	return entry.Type
 }
 
 type WSRPCSlice struct {

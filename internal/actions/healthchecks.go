@@ -28,16 +28,6 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 		return err
 	}
 
-	// Establish manager node ssh connection
-	ip, err := c.HostsCfg.GetMangerPublicIp()
-	if err != nil {
-		return err
-	}
-	managerConn, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
-	if err != nil {
-		return fmt.Errorf("establishing ssh connection to manager node: %w", err)
-	}
-
 	svcsForModel := []*serviceHostnameStatus{}
 	for _, svc := range cfg.Services {
 		prefix := "http://"
@@ -85,13 +75,24 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 		return err
 	}
 
-	// Once http endpoint checks are done - run docker services check
-	dockerSwarmInfoString, err := healthChecksSwarmServices(managerConn)
-	if err != nil {
-		return fmt.Errorf("retrieving docker swarm info: %w", err)
+	if cfg.SwarmDeployed {
+		// Establish manager node ssh connection
+		ip, err := c.HostsCfg.GetMangerPublicIp()
+		if err != nil {
+			return err
+		}
+		managerConn, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+		if err != nil {
+			return fmt.Errorf("establishing ssh connection to manager node: %w", err)
+		}
+		// Once http endpoint checks are done - run docker services check
+		dockerSwarmInfoString, err := healthChecksSwarmServices(managerConn)
+		if err != nil {
+			return fmt.Errorf("retrieving docker swarm info: %w", err)
+		}
+		// Print the docker services info outside the bubbletea program
+		fmt.Printf("\nDocker swarm services status:%s\n", dockerSwarmInfoString)
 	}
-	// Print the docker services info outside the bubbletea program
-	fmt.Printf("\nDocker swarm services status:%s\n", dockerSwarmInfoString)
 
 	return nil
 

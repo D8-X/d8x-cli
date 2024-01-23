@@ -35,3 +35,10 @@
         src: /snap/bin/certbot
         dest: /usr/bin/certbot
         state: link
+      # Make sure the certbot snap timer is enabled after certbot snap
+      # installation
+    - name: Enable certbot renewal
+      ansible.builtin.systemd:
+        name: snap.certbot.renew.timer
+        enabled: true
+        state: started

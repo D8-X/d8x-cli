@@ -1,26 +1,30 @@
 {
-  "80001": {
+  "195": {
     "type": "testnet",
-    "sdkNetwork": "mumbai",
-    "priceFeedNetwork": "testnet",
-    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws"
+    "sdkNetwork": "x1",
+    "priceFeedNetwork": "pythnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
   },
   "1442": {
     "type": "testnet",
     "sdkNetwork": "zkevmTestnet",
     "priceFeedNetwork": "testnet",
-    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws"
+    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
   },
   "1101": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws"
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
   },
   "default": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws"
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
   }
 }

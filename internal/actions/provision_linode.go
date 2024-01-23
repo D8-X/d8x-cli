@@ -6,10 +6,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
@@ -43,20 +47,24 @@ type linodeConfigurer struct {
 	authorizedKey string
 }
 
+func (c *Container) CopyLinodeTFFiles() error {
+	return c.EmbedCopier.Copy(configs.EmbededConfigs,
+		files.EmbedCopierOp{
+			Src:       "embedded/trader-backend/tf-linode",
+			Dst:       c.ProvisioningTfDir,
+			Dir:       true,
+			Overwrite: true,
+		},
+	)
+
+}
+
 // BuildTerraformCMD builds terraform configuration for linode cluster creation.
 // It also creates a ssh key pair via ssh-keygen which is used in cluster
 // servers for default user and does some other neccessary configuration.
 func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
-	// Copy terraform files to cwd/linode.tf
-	if err := c.EmbedCopier.CopyMultiToDest(
-		configs.EmbededConfigs,
-		// Dest
-		"./linode.tf",
-		// Embed paths must be in this order: main.tf output.tf vars.tf
-		"embedded/trader-backend/tf-linode/main.tf",
-		"embedded/trader-backend/tf-linode/output.tf",
-		"embedded/trader-backend/tf-linode/vars.tf",
-	); err != nil {
+	// Copy tf configs
+	if err := c.CopyLinodeTFFiles(); err != nil {
 		return nil, fmt.Errorf("generating lindode.tf file: %w", err)
 	}
 
@@ -65,6 +73,7 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	command := exec.Command("terraform", args...)
 	// for $HOME
 	command.Env = os.Environ()
+	command.Dir = c.ProvisioningTfDir
 	// Add linode tokens
 	command.Env = append(command.Env,
 		fmt.Sprintf("LINODE_TOKEN=%s", l.Token),
@@ -80,6 +89,8 @@ func (l linodeConfigurer) generateArgs() []string {
 		"-var", fmt.Sprintf(`region=%s`, l.Region),
 		"-var", fmt.Sprintf(`server_label_prefix=%s`, l.LabelPrefix),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, l.CreateBrokerServer),
+		"-var", fmt.Sprintf(`create_swarm=%t`, l.DeploySwarm),
+		"-var", fmt.Sprintf(`num_workers=%d`, l.NumWorker),
 	}
 
 	if l.DbId != "" {
@@ -113,9 +124,14 @@ func getRegionItemByRegionId(regionId string) components.ListItem {
 	return components.ListItem{}
 }
 
-// createLinodeServerConfigurer collects information for the linode cluster
-// provisioning and creates linode ServerProviderConfigurer
-func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, error) {
+// CollectLinodeProviderDetails collects linode provider details from user
+// input, creates a new linodeConfigurer and fills in configuration details to
+// cfg.
+func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (linodeConfigurer, error) {
+	if c.provisioning.collectedLinodeConfigurer != nil {
+		return *c.provisioning.collectedLinodeConfigurer, nil
+	}
+
 	l := linodeConfigurer{}
 
 	// Attempt to load defaults from config
@@ -126,17 +142,19 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		defaultRegion             = ""
 		defaultSwarmNodeSize      = "g6-dedicated-2"
 		defaultBrokerSize         = "g6-dedicated-2"
+		defaultNumberOfWokers     = "4"
 	)
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return nil, err
-	}
+
 	if cfg.ServerProvider == configs.D8XServerProviderLinode {
 		if cfg.LinodeConfig != nil {
 			defaultToken = cfg.LinodeConfig.Token
 			defaultDbId = cfg.LinodeConfig.DbId
 			defaultRegion = cfg.LinodeConfig.Region
 			defaultClusterLabelPrefix = cfg.LinodeConfig.LabelPrefix
+			defaultNumberOfWokers = strconv.Itoa(cfg.LinodeConfig.NumWorker)
+			if cfg.LinodeConfig.NumWorker <= 0 {
+				defaultNumberOfWokers = "4"
+			}
 		}
 	}
 
@@ -154,23 +172,25 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 	)
 
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.Token = token
 
-	// DB
-	if ok, err := c.TUI.NewPrompt("Do you want to use an external database? (choose no if you have a legacy Linode DB cluster)", true); err == nil && !ok {
-		fmt.Println("Enter your Linode database cluster ID")
-		dbId, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("12345678"),
-			components.TextInputOptValue(defaultDbId),
-		)
-		if err != nil {
-			return nil, err
+	// DB for swarm
+	if c.setup.deploySwarm {
+		if ok, err := c.TUI.NewPrompt("Do you want to use an external database? (choose no if you have a legacy Linode DB cluster)", true); err == nil && !ok {
+			fmt.Println("Enter your Linode database cluster ID")
+			dbId, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("12345678"),
+				components.TextInputOptValue(defaultDbId),
+			)
+			if err != nil {
+				return l, err
+			}
+			l.DbId = dbId
+		} else {
+			fmt.Println("Not using Linode database. Make sure you provision your own external Postgres instances!")
 		}
-		l.DbId = dbId
-	} else {
-		fmt.Println("Not using Linode database. Make sure you provision your own external Postgres instances!")
 	}
 
 	// Region
@@ -180,7 +200,7 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		components.ListOptSelectedItem(defaultRegionItem),
 	)
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.Region = selected.ItemTitle
 	fmt.Printf(
@@ -200,56 +220,53 @@ func (c *Container) createLinodeServerConfigurer() (ServerProviderConfigurer, er
 		components.TextInputOptValue(defaultClusterLabelPrefix),
 	)
 	if err != nil {
-		return nil, err
+		return l, err
 	}
 	l.LabelPrefix = label
 
 	// Broker-server
-	createBrokerServer, err := c.TUI.NewPrompt("Do you want to provision a broker server?", true)
-	if err != nil {
-		return nil, err
-	}
-	l.CreateBrokerServer = createBrokerServer
-	c.CreateBrokerServer = createBrokerServer
-
-	// Servers sizes
-	fmt.Println("Swarm linode node size")
-	swarmNodeSize, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("g6-dedicated-2"),
-		components.TextInputOptValue(defaultSwarmNodeSize),
-	)
-	if err != nil {
-		return nil, err
-	}
-	l.SwarmNodeSize = swarmNodeSize
-	fmt.Println("Broker linode node size")
-	if l.CreateBrokerServer {
+	l.CreateBrokerServer = c.setup.deployBroker
+	if c.setup.deployBroker {
+		fmt.Println("Broker linode node size")
 		brokerNodeSize, err := c.TUI.NewInput(
 			components.TextInputOptPlaceholder("g6-dedicated-2"),
 			components.TextInputOptValue(defaultBrokerSize),
 		)
 		if err != nil {
-			return nil, err
+			return l, err
 		}
 		l.BrokerServerSize = brokerNodeSize
 	}
 
-	// SSH key check
-	if err := c.ensureSSHKeyPresent(); err != nil {
-		return nil, err
-	}
-	pub, err := c.getPublicKey()
-	if err != nil {
-		return nil, err
-	}
-	l.authorizedKey = pub
+	// Swarm details
+	if c.setup.deploySwarm {
+		l.DeploySwarm = true
 
-	// Write linode config to cfg
+		// Servers sizes
+		fmt.Println("Swarm linode node size")
+		swarmNodeSize, err := c.TUI.NewInput(
+			components.TextInputOptPlaceholder("g6-dedicated-2"),
+			components.TextInputOptValue(defaultSwarmNodeSize),
+		)
+		if err != nil {
+			return l, err
+		}
+		l.SwarmNodeSize = swarmNodeSize
+
+		// Number of workers
+		numWorkers, err := c.CollectNumberOfWorkers(defaultNumberOfWokers)
+		if err != nil {
+			return l, fmt.Errorf("incorrect number of workers: %w", err)
+		}
+		l.NumWorker = numWorkers
+
+	}
+
+	c.provisioning.collectedLinodeConfigurer = &l
+
+	// Update the cfg
 	cfg.ServerProvider = configs.D8XServerProviderLinode
 	cfg.LinodeConfig = &l.D8XLinodeConfig
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return nil, err
-	}
 
 	return l, nil
 }
@@ -285,10 +302,48 @@ find the public ip addresses of your servers.
 }
 
 func (i linodeConfigurer) PostProvisioningAction(c *Container) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+
 	// Show external db messages
 	i.noLinodeDbCheck(c)
 
+	// Whenever this is not the first time provisioning (after at least 1
+	// configuration is done) Update linode inventory hosts.cfg file to use
+	// cluster user name for ssh login before configuration is started, since
+	// terraform always overwrites the hosts.cfg
+	if cfg.ConfigDetails.Done && len(cfg.ConfigDetails.ConfiguredServers) > 0 {
+		if err := c.LinodeInventorySetUserVar(cfg.ConfigDetails.ConfiguredServers, c.DefaultClusterUserName); err != nil {
+			return fmt.Errorf("updating linode inventory file: %w", err)
+		}
+	}
+
 	return nil
+}
+
+// Set ansible_user variable to linode hosts.cfg inventory file for all servers
+// which public ip address is within the provided ipAddresses list
+func (c *Container) LinodeInventorySetUserVar(ipAddresses []string, sshUser string) error {
+	hostLines, err := c.HostsCfg.GetLines()
+	if err != nil {
+		return fmt.Errorf("retrieving hosts contents: %w", err)
+	}
+
+	ipv4Pattern := regexp.MustCompile(`^(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9]?[0-9])`)
+
+	// Update existing server lines and append ansible_user to them
+	for i, line := range hostLines {
+		if ipv4Pattern.MatchString(line) && !strings.Contains(line, "ansible_user=") {
+			publicIp := ipv4Pattern.FindString(line)
+			if slices.Contains(ipAddresses, publicIp) {
+				hostLines[i] = fmt.Sprintf("%s ansible_user=%s", line, sshUser)
+			}
+		}
+	}
+
+	return c.HostsCfg.WriteLines(hostLines)
 }
 
 // fetchLinodeAPIRequest sends GET request to linode api endpoint and reads the

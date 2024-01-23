@@ -9,6 +9,7 @@ import (
 
 	conn "github.com/D8-X/d8x-cli/internal/conn"
 	gomock "go.uber.org/mock/gomock"
+	ssh "golang.org/x/crypto/ssh"
 )
 
 // MockSSHConnection is a mock of SSHConnection interface.
@@ -79,4 +80,18 @@ func (m *MockSSHConnection) ExecCommandPiped(arg0 string) error {
 func (mr *MockSSHConnectionMockRecorder) ExecCommandPiped(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecCommandPiped", reflect.TypeOf((*MockSSHConnection)(nil).ExecCommandPiped), arg0)
+}
+
+// GetClient mocks base method.
+func (m *MockSSHConnection) GetClient() *ssh.Client {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetClient")
+	ret0, _ := ret[0].(*ssh.Client)
+	return ret0
+}
+
+// GetClient indicates an expected call of GetClient.
+func (mr *MockSSHConnectionMockRecorder) GetClient() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetClient", reflect.TypeOf((*MockSSHConnection)(nil).GetClient))
 }

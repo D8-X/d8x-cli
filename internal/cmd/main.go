@@ -29,7 +29,21 @@ const CmdUsage = "D8X Backend management CLI tool"
 
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
-	container := actions.NewDefaultContainer()
+	container, err := actions.NewDefaultContainer()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Shared flags below
+
+	// Default terraform files and state directory (./terraform)
+	provisionTfDirFlag := &cli.StringFlag{
+		Name:        "tf-dir",
+		Value:       "./terraform",
+		Required:    false,
+		Usage:       "Terraform files directory path. Used for backwards compatibility only.",
+		Destination: &container.ProvisioningTfDir,
+	}
 
 	// Initialize cli application and its subcommands and bind default values
 	// for ac (via flags.Destination)
@@ -40,6 +54,7 @@ func RunD8XCli() {
 		Description:          MainDescription,
 		EnableBashCompletion: true,
 		Commands: []*cli.Command{
+
 			{
 				Name:   "init",
 				Action: container.Init,
@@ -61,12 +76,14 @@ func RunD8XCli() {
 					}
 					return nil
 				},
+				Flags: []cli.Flag{provisionTfDirFlag},
 				Subcommands: []*cli.Command{
 					{
 						Name:        "provision",
 						Usage:       "Provision server resources with terraform",
 						Action:      container.Provision,
 						Description: ProvisionDescription,
+						Flags:       []cli.Flag{provisionTfDirFlag},
 					},
 					{
 						Name:        "configure",
@@ -96,6 +113,12 @@ func RunD8XCli() {
 						Action:      container.SwarmNginx,
 						Description: SwarmNginxDescription,
 					},
+					{
+						Name:        "metrics-deploy",
+						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
+						Action:      container.DeployMetrics,
+						Description: DeployMetricsDescription,
+					},
 				},
 			},
 			{
@@ -124,8 +147,32 @@ func RunD8XCli() {
 				Usage:  "Attach ssh session to one of your servers",
 				Action: container.SSH,
 			},
+			{
+				Name:      "grafana-tunnel",
+				Usage:     "Create ssh tunnel to grafana service on manager",
+				Action:    container.TunnelGrafana,
+				ArgsUsage: "[port 8080]",
+			},
+			{
+				Name:        "cp-configs",
+				ArgsUsage:   "swarm|broker|tf-aws|tf-linode",
+				Action:      container.CopyConfigs,
+				Usage:       "Copy configuration files to current working directory",
+				Description: "Copy specified configuration files to current working directory. Available configs are swarm, broker, tf-aws, tf-linode.",
+			},
+			{
+				Name:   "backup-db",
+				Action: container.BackupDb,
+				Flags: []cli.Flag{
+					&cli.StringFlag{
+						Name:  "output-dir",
+						Usage: "Backup directory path. Backup files will be saved in this directory.",
+					},
+				},
+				Description: "Backup database to local machine. Database credentials are read from d8x.conf.json file.",
+			},
 		},
-		// Global flags accesible to all subcommands
+		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name: flags.ConfigDir,
@@ -166,11 +213,25 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
+			// Cached ChainJson information
+			chainJsonData, err := container.LoadChainJson()
+			if err != nil {
+				return fmt.Errorf("loading chain json information: %w", err)
+			}
+
 			// Create d8x.conf.json config read writer. We can only do this here,
 			// because config directory is not know when initializing containter
 			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
 				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
 			)
+
+			// Initialize the input collector
+			container.Input = &actions.InputCollector{
+				ConfigRWriter: container.ConfigRWriter,
+				TUI:           container.TUI,
+				ChainJson:     chainJsonData,
+				SSHKeyPath:    container.SshKeyPath,
+			}
 
 			// Chdir functionality
 			if ch := ctx.String("chdir"); ch != "" {

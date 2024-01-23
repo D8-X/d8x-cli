@@ -24,20 +24,24 @@ func (c *Container) Setup(ctx *cli.Context) error {
 
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
-		ok, err := c.TUI.NewPrompt(
-			fmt.Sprintf("Existing configuration (%s) was found. Do you want to remove it? (Recommended for only fresh start)", cfg.ServerProvider),
-			false,
+		keepConfig, err := c.TUI.NewPrompt(
+			fmt.Sprintf("Existing configuration (%s) was found. Do you want to use it?", cfg.ServerProvider),
+			true,
 		)
 
 		if err != nil {
 			return err
 		}
-		if ok {
+		if !keepConfig {
 			if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
 				return err
 			}
 		}
+	}
 
+	// Collect all data needed for setup
+	if err := c.Input.CollectFullSetupInput(ctx); err != nil {
+		return err
 	}
 
 	if err := c.Provision(ctx); err != nil {
@@ -55,27 +59,47 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	// If configuration fails we might still want to proceed with other actions
 	// in case this is a retry
 	if err := c.Configure(ctx); err != nil {
-		if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
+		// On linode: when subsequent setup runs are performed, old servers will
+		// not be accessible because of permit root login is set to false and we
+		// can't provide dynamic user list to ansible.
+		if cfg.ServerProvider == configs.D8XServerProviderLinode && (cfg.SwarmDeployed || cfg.BrokerDeployed) {
+			fmt.Println("Some configuration steps failed, but we will continue with other actions...")
+		} else {
+			if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
+				return err
+			}
+		}
+	}
+
+	// Deploy metrics stack if user wants to
+	if c.Input.setup.deployMetrics {
+		if err := c.DeployMetrics(ctx); err != nil {
 			return err
 		}
 	}
 
-	if c.CreateBrokerServer {
+	if c.Input.setup.deployBroker {
 		if err := c.BrokerDeploy(ctx); err != nil {
 			return err
 		}
 
-		if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
-			return err
+		if c.Input.runBrokerNginxCertbot {
+			if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
-	if err := c.SwarmDeploy(ctx); err != nil {
-		return err
-	}
+	if c.Input.setup.deploySwarm {
+		if err := c.SwarmDeploy(ctx); err != nil {
+			return err
+		}
 
-	if err := c.SwarmNginx(ctx); err != nil {
-		return err
+		if c.Input.runSwarmNginxCertbot {
+			if err := c.SwarmNginx(ctx); err != nil {
+				return err
+			}
+		}
 	}
 
 	if ok, _ := c.TUI.NewPrompt("Do you want to perform services healthchecks?", true); ok {
