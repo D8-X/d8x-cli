@@ -66,10 +66,10 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	}
 
 	if err := c.updateSwarmServices(ctx, selectedSwarmServicesToUpdate, services); err != nil {
-		return nil
+		return err
 	}
 	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerServices); err != nil {
-		return nil
+		return err
 	}
 
 	// Run the healthchecks
