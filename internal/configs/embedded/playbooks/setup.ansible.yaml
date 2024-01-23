@@ -38,7 +38,7 @@
           - sudo
           - adm
         shell: /bin/bash
-        password: "{{ default_user_pwd | password_hash('sha512') }}"
+        password: "{{ default_user_pwd }}"
     - name: "Set authorized key for default user"
       ansible.posix.authorized_key:
         # user_public_key must be passed via --extra-vars
