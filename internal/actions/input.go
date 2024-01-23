@@ -118,7 +118,10 @@ type SwarmDeployInput struct {
 	// Pyth endpoints for candles/prices.config.json
 	priceServiceWSEndpoints []string
 
-	referralPaymentExecutorPrivateKey    string
+	referralPaymentExecutorPrivateKey string
+
+	// Referral executor wallet address might be not empty when broker-only
+	// deployment is performed.
 	referralPaymentExecutorWalletAddress string
 }
 
@@ -131,6 +134,11 @@ type SwarmNginxInput struct {
 
 	// Collected service domain names
 	collectedServiceDomains []hostnameTuple
+}
+
+// Whether deployment is broker only
+func (i *InputCollector) BrokerOnly() bool {
+	return i.setup.deployBroker && !i.setup.deploySwarm
 }
 
 // CollectFullSetupInput collects complete deployment information for both swarm
@@ -320,18 +328,48 @@ func (input *InputCollector) CollectBrokerPrivateKey() error {
 	return nil
 }
 
-// CollectReferralExecutorPrivateKey collects referral executor private key and
-// stores it in input state
-func (input *InputCollector) CollectReferralExecutorPrivateKey(cfg *configs.D8XConfig) error {
-	pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
-	if err != nil {
-		return err
+// CollectReferralExecutorPrivateKey collects referral executor private key (or
+// just wallet of allowed executor on broker-only deployments) and stores it in
+// input state
+func (input *InputCollector) CollectReferralExecutorPrivateKey(cfg *configs.D8XConfig, ctx *cli.Context) error {
+	executorWalletAddress := cfg.BrokerServerConfig.ExecutorAddress
+
+	// If we deploy swarm - we want to collect referral executor private key
+	if input.setup.deploySwarm || ctx.Command.Name == "swarm-deploy" {
+		pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
+		if err != nil {
+			return err
+		}
+		input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
+		input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
+
+		executorWalletAddress = pkWalletAddress
 	}
-	input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
-	input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
+
+	// if we ONLY deploy broker - we don't need the private key and only ask for
+	// wallet address. Once per session.
+	if input.swarmDeployInput.referralPaymentExecutorWalletAddress == "" && (input.BrokerOnly() || ctx.Command.Name == "broker-deploy") {
+		keep := false
+		if cfg.BrokerServerConfig.ExecutorAddress != "" {
+			fmt.Printf("Found referral executor wallet address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
+			ok, err := input.TUI.NewPrompt("Do you want to keep this referral executor wallet address?", true)
+			if err != nil {
+				return err
+			}
+			keep = ok
+		}
+		if !keep {
+			wallet, err := input.CollectAndValidateWalletAddress("Enter allowed executor wallet address", cfg.BrokerServerConfig.ExecutorAddress)
+			if err != nil {
+				return err
+			}
+			executorWalletAddress = wallet
+			input.swarmDeployInput.referralPaymentExecutorWalletAddress = executorWalletAddress
+		}
+	}
 
 	// Store the referral executor wallet address for broker-deploy step
-	cfg.BrokerServerConfig.ExecutorAddress = pkWalletAddress
+	cfg.BrokerServerConfig.ExecutorAddress = executorWalletAddress
 
 	return input.ConfigRWriter.Write(cfg)
 }
@@ -351,7 +389,7 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 	}
 
 	// Broker private key must be collected only once per session. Do not
-	// collect it for individual swarm-deploy or user chooses not to deploy
+	// collect it for individual swarm-deploy or if user chooses not to deploy
 	// broker during the setup
 	if input.brokerDeployInput.privateKey == "" && ctx.Command.Name != "swarm-deploy" {
 		collect := true
@@ -366,9 +404,10 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 		}
 	}
 
-	// Collect referral executor private key
-	if input.swarmDeployInput.referralPaymentExecutorPrivateKey == "" {
-		if err := input.CollectReferralExecutorPrivateKey(cfg); err != nil {
+	// Collect referral executor private key. If we are deploying single broker
+	// server we only need the wallet address.
+	if input.swarmDeployInput.referralPaymentExecutorPrivateKey == "" || input.swarmDeployInput.referralPaymentExecutorWalletAddress == "" {
+		if err := input.CollectReferralExecutorPrivateKey(cfg, ctx); err != nil {
 			return err
 		}
 	}
