@@ -133,6 +133,11 @@ type SwarmNginxInput struct {
 	collectedServiceDomains []hostnameTuple
 }
 
+// Whether deployment is broker only
+func (i *InputCollector) BrokerOnly() bool {
+	return i.setup.deployBroker && !i.setup.deploySwarm
+}
+
 // CollectFullSetupInput collects complete deployment information for both swarm
 // and broker server deployments. This does not include credentials collection for
 // server provider setup.
@@ -323,15 +328,33 @@ func (input *InputCollector) CollectBrokerPrivateKey() error {
 // CollectReferralExecutorPrivateKey collects referral executor private key and
 // stores it in input state
 func (input *InputCollector) CollectReferralExecutorPrivateKey(cfg *configs.D8XConfig) error {
-	pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
-	if err != nil {
-		return err
+	executorWalletAddress := ""
+
+	// If we deploy swarm - we want to collect referral executor private key
+	if input.setup.deploySwarm {
+		pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
+		if err != nil {
+			return err
+		}
+		input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
+		input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
+
+		executorWalletAddress = pkWalletAddress
 	}
-	input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
-	input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
+
+	// if we ONLY deploy broker - we don't need the private key and only ask for
+	// wallet address
+	if input.BrokerOnly() {
+		wallet, err := input.CollectAndValidateWalletAddress("Enter allowed executor wallet address", cfg.BrokerServerConfig.ExecutorAddress)
+		if err != nil {
+			return err
+		}
+		executorWalletAddress = wallet
+		input.swarmDeployInput.referralPaymentExecutorWalletAddress = executorWalletAddress
+	}
 
 	// Store the referral executor wallet address for broker-deploy step
-	cfg.BrokerServerConfig.ExecutorAddress = pkWalletAddress
+	cfg.BrokerServerConfig.ExecutorAddress = executorWalletAddress
 
 	return input.ConfigRWriter.Write(cfg)
 }

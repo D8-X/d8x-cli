@@ -273,7 +273,7 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 // noLinodeDbCheck displays some information to users when external db is used.
 func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
-	if i.DbId == "" {
+	if i.DbId == "" && !c.Input.BrokerOnly() {
 		fmt.Println(
 			styles.AlertImportant.Render(
 				"Make sure you configure external database to allow connections from Linode cluster!",
