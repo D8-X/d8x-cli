@@ -489,7 +489,7 @@ To restore a backup:
 psql -U user -h host -p port -d databasename < /path/to/your-backup.dump.sql
 ```
 
-# How to connect to AWS RDS database on your local mahcine
+# How to connect to AWS RDS database on your local machine
 
 In order to access AWS RDS instance locally, you need to create a SSH tunnel
 using manager server as jump host.
@@ -497,7 +497,7 @@ using manager server as jump host.
 1. cd to your deployment directory
 2. Get the manager public ip address by inspecting `hosts.cfg` or running `d8x ip manager`
 3. Open `aws_rds_postgres.txt` to find the `host` and `port` of your RDS postgres instance
-4. Make a tunnel `ssh -L <LOCAL_PORT>:<AWS_RDS_HOST>:<AWS_RDS_PORT> -N d8xtrader@<MANAGER_PUBLIC_IP> -i ./id_ed25519
+4. Make a tunnel `ssh -L <LOCAL_PORT>:<AWS_RDS_HOST>:<AWS_RDS_PORT> -N d8xtrader@<MANAGER_PUBLIC_IP> -i ./id_ed25519`
 	- <LOCAL_PORT> - the port on which tunneled postgres instance will be exposed on your localhost
 	- <AWS_RDS_HOST> - host value from `aws_rds_postgres.txt`
 	- <AWS_RDS_PORT> - port value from `aws_rds_postgres.txt`
