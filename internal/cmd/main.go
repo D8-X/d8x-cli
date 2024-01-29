@@ -91,7 +91,7 @@ func RunD8XCli() {
 
 					subcommand := ctx.Args().First()
 
-					if slices.Index(subcommands, subcommand) == -1 {
+					if subcommand != "" && slices.Index(subcommands, subcommand) == -1 {
 						return fmt.Errorf("setup command does not have subcommand %s", subcommand)
 					}
 
