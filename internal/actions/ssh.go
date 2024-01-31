@@ -136,7 +136,7 @@ func (c *Container) GetWorkerConnection(workerIp string, cfg *configs.D8XConfig)
 
 		// Workers are accessible through manager for AWS
 		managerConn, errMngr := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
-		if err != nil {
+		if errMngr != nil {
 			return nil, errMngr
 		}
 		cn, connErr = conn.NewSSHConnectionWithBastion(managerConn.GetClient(), workerIp, c.DefaultClusterUserName, c.SshKeyPath)
