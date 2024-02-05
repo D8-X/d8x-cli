@@ -1071,7 +1071,7 @@ func (c *InputCollector) SwarmNginxCollectDomains(cfg *configs.D8XConfig) ([]hos
 
 		// When possible, find values from config for non-first time runs.
 		// Provide some automatic subdomain suggestions by default
-		value := cfg.SuggestSubdomain(h.serviceName, c.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))))
+		value := cfg.SuggestSubdomain(h.serviceName, c.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))), cfg.ChainId)
 		if v, ok := cfg.Services[h.serviceName]; ok {
 			if v.HostName != "" {
 				value = v.HostName
