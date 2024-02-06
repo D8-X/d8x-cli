@@ -29,7 +29,9 @@ services:
       - rpc_config
     volumes:
       - keyvol:/keyfile
-
+    env_file:
+      - path: .env
+        required: false
   executorws:
     image: ghcr.io/d8-x/d8x-broker-exec-ws:main
     #build:
@@ -54,6 +56,9 @@ services:
         max-file: "10"
     configs:
       - chain_config
+    env_file:
+      - path: .env
+        required: false
 
   redis:
     image: redis
