@@ -45,6 +45,15 @@ extract the d8x binary.
 
 To run D8X-CLI on MacOS you will need to build it from source.
 
+Building from source requires you to have Go 1.21+ installed on your machine.
+
+## Using make
+
+```bash
+make install
+cp ./d8x /usr/local/bin
+```
+
 ### When using Mac
 Install ansible, terraform, and go
 ```
