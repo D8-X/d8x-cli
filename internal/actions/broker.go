@@ -94,7 +94,7 @@ func (c *Container) CopyBrokerDeployConfigs() error {
 		configs.EmbededConfigs,
 		files.EmbedCopierOp{Src: "embedded/broker-server/rpc.json", Dst: brokerDeployRpcConfig, Overwrite: false},
 		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: brokerDeployChainConfig, Overwrite: false},
-		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: brokerDeployDockerCompose, Overwrite: true},
+		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: brokerDeployDockerCompose, Overwrite: false},
 	); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
