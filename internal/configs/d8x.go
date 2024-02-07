@@ -281,13 +281,13 @@ func (d *d8xConfigFileReadWriter) Write(cfg *D8XConfig) error {
 	return nil
 }
 
-func (c *D8XConfig) SuggestSubdomain(svc D8XServiceName, chainName string) string {
+func (c *D8XConfig) SuggestSubdomain(svc D8XServiceName, chainName string, chainId uint) string {
 	if c.SetupDomain == "" {
 		return ""
 	}
 
 	if subdomain, ok := SuggestedSubdomains[svc]; ok {
-		return fmt.Sprintf("%s-%s.%s", subdomain, chainName, c.SetupDomain)
+		return fmt.Sprintf("%s-%s-%d.%s", subdomain, chainName, chainId, c.SetupDomain)
 	}
 	return ""
 }

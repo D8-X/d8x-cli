@@ -123,6 +123,7 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	awsRDSInstanceClass := "db.t4g.small"
 	awsServerLabelPrefix := "d8x-cluster"
 	awsDefaultNumberWorkers := "4"
+	awsDefaultRegion := "eu-central-1"
 
 	if cfg.AWSConfig != nil {
 		awsKey = cfg.AWSConfig.AccesKey
@@ -135,6 +136,9 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 		}
 		if cfg.AWSConfig.NumWorker != 0 {
 			awsDefaultNumberWorkers = strconv.Itoa(cfg.AWSConfig.NumWorker)
+		}
+		if cfg.AWSConfig.Region != "" {
+			awsDefaultRegion = cfg.AWSConfig.Region
 		}
 	}
 
@@ -163,8 +167,9 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	awsCfg.SecretKey = secretKey
 
 	fmt.Println("Enter your AWS cluster region: ")
+
 	region, err := c.TUI.NewInput(
-		components.TextInputOptValue("eu-central-1"),
+		components.TextInputOptValue(awsDefaultRegion),
 		components.TextInputOptPlaceholder("us-west-1"),
 	)
 	if err != nil {
