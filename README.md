@@ -506,3 +506,8 @@ using manager server as jump host.
 	- username: `user` value from `aws_rds_postgres.txt`
 	- password: `password` value from `aws_rds_postgres.txt`
 6. Inspect the database
+
+# Broker .env
+
+You can place `.env` file in the `broker-server` directory. This file will be
+copied to the broker server and used as env file for broker compose services.
