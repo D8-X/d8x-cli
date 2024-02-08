@@ -2,6 +2,7 @@ package actions
 
 import (
 	"regexp"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -20,6 +21,7 @@ func ValidWalletAddress(address string) bool {
 	return regexp.MustCompile("^0x[0-9a-fA-F]{40}$").MatchString(address)
 }
 
+// UniqStrings returns a new slice with unique strings and sorts the result.
 func UniqStrings(slice []string) []string {
 	uniq := make(map[string]struct{})
 	for _, s := range slice {
@@ -30,6 +32,8 @@ func UniqStrings(slice []string) []string {
 	for s := range uniq {
 		result = append(result, s)
 	}
+
+	slices.Sort(result)
 
 	return result
 }
