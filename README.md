@@ -259,6 +259,23 @@ You will be prompted to change the password on first login.
 
 </details>
 
+
+<details>
+  <summary><h2>Scaling worker instances</h2></summary>
+
+  If you wish to scale the number of worker instances up or down, you can do so
+  by re-running `d8x setup` command inside existing deployment's directory. When
+  prompted to enter the number of worker instances, simply enter the new number
+  of instances you wish to have.
+
+  Setup will automatically scale the number of worker instances up or down and
+  rerun any configuration steps needed. Broker and Manager servers will not be
+  changed.
+
+  **Note** that you do not need to select "setup certbot" when scaling the
+  worker instances if certbot is already set up.
+</details>
+
 ## SSH into machines
 
 `d8x` cli can be used to quickly ssh into your provisioned machines.
