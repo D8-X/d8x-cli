@@ -87,6 +87,9 @@ func RunD8XCli() {
 						"swarm-deploy",
 						"swarm-nginx",
 						"metrics-deploy",
+
+						// Help is always included
+						"help",
 					}
 
 					subcommand := ctx.Args().First()
