@@ -174,3 +174,36 @@ func (selectionOptRequireSelection) Apply(s *selectionModel) {
 func SelectionOptRequireSelection() SelectionOpts {
 	return selectionOptRequireSelection{}
 }
+
+var _ SelectionOpts = (*selectionOptSelectedValue)(nil)
+
+// selectionOptSelectedValue sets the default selected value
+type selectionOptSelectedValue struct {
+	v string
+}
+
+func (opt selectionOptSelectedValue) Apply(s *selectionModel) {
+	for i, v := range s.selection {
+		if v == opt.v {
+			s.selected[i] = true
+			return
+		}
+	}
+}
+
+func SelectionOptSelectedValue(selected string) SelectionOpts {
+	return selectionOptSelectedValue{v: selected}
+}
+
+// selectOptSelectEnter pre-selects enter button
+type selectOptSelectEnter struct {
+}
+
+func (opt selectOptSelectEnter) Apply(s *selectionModel) {
+	s.doneSelected = true
+	s.cursor = len(s.selection)
+}
+
+func SelectOptSelectEnter() SelectionOpts {
+	return selectOptSelectEnter{}
+}

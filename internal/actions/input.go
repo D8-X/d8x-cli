@@ -242,14 +242,24 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 
 	fmt.Println(styles.ItalicText.Render("Collecting provisioning information...\n"))
 
+	opts := []components.SelectionOpts{
+
+		components.SelectionOptAllowOnlySingleItem(),
+		components.SelectionOptRequireSelection(),
+	}
+
+	if cfg.ServerProvider != "" {
+		opts = append(opts, components.SelectionOptSelectedValue(string(cfg.ServerProvider)))
+		opts = append(opts, components.SelectOptSelectEnter())
+	}
+
 	// Select server provider from  a list of supported server providers
 	fmt.Println("Select your server provider")
 	selectedProvider, err := input.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
 		string(ServerProviderAws),
 	},
-		components.SelectionOptAllowOnlySingleItem(),
-		components.SelectionOptRequireSelection(),
+		opts...,
 	)
 	if err != nil {
 		return err
