@@ -214,7 +214,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 		matchFound := false
 		for _, allowedAddr := range allowedExecutorAddrs {
-			if strings.EqualFold(pkWalletAddress, allowedAddr) {
+			if strings.EqualFold(strings.TrimSpace(pkWalletAddress), strings.TrimSpace(allowedAddr)) {
 				matchFound = true
 				break
 			}
