@@ -31,7 +31,7 @@
     "type": "testnet",
     "sdkNetwork": "arbitrumSepolia",
     "priceFeedNetwork": "testnet",
-    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
   },
   "default": {
