@@ -114,11 +114,9 @@ var swarmDeployConfigFilesToCopy = []files.EmbedCopierOp{
 	// Candles configs
 	{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
 
-	// All configs below should not be interesting for the user - hence we
-	// will be overwriting them and not showing in the information text.
-
-	// Docker swarm file
-	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: true},
+	// Docker swarm file - do not overwrite and allow user to modify the config
+	// (for example choose specific image manually).
+	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
 }
 
 func (c *Container) CopySwarmDeployConfigs() error {
@@ -216,7 +214,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		}
 		matchFound := false
 		for _, allowedAddr := range allowedExecutorAddrs {
-			if strings.EqualFold(pkWalletAddress, allowedAddr) {
+			if strings.EqualFold(strings.TrimSpace(pkWalletAddress), strings.TrimSpace(allowedAddr)) {
 				matchFound = true
 				break
 			}

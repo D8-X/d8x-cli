@@ -20,6 +20,20 @@
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
   },
+  "2442": {
+    "type": "testnet",
+    "sdkNetwork": "cardona",
+    "priceFeedNetwork": "testnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
+  },
+  "421614": {
+    "type": "testnet",
+    "sdkNetwork": "arbitrumSepolia",
+    "priceFeedNetwork": "testnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
+  },
   "default": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
