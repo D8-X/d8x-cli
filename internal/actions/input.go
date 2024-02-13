@@ -759,11 +759,24 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 	// Allow to input chain id if DEBUG_ALLOW_CHAINID_INPUT variable is set
 	var chainId string
 	if _, allowInput := os.LookupEnv("DEBUG_ALLOW_CHAINID_INPUT"); !allowInput {
-		chains, err := c.TUI.NewSelection(ALLOWED_CHAINS_STRINGS, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+
+		chainSelection := []string{}
+		chainSelectionMap := map[string]string{}
+		for id, chain := range c.ChainJson {
+			// skip default chain as it will be included twice
+			if id == "default" {
+				continue
+			}
+			chainName := chain.SDKNetwork + " " + chain.Type + " (" + id + ") "
+			chainSelectionMap[chainName] = id
+			chainSelection = append(chainSelection, chainName)
+		}
+
+		chains, err := c.TUI.NewSelection(chainSelection, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
 			return 0, err
 		}
-		chainId = ALLOWED_CHAINS_MAP[chains[0]]
+		chainId = chainSelectionMap[chains[0]]
 	} else {
 		chain, err := c.TUI.NewInput(components.TextInputOptPlaceholder("1101"))
 		if err != nil {
