@@ -64,6 +64,7 @@ jobs:
           path: d8x.tar.gz
 
   make-release:
+    needs: [build-linux, build-macos]
     permissions:
       contents: write
       packages: write
