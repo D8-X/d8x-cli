@@ -27,10 +27,12 @@ jobs:
           GOOS=linux go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go
       - name: Tar d8x cli
         run: tar -czvf d8x.tar.gz d8x
-      - uses: ncipollo/release-action@v1
-        name: Make a release
+      - name: Upload linux build
+        uses: actions/upload-artifact@v2
         with:
-          artifacts: "d8x-linux.tar.gz"
+          name: d8x-linux.tar.gz
+          path: d8x.tar.gz
+
   build-macos:
     permissions:
       contents: write
@@ -55,7 +57,24 @@ jobs:
           GOOS=darwin go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go
       - name: Tar d8x cli
         run: tar -czvf d8x.tar.gz d8x
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v2
+        with:
+          name: d8x-macos.tar.gz
+          path: d8x.tar.gz
+
+  make-release:
+    permissions:
+      contents: write
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      # By default download all artifacts
+      - name: Download binaries
+        uses: actions/download-artifact@v2
       - uses: ncipollo/release-action@v1
         name: Make a release
         with:
-          artifacts: "d8x-macos.tar.gz"
+          artifacts: |
+            "d8x-macos.tar.gz"
+            "d8x-linux.tar.gz"
