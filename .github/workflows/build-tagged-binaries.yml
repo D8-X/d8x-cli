@@ -30,7 +30,7 @@ jobs:
       - name: Upload linux build
         uses: actions/upload-artifact@v4
         with:
-          name: d8x-linux.tar.gz
+          name: linux
           path: d8x.tar.gz
 
   build-macos:
@@ -60,7 +60,7 @@ jobs:
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
-          name: d8x-macos.tar.gz
+          name: macos
           path: d8x.tar.gz
 
   make-release:
@@ -75,12 +75,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: .
-          merge-multiple: true
       - name: Debug downloads
         run: ls -la
       - uses: ncipollo/release-action@v1
         name: Make a release
         with:
           artifacts: |
-            d8x-macos.tar.gz
-            d8x-linux.tar.gz
+            macos/d8x.tar.gz
+            linux/d8x.tar.gz
