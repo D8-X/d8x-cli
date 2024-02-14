@@ -23,14 +23,14 @@
   "2442": {
     "type": "testnet",
     "sdkNetwork": "cardona",
-    "priceFeedNetwork": "testnet",
+    "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
   },
   "421614": {
     "type": "testnet",
     "sdkNetwork": "arbitrumSepolia",
-    "priceFeedNetwork": "testnet",
+    "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
   },
