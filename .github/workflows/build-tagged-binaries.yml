@@ -26,7 +26,7 @@ jobs:
         run: |
           GOOS=linux go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go
       - name: Tar d8x cli
-        run: tar -czvf d8x.tar.gz d8x
+        run: tar -czvf d8x-linux.tar.gz d8x
       - name: Upload linux build
         uses: actions/upload-artifact@v4
         with:
@@ -56,7 +56,7 @@ jobs:
         run: |
           GOOS=darwin go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.ref }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.time.outputs.time }}"' main.go
       - name: Tar d8x cli
-        run: tar -czvf d8x.tar.gz d8x
+        run: tar -czvf d8x-macos.tar.gz d8x
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
