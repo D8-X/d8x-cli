@@ -242,14 +242,24 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 
 	fmt.Println(styles.ItalicText.Render("Collecting provisioning information...\n"))
 
+	opts := []components.SelectionOpts{
+
+		components.SelectionOptAllowOnlySingleItem(),
+		components.SelectionOptRequireSelection(),
+	}
+
+	if cfg.ServerProvider != "" {
+		opts = append(opts, components.SelectionOptSelectedValue(string(cfg.ServerProvider)))
+		opts = append(opts, components.SelectOptSelectEnter())
+	}
+
 	// Select server provider from  a list of supported server providers
 	fmt.Println("Select your server provider")
 	selectedProvider, err := input.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
 		string(ServerProviderAws),
 	},
-		components.SelectionOptAllowOnlySingleItem(),
-		components.SelectionOptRequireSelection(),
+		opts...,
 	)
 	if err != nil {
 		return err
@@ -749,11 +759,24 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 	// Allow to input chain id if DEBUG_ALLOW_CHAINID_INPUT variable is set
 	var chainId string
 	if _, allowInput := os.LookupEnv("DEBUG_ALLOW_CHAINID_INPUT"); !allowInput {
-		chains, err := c.TUI.NewSelection(ALLOWED_CHAINS_STRINGS, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+
+		chainSelection := []string{}
+		chainSelectionMap := map[string]string{}
+		for id, chain := range c.ChainJson {
+			// skip default chain as it will be included twice
+			if id == "default" {
+				continue
+			}
+			chainName := chain.SDKNetwork + " " + chain.Type + " (" + id + ") "
+			chainSelectionMap[chainName] = id
+			chainSelection = append(chainSelection, chainName)
+		}
+
+		chains, err := c.TUI.NewSelection(chainSelection, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
 			return 0, err
 		}
-		chainId = ALLOWED_CHAINS_MAP[chains[0]]
+		chainId = chainSelectionMap[chains[0]]
 	} else {
 		chain, err := c.TUI.NewInput(components.TextInputOptPlaceholder("1101"))
 		if err != nil {
@@ -1071,7 +1094,7 @@ func (c *InputCollector) SwarmNginxCollectDomains(cfg *configs.D8XConfig) ([]hos
 
 		// When possible, find values from config for non-first time runs.
 		// Provide some automatic subdomain suggestions by default
-		value := cfg.SuggestSubdomain(h.serviceName, c.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))))
+		value := cfg.SuggestSubdomain(h.serviceName, c.ChainJson.GetChainType(strconv.Itoa(int(cfg.ChainId))), cfg.ChainId)
 		if v, ok := cfg.Services[h.serviceName]; ok {
 			if v.HostName != "" {
 				value = v.HostName

@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -31,7 +30,6 @@ func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string) func
 			if len(allowedExecutorAddress) > 0 {
 				executors = append(executors, allowedExecutorAddress)
 			}
-
 			// Make sure we don't overwrite existing allowedExecutors
 			v, ok := conf["allowedExecutors"].([]any)
 			if ok {
@@ -41,8 +39,10 @@ func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string) func
 					}
 				}
 			}
-			executors = slices.Compact(executors)
-			conf["allowedExecutors"] = executors
+
+			// Remove duplicates
+			conf["allowedExecutors"] = UniqStrings(executors)
+
 			// Update the entry
 			(*chainConfig)[i] = conf
 		}
@@ -83,6 +83,10 @@ var (
 	brokerDeployChainConfig   = "./broker-server/chainConfig.json"
 	brokerDeployRpcConfig     = "./broker-server/rpc.json"
 	brokerDeployDockerCompose = "./broker-server/docker-compose.yml"
+
+	// Optional .env file path. If found, this .env file will be copied to the
+	// broker-server deployment.
+	brokerEnvFile = "./broker-server/.env"
 )
 
 func (c *Container) CopyBrokerDeployConfigs() error {
@@ -90,7 +94,7 @@ func (c *Container) CopyBrokerDeployConfigs() error {
 		configs.EmbededConfigs,
 		files.EmbedCopierOp{Src: "embedded/broker-server/rpc.json", Dst: brokerDeployRpcConfig, Overwrite: false},
 		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: brokerDeployChainConfig, Overwrite: false},
-		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: brokerDeployDockerCompose, Overwrite: true},
+		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: brokerDeployDockerCompose, Overwrite: false},
 	); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
@@ -188,6 +192,15 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		conn.SftpCopySrcDest{Src: brokerDeployDockerCompose, Dst: "./broker/docker-compose.yml"},
 	); err != nil {
 		return err
+	}
+
+	// Optional. Copy the .env file to broker dir on server if it exists
+	if _, err := os.Stat(brokerEnvFile); err == nil {
+		if err := sshClient.CopyFilesOverSftp(
+			conn.SftpCopySrcDest{Src: brokerEnvFile, Dst: "./broker/.env"},
+		); err != nil {
+			return err
+		}
 	}
 
 	// Prepare the volume with unencrypted keyfile for storing private key which

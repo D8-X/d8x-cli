@@ -45,6 +45,15 @@ extract the d8x binary.
 
 To run D8X-CLI on MacOS you will need to build it from source.
 
+Building from source requires you to have Go 1.21+ installed on your machine.
+
+## Using make
+
+```bash
+make install
+cp ./d8x /usr/local/bin
+```
+
 ### When using Mac
 Install ansible, terraform, and go
 ```
@@ -257,6 +266,23 @@ Metrics are scraped from each worker node's `cadvisor` service.
 Note that default grafana installation has username and password set to `admin`.
 You will be prompted to change the password on first login.
 
+</details>
+
+
+<details>
+  <summary><h2>Scaling worker instances</h2></summary>
+
+  If you wish to scale the number of worker instances up or down, you can do so
+  by re-running `d8x setup` command inside existing deployment's directory. When
+  prompted to enter the number of worker instances, simply enter the new number
+  of instances you wish to have.
+
+  Setup will automatically scale the number of worker instances up or down and
+  rerun any configuration steps needed. Broker and Manager servers will not be
+  changed.
+
+  **Note** that you do not need to select "setup certbot" when scaling the
+  worker instances if certbot is already set up.
 </details>
 
 ## SSH into machines
@@ -506,3 +532,8 @@ using manager server as jump host.
 	- username: `user` value from `aws_rds_postgres.txt`
 	- password: `password` value from `aws_rds_postgres.txt`
 6. Inspect the database
+
+# Broker .env
+
+You can place `.env` file in the `broker-server` directory. This file will be
+copied to the broker server and used as env file for broker compose services.

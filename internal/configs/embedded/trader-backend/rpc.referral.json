@@ -1,14 +1,28 @@
 [
   {
     "chainId": 195,
-    "HTTP": ["https://testrpc.x1.tech/", "https://x1testrpc.okx.com/"]
+    "HTTP": ["https://testrpc.x1.tech/", "https://x1testrpc.okx.com/"],
+    "WS": ["wss://x1testws.okx.com", "wss://testws.x1.tech"]
   },
   {
     "chainId": 1442,
-    "HTTP": ["https://rpc.public.zkevm-test.net"]
+    "HTTP": ["https://rpc.public.zkevm-test.net"],
+    "WS": []
   },
   {
     "chainId": 1101,
-    "HTTP": ["https://zkevm-rpc.com"]
+    "HTTP": ["https://zkevm-rpc.com"],
+    "WS": []
+  },
+  {
+    "chainId": 2442,
+    "HTTP": ["https://rpc.cardona.zkevm-rpc.com"]
+  },
+  {
+    "chainId": 421614,
+    "HTTP": [
+      "https://sepolia-rollup.arbitrum.io/rpc",
+      "https://arbitrum-sepolia.blockpi.network/v1/rpc/public"
+    ]
   }
 ]

@@ -19,5 +19,19 @@
     "perpetualManagerProxyAddr": "0xaB7794EcD2c8e9Decc6B577864b40eBf9204720f",
     "multiPayCtrctAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",
     "allowedExecutors": []
+  },
+  {
+    "chainId": 2442,
+    "name": "cardona",
+    "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
+    "multiPayCtrctAddr": "0xF08A1E0d5E5a0b90D082e218f5CA2416916C5e8c",
+    "allowedExecutors": []
+  },
+  {
+    "chainId": 421614,
+    "name": "arbitrumSepolia",
+    "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
+    "multiPayCtrctAddr": "0x60Eba5B5ba7Bd4694886CC5ecc0642D6178c2c86",
+    "allowedExecutors": []
   }
 ]

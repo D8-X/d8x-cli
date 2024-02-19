@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/D8-X/d8x-cli/internal/actions"
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -53,6 +54,9 @@ func RunD8XCli() {
 		Usage:                CmdUsage,
 		Description:          MainDescription,
 		EnableBashCompletion: true,
+		CommandNotFound: func(ctx *cli.Context, s string) {
+			fmt.Printf("Unknown command %s\n", s)
+		},
 		Commands: []*cli.Command{
 
 			{
@@ -74,6 +78,26 @@ func RunD8XCli() {
 							fmt.Printf("User password retrieved from %s\n", configs.DEFAULT_PASSWORD_FILE)
 						}
 					}
+
+					subcommands := []string{
+						"provision",
+						"configure",
+						"broker-deploy",
+						"broker-nginx",
+						"swarm-deploy",
+						"swarm-nginx",
+						"metrics-deploy",
+
+						// Help is always included
+						"help",
+					}
+
+					subcommand := ctx.Args().First()
+
+					if subcommand != "" && slices.Index(subcommands, subcommand) == -1 {
+						return fmt.Errorf("setup command does not have subcommand %s", subcommand)
+					}
+
 					return nil
 				},
 				Flags: []cli.Flag{provisionTfDirFlag},
@@ -170,6 +194,12 @@ func RunD8XCli() {
 					},
 				},
 				Description: "Backup database to local machine. Database credentials are read from d8x.conf.json file.",
+			},
+			{
+				Name:        "db-tunnel",
+				Action:      container.DbTunnel,
+				ArgsUsage:   "[local port 5432]",
+				Description: "Create a ssh tunnel to database server. Database credentials are read from d8x.conf.json file.",
 			},
 		},
 		// Global flags accessible to all subcommands
