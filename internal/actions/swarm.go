@@ -148,6 +148,7 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			}
 
 			// Redeploy the swarm after ingress fix
+			fmt.Println(styles.ItalicText.Render("Redeploying swarm services after ingress fix..."))
 			if err := c.swarmDeploy(ctx, false); err != nil {
 				return err
 			}

@@ -11,6 +11,10 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// IngressFix fixes non-working ingress network on manager. Steps to fix ingress
+// (in order) are: remove any existing stacks; remove ingress on manager;
+// recreate ingress on manager; reboot manager's docker; reboot all workers'
+// docker.
 func (c *Container) IngressFix(ctx *cli.Context) error {
 	pwd, err := c.GetPassword(ctx)
 	if err != nil {
@@ -39,7 +43,7 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 
 	fmt.Println("Recreating ingress network")
 	time.Sleep(5 * time.Second)
-	// Recreate ingress
+	// Recreate ingress. Make sure subnet is the same as in setup playbook
 	if _, err := managerConn.ExecCommand("docker network create -d overlay --subnet 172.16.1.0/24 --ingress ingress"); err != nil {
 		return fmt.Errorf("recreating ingress network: %w", err)
 	} else {
@@ -86,6 +90,10 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 		}(ip)
 	}
 	wg.Wait()
+
+	if ctx.Command.Name == "fix-ingress" {
+		fmt.Println("Make sure you re-run d8x setup swarm-deploy to re-deploy the services")
+	}
 
 	return nil
 }
