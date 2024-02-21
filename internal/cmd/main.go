@@ -201,6 +201,11 @@ func RunD8XCli() {
 				ArgsUsage:   "[local port 5432]",
 				Description: "Create a ssh tunnel to database server. Database credentials are read from d8x.conf.json file.",
 			},
+			{
+				Name:   "fix-ingress",
+				Usage:  "Fix faulty ingress network",
+				Action: container.IngressFix,
+			},
 		},
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
