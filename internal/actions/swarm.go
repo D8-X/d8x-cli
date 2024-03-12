@@ -262,9 +262,10 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 			}
 		}
 		if !matchFound {
+			// Allowed executor was either different or not found for selected chain
 			fmt.Println(
 				styles.ErrorText.Render(
-					"provided referral executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
+					"provided referral executor address did not match any allowedExecutor address for chain id" + strconv.Itoa(int(cfg.ChainId)) + " in ./broker-server/chainConfig.json",
 				),
 			)
 		}
