@@ -16,13 +16,20 @@
   },
   {
     "chainId": 2442,
-    "HTTP": ["https://rpc.cardona.zkevm-rpc.com"]
+    "HTTP": ["https://rpc.cardona.zkevm-rpc.com"],
+    "WS": []
   },
   {
     "chainId": 421614,
     "HTTP": [
       "https://sepolia-rollup.arbitrum.io/rpc",
       "https://arbitrum-sepolia.blockpi.network/v1/rpc/public"
-    ]
+    ],
+    "WS": []
+  },
+  {
+    "chainId": 80085,
+    "HTTP": ["https://rpc.ankr.com/berachain_testnet"],
+    "WS": []
   }
 ]

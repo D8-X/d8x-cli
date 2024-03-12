@@ -24,5 +24,10 @@
       "https://sepolia-rollup.arbitrum.io/rpc",
       "https://arbitrum-sepolia.blockpi.network/v1/rpc/public"
     ]
+  },
+  {
+    "chainId": 80085,
+    "HTTP": ["https://rpc.ankr.com/berachain_testnet"],
+    "WS": []
   }
 ]
