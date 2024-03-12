@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -771,6 +772,12 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 			chainSelectionMap[chainName] = id
 			chainSelection = append(chainSelection, chainName)
 		}
+
+		// Sort chains by name so we always have consistent order in the
+		// selection
+		sort.Slice(chainSelection, func(i, j int) bool {
+			return chainSelection[i] < chainSelection[j]
+		})
 
 		chains, err := c.TUI.NewSelection(chainSelection, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
