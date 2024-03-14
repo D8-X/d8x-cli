@@ -66,10 +66,58 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		return err
 	}
 
+	// Collect broker services related information whenever needed
+	brokerRedisPassword := ""
+	brokerFeeTBPS := ""
+	brokerPrivateKey := ""
+	if len(selectedBrokerServicesToUpdate) > 0 {
+		cfg, err := c.ConfigRWriter.Read()
+		if err != nil {
+			return err
+		}
+
+		// Ask for private key
+		pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
+		if err != nil {
+			return err
+		}
+		brokerPrivateKey = pk
+
+		if !cfg.BrokerDeployed {
+			fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
+			fmt.Println("Enter your broker redis password:")
+			pwd, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
+			)
+			if err != nil {
+				return err
+			}
+			brokerRedisPassword = pwd
+
+			fee, err := c.Input.CollectBrokerFee()
+			if err != nil {
+				return err
+			}
+			brokerFeeTBPS = fee
+
+			// Store these in the config once entered
+			cfg.BrokerServerConfig = configs.D8XBrokerServerConfig{
+				FeeTBPS:       brokerFeeTBPS,
+				RedisPassword: brokerRedisPassword,
+			}
+			if err := c.ConfigRWriter.Write(cfg); err != nil {
+				return err
+			}
+		} else {
+			brokerRedisPassword = cfg.BrokerServerConfig.RedisPassword
+			brokerFeeTBPS = cfg.BrokerServerConfig.FeeTBPS
+		}
+	}
+
 	if err := c.updateSwarmServices(ctx, selectedSwarmServicesToUpdate, services); err != nil {
 		return err
 	}
-	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerServices); err != nil {
+	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerPrivateKey, brokerRedisPassword, brokerFeeTBPS); err != nil {
 		return err
 	}
 
@@ -271,14 +319,9 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 // updateBrokerServerServices performs broker-server services update on broker
 // server. Broker-server update involves  uploading the key to a new volume.
-func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, pk, redisPassword, feeTBPS string) error {
 	if len(selectedSwarmServicesToUpdate) == 0 {
 		return nil
-	}
-
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
 	}
 
 	// See broker.go for broker server setup directory
@@ -300,46 +343,6 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		return fmt.Errorf("docker prune on broker server failed: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("Docker prune on broker server completed successfully"))
-
-	// Ask for private key
-	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
-	if err != nil {
-		return err
-	}
-
-	// Check if we have broker services configuration information and prompt
-	// user to enter it otherwise
-	redisPassword := ""
-	feeTBPS := ""
-	if !cfg.BrokerDeployed {
-		fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
-		fmt.Println("Enter your broker redis password:")
-		pwd, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
-		)
-		if err != nil {
-			return err
-		}
-		redisPassword = pwd
-
-		fee, err := c.Input.CollectBrokerFee()
-		if err != nil {
-			return err
-		}
-		feeTBPS = fee
-
-		// Store these in the config
-		cfg.BrokerServerConfig = configs.D8XBrokerServerConfig{
-			FeeTBPS:       feeTBPS,
-			RedisPassword: redisPassword,
-		}
-		if err := c.ConfigRWriter.Write(cfg); err != nil {
-			return err
-		}
-	} else {
-		redisPassword = cfg.BrokerServerConfig.RedisPassword
-		feeTBPS = cfg.BrokerServerConfig.FeeTBPS
-	}
 
 	fmt.Printf("Using BROKER_FEE_TBPS=%s REDIS_PW=%s\n", feeTBPS, redisPassword)
 
