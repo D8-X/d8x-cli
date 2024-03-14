@@ -338,8 +338,9 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 
 	fmt.Println("Pruning unused resources on broker server...")
 	out, err := dockerPrune(sshConn)
-	fmt.Println(string(out))
 	if err != nil {
+		// Print out the output only on error
+		fmt.Println(string(out))
 		return fmt.Errorf("docker prune on broker server failed: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("Docker prune on broker server completed successfully"))
@@ -547,8 +548,8 @@ func (c *Container) PurgeWorkers(workersIps []string) error {
 		}
 
 		output, err := dockerPrune(worker)
-		fmt.Println(string(output))
 		if err != nil {
+			fmt.Println(string(output))
 			return fmt.Errorf("docker prune on worker %d failed: %w", workerIndex+1, err)
 		} else {
 			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Docker prune on worker %d completed successfully", workerIndex+1)))
