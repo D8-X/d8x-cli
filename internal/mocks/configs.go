@@ -34,6 +34,20 @@ func (m *MockD8XConfigReadWriter) EXPECT() *MockD8XConfigReadWriterMockRecorder 
 	return m.recorder
 }
 
+// GetPath mocks base method.
+func (m *MockD8XConfigReadWriter) GetPath() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPath")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetPath indicates an expected call of GetPath.
+func (mr *MockD8XConfigReadWriterMockRecorder) GetPath() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPath", reflect.TypeOf((*MockD8XConfigReadWriter)(nil).GetPath))
+}
+
 // Read mocks base method.
 func (m *MockD8XConfigReadWriter) Read() (*configs.D8XConfig, error) {
 	m.ctrl.T.Helper()
@@ -61,4 +75,18 @@ func (m *MockD8XConfigReadWriter) Write(arg0 *configs.D8XConfig) error {
 func (mr *MockD8XConfigReadWriterMockRecorder) Write(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockD8XConfigReadWriter)(nil).Write), arg0)
+}
+
+// WriteTo mocks base method.
+func (m *MockD8XConfigReadWriter) WriteTo(arg0 string, arg1 *configs.D8XConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteTo", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WriteTo indicates an expected call of WriteTo.
+func (mr *MockD8XConfigReadWriterMockRecorder) WriteTo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteTo", reflect.TypeOf((*MockD8XConfigReadWriter)(nil).WriteTo), arg0, arg1)
 }
