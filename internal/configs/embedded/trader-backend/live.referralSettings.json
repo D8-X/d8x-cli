@@ -54,7 +54,7 @@
     "chainId": 421614,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
-    "multiPayContractAddr": "0x60Eba5B5ba7Bd4694886CC5ecc0642D6178c2c86",
+    "multiPayContractAddr": "0x35672963523bc874f13da5CeED024249794E6a16",
     "tokenX": {
       "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
       "decimals": 18
