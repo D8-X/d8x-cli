@@ -82,7 +82,8 @@ services:
       restart_policy:
         condition: any
         delay: 60s
-        max_attempts: 20
+        # Do not limit referral restart attempts
+        # max_attempts: 20
         # Do not wait to verify restart
         window: 0s
     environment:
