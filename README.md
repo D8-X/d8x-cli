@@ -425,6 +425,9 @@ swarm-manager for which you can get the ip with `d8x ip manager`).
 docker service update --image "ghcr.io/d8-x/d8x-trader-main:dev@sha256:aea8e56d6077c733a1d553b4291149712c022b8bd72571d2a852a5478e1ec559" stack_api
 ```
 
+See the [Update Runbook](./UPDATE_RUNBOOK.md) for more guidelines and more
+details how updating services works.
+
 </details>
 
 <details>

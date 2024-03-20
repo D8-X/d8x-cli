@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -65,10 +66,58 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		return err
 	}
 
+	// Collect broker services related information whenever needed
+	brokerRedisPassword := ""
+	brokerFeeTBPS := ""
+	brokerPrivateKey := ""
+	if len(selectedBrokerServicesToUpdate) > 0 {
+		cfg, err := c.ConfigRWriter.Read()
+		if err != nil {
+			return err
+		}
+
+		// Ask for private key
+		pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
+		if err != nil {
+			return err
+		}
+		brokerPrivateKey = pk
+
+		if !cfg.BrokerDeployed {
+			fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
+			fmt.Println("Enter your broker redis password:")
+			pwd, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
+			)
+			if err != nil {
+				return err
+			}
+			brokerRedisPassword = pwd
+
+			fee, err := c.Input.CollectBrokerFee()
+			if err != nil {
+				return err
+			}
+			brokerFeeTBPS = fee
+
+			// Store these in the config once entered
+			cfg.BrokerServerConfig = configs.D8XBrokerServerConfig{
+				FeeTBPS:       brokerFeeTBPS,
+				RedisPassword: brokerRedisPassword,
+			}
+			if err := c.ConfigRWriter.Write(cfg); err != nil {
+				return err
+			}
+		} else {
+			brokerRedisPassword = cfg.BrokerServerConfig.RedisPassword
+			brokerFeeTBPS = cfg.BrokerServerConfig.FeeTBPS
+		}
+	}
+
 	if err := c.updateSwarmServices(ctx, selectedSwarmServicesToUpdate, services); err != nil {
 		return err
 	}
-	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerServices); err != nil {
+	if err := c.updateBrokerServerServices(selectedBrokerServicesToUpdate, brokerPrivateKey, brokerRedisPassword, brokerFeeTBPS); err != nil {
 		return err
 	}
 
@@ -79,6 +128,89 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
 	if len(selectedSwarmServicesToUpdate) == 0 {
 		return nil
+	}
+
+	// Collect the sha hashes for selected services
+	svcTagsWithShaHashes := map[string][]string{}
+	wg := sync.WaitGroup{}
+	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
+		wg.Add(1)
+		go func(svcToUpdate string) {
+			fmt.Println("Fetching image tags with sha hashes for service " + svcToUpdate)
+			img := services[svcToUpdate].Image
+			tags, err := getTagsWithHashes(svcToUpdate, img)
+			// Just print the error if tags cannot be fetched/parsed
+			if err != nil {
+				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not get tags for %s: %s", img, err.Error())))
+			} else {
+				fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Image tags fetched for service %s", img)))
+				svcTagsWithShaHashes[svcToUpdate] = tags
+			}
+			wg.Done()
+		}(svcToUpdate)
+	}
+	wg.Wait()
+
+	// Prompt user to enter referral executor key whenever we update referral
+	// service.
+	referralExecutorKey := ""
+
+	// Prompt user to select the tags to use for updating services. Use image
+	// tags with hashes fetched from github but also allow to enter the image
+	// reference manually
+	enterManuallyOption := "Enter image reference manually"
+	selectedImageReferenceForUpdate := map[string]string{}
+	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
+		img := services[svcToUpdate].Image
+		imagesSelection := svcTagsWithShaHashes[svcToUpdate]
+		// Append the image url
+		for i, tagHash := range imagesSelection {
+			imagesSelection[i] = img + ":" + tagHash
+		}
+		imagesSelection = append(imagesSelection, enterManuallyOption)
+
+		fmt.Printf("\nChoose which image reference to update %s service to\n", svcToUpdate)
+		selectedImageToUpdate, err := c.TUI.NewSelection(
+			imagesSelection,
+			components.SelectionOptAllowOnlySingleItem(),
+			components.SelectionOptRequireSelection(),
+		)
+		if err != nil {
+			return err
+		}
+
+		imgToUse := selectedImageToUpdate[0]
+		if imgToUse != enterManuallyOption {
+			fmt.Printf("Service %s will be updated to %s\n", svcToUpdate, imgToUse)
+		} else {
+			fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
+			info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
+			fmt.Println(styles.GrayText.Render(info))
+			info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
+			fmt.Println(styles.GrayText.Render(info))
+
+			fmt.Println("Enter image to update to:")
+			enteredImage, err := c.TUI.NewInput(
+				components.TextInputOptValue(img),
+				components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
+			)
+			if err != nil {
+				return err
+			}
+			imgToUse = enteredImage
+		}
+
+		selectedImageReferenceForUpdate[svcToUpdate] = imgToUse
+
+		// Collect private key for referral service
+		if svcToUpdate == "referral" {
+			executorkey, _, err := c.Input.CollectAndValidatePrivateKey("Enter your referral payment executor private key:")
+			if err != nil {
+				return err
+			}
+			referralExecutorKey = "0x" + strings.TrimPrefix(executorkey, "0x")
+		}
+
 	}
 
 	workerIps, err := c.HostsCfg.GetWorkerIps()
@@ -105,64 +237,14 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 	}
 
 	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
-		fmt.Printf("Updating service %s\n", svcToUpdate)
-
-		img := services[svcToUpdate].Image
-		tags, err := getTagsWithHashes(svcToUpdate, img)
-		// If tags cannot be fetched - show error, but do not exit the update
-		// process, since this is only local error on users' machine
-		if err != nil {
-			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not get tags for %s: %s\n", img, err.Error())))
-			tags = []string{}
-		}
-
-		// Show selection of available tags (with latest sha hashes whenever
-		// possible) to update to
-		enterManuallyOption := "Enter image reference manually"
-		imagesSelection := make([]string, len(tags))
-		for i, tag := range tags {
-			imagesSelection[i] = img + ":" + tag
-		}
-		// Manual entry option
-		imagesSelection = append(imagesSelection, enterManuallyOption)
-		fmt.Println("Choose which image reference to update to")
-		selectedImageToUpdate, err := c.TUI.NewSelection(
-			imagesSelection,
-			components.SelectionOptAllowOnlySingleItem(),
-			components.SelectionOptRequireSelection(),
-		)
-		if err != nil {
-			return err
-		}
-
-		imgToUse := selectedImageToUpdate[0]
-
-		if imgToUse != enterManuallyOption {
-			fmt.Printf("Using image: %s\n", selectedImageToUpdate[0])
-		} else {
-			fmt.Printf("Provide a full path to image with tag (or optionally sha256 hash) to update to\n")
-			info := "When providing a specific sha version, follow the following format:\nghcr.io/d8-x/<SERVICE>@sha256:<SHA256_HASH>\n"
-			fmt.Println(styles.GrayText.Render(info))
-			info = "When providing a tag only, follow the following format:\nghcr.io/d8-x/<SERVICE>:<TAG>\n"
-			fmt.Println(styles.GrayText.Render(info))
-
-			fmt.Println("Enter image to update to:")
-			enteredImage, err := c.TUI.NewInput(
-				components.TextInputOptValue(img),
-				components.TextInputOptPlaceholder("ghcr.io/d8-x/image@sha256:hash"),
-			)
-			if err != nil {
-				return err
-			}
-			imgToUse = enteredImage
-		}
+		imgToUse := selectedImageReferenceForUpdate[svcToUpdate]
+		fmt.Printf("Updating %s to %s\n", svcToUpdate, imgToUse)
 
 		// For referral system - we need to update the referral executor private
 		// key, since the new version will have different encryption key and
 		// keyfile.txt will be reencrypted
 		// var oldKeyfile string = ""
 		if svcToUpdate == "referral" {
-
 			// Remove existing referral service
 			fmt.Println("Scaling down referral service")
 			if err := sshConn.ExecCommandPiped(
@@ -179,19 +261,8 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 			if err != nil {
 				return err
 			}
-
-			fmt.Println("Enter your referral payment executor private key:")
-			executorkey, err := c.TUI.NewInput(
-				components.TextInputOptPlaceholder("<YOUR PRIVATE KEY>"),
-				components.TextInputOptMasked(),
-			)
-			if err != nil {
-				return err
-			}
-			executorkey = "0x" + strings.TrimPrefix(executorkey, "0x")
-
 			// Write new keyfile
-			out, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S bash -c "echo -n '%s' > /var/nfs/general/keyfile.txt"`, password, executorkey))
+			out, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S bash -c "echo -n '%s' > /var/nfs/general/keyfile.txt"`, password, referralExecutorKey))
 			if err != nil {
 				fmt.Println(string(out))
 				return fmt.Errorf("updating executor private key file: %w", err)
@@ -200,8 +271,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 		// Append stack name for service
 		svcStackName := dockerStackName + "_" + svcToUpdate
-
-		fmt.Printf("Updating %s to %s\n", svcToUpdate, imgToUse)
 
 		t := time.NewTimer(time.Minute * 2)
 		done := make(chan struct{})
@@ -250,14 +319,9 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 
 // updateBrokerServerServices performs broker-server services update on broker
 // server. Broker-server update involves  uploading the key to a new volume.
-func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []string, pk, redisPassword, feeTBPS string) error {
 	if len(selectedSwarmServicesToUpdate) == 0 {
 		return nil
-	}
-
-	cfg, err := c.ConfigRWriter.Read()
-	if err != nil {
-		return err
 	}
 
 	// See broker.go for broker server setup directory
@@ -274,51 +338,12 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 
 	fmt.Println("Pruning unused resources on broker server...")
 	out, err := dockerPrune(sshConn)
-	fmt.Println(string(out))
 	if err != nil {
+		// Print out the output only on error
+		fmt.Println(string(out))
 		return fmt.Errorf("docker prune on broker server failed: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("Docker prune on broker server completed successfully"))
-
-	// Ask for private key
-	pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
-	if err != nil {
-		return err
-	}
-
-	// Check if we have broker services configuration information and prompt
-	// user to enter it otherwise
-	redisPassword := ""
-	feeTBPS := ""
-	if !cfg.BrokerDeployed {
-		fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
-		fmt.Println("Enter your broker redis password:")
-		pwd, err := c.TUI.NewInput(
-			components.TextInputOptPlaceholder("<YOUR REDIS PASSWORD>"),
-		)
-		if err != nil {
-			return err
-		}
-		redisPassword = pwd
-
-		fee, err := c.Input.CollectBrokerFee()
-		if err != nil {
-			return err
-		}
-		feeTBPS = fee
-
-		// Store these in the config
-		cfg.BrokerServerConfig = configs.D8XBrokerServerConfig{
-			FeeTBPS:       feeTBPS,
-			RedisPassword: redisPassword,
-		}
-		if err := c.ConfigRWriter.Write(cfg); err != nil {
-			return err
-		}
-	} else {
-		redisPassword = cfg.BrokerServerConfig.RedisPassword
-		feeTBPS = cfg.BrokerServerConfig.FeeTBPS
-	}
 
 	fmt.Printf("Using BROKER_FEE_TBPS=%s REDIS_PW=%s\n", feeTBPS, redisPassword)
 
@@ -523,8 +548,8 @@ func (c *Container) PurgeWorkers(workersIps []string) error {
 		}
 
 		output, err := dockerPrune(worker)
-		fmt.Println(string(output))
 		if err != nil {
+			fmt.Println(string(output))
 			return fmt.Errorf("docker prune on worker %d failed: %w", workerIndex+1, err)
 		} else {
 			fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Docker prune on worker %d completed successfully", workerIndex+1)))
