@@ -33,8 +33,24 @@ func (c *Container) Setup(ctx *cli.Context) error {
 			return err
 		}
 		if !keepConfig {
-			if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
+			// Print out a warning one more time to prevent accidental deletion
+			// of config
+			fmt.Println(
+				styles.AlertImportant.Render("Warning! Existing configuration will be completely removed!"),
+			)
+			if yes, err := c.TUI.NewPrompt("Are you sure you want to continue?", false); err != nil {
 				return err
+			} else if yes {
+				// Make a backup of the existing config just in case
+				backup := c.ConfigRWriter.GetPath() + ".backup-" + time.Now().Format("2006-01-02_15:04:05")
+				if err := c.ConfigRWriter.WriteTo(backup, cfg); err != nil {
+					return err
+				}
+				fmt.Printf("Backup of the existing configuration was saved to %s\n\n", backup)
+
+				if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
+					return err
+				}
 			}
 		}
 	}

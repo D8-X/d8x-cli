@@ -369,6 +369,14 @@ On the broker server, inspect the services with `docker ps` and look at the log
 files with `cd broker` and `docker compose logs -f`. Redeploy changed configs
 via `d8x setup broker-deploy`
 
+Sometimes swarm cluster deployment ingress network can get stuck on manager
+server. This might result in HTTP 503 errors or `Connection refused` message
+when trying to curl swarm services on manager server. To fix this you can re-run
+`d8x setup swarm-deploy` command which attempts to fix "broker" ingress network
+after deploying swarm services. There is also individual subcommand `d8x
+fix-ingress` which does only the ingress network fixing part, but requires to
+rerun `swarm-deploy` command afterwards.
+
 </details>
 <details>
   <summary>How do I update the swarm server software images to a new version?</summary>
@@ -416,6 +424,9 @@ swarm-manager for which you can get the ip with `d8x ip manager`).
 ```
 docker service update --image "ghcr.io/d8-x/d8x-trader-main:dev@sha256:aea8e56d6077c733a1d553b4291149712c022b8bd72571d2a852a5478e1ec559" stack_api
 ```
+
+See the [Update Runbook](./UPDATE_RUNBOOK.md) for more guidelines and more
+details how updating services works.
 
 </details>
 

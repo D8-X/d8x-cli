@@ -2,36 +2,37 @@
   {
     "chainId": 195,
     "name": "x1",
-    "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
     "multiPayCtrctAddr": "0x3594D0eAAaC82D3AFA7347d098bc4a39A71e918c",
     "allowedExecutors": []
   },
   {
     "chainId": 1442,
     "name": "zkEVM Testnet",
-    "perpetualManagerProxyAddr": "0x0e23619704556945B1C7CB550Dee6D428f7d2E2B",
     "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
     "allowedExecutors": []
   },
   {
     "chainId": 1101,
     "name": "zkEVM Mainnet",
-    "perpetualManagerProxyAddr": "0xaB7794EcD2c8e9Decc6B577864b40eBf9204720f",
     "multiPayCtrctAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",
     "allowedExecutors": []
   },
   {
     "chainId": 2442,
     "name": "cardona",
-    "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
     "multiPayCtrctAddr": "0xF08A1E0d5E5a0b90D082e218f5CA2416916C5e8c",
     "allowedExecutors": []
   },
   {
     "chainId": 421614,
     "name": "arbitrumSepolia",
-    "perpetualManagerProxyAddr": "0x70212F1E2eB66C82990312FA5AB3f851706fD1E1",
     "multiPayCtrctAddr": "0x60Eba5B5ba7Bd4694886CC5ecc0642D6178c2c86",
+    "allowedExecutors": []
+  },
+  {
+    "chainId": 80085,
+    "name": "artio",
+    "multiPayCtrctAddr": "0xDa7f988605Abe824dF767Aa583d8fD60f09E23D0",
     "allowedExecutors": []
   }
 ]

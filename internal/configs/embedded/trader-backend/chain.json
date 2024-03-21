@@ -25,7 +25,7 @@
     "sdkNetwork": "cardona",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
+    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
   },
   "421614": {
     "type": "testnet",
@@ -33,6 +33,13 @@
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
+  },
+  "80085": {
+    "type": "mainnet",
+    "sdkNetwork": "artio",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
   },
   "default": {
     "type": "mainnet",

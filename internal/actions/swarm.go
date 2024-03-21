@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -129,6 +130,47 @@ func (c *Container) CopySwarmDeployConfigs() error {
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
 
+	if err := c.swarmDeploy(ctx, true); err != nil {
+		return err
+	}
+
+	// After swarm deployment is completed, check if ingress network is working
+	// correctly on manager. Repeat for 2 times max
+	ingressWorks := false
+	for i := 0; i < 2; i++ {
+		fmt.Printf("Checking ingress network on manager... (attempt %d/2)\n", i+1)
+		err := c.CheckSwarmIngressIsCorrect(ctx)
+		if err != nil {
+			fmt.Println(styles.ErrorText.Render(err.Error()))
+			if err := c.IngressFix(ctx); err != nil {
+				fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Ingress network fix failed: %s\n", err.Error())))
+				continue
+			}
+
+			// Redeploy the swarm after ingress fix
+			fmt.Println(styles.ItalicText.Render("Redeploying swarm services after ingress fix..."))
+			if err := c.swarmDeploy(ctx, false); err != nil {
+				return err
+			}
+
+		} else {
+			fmt.Println(styles.SuccessText.Render("Ingress network is working correctly on manager"))
+			ingressWorks = true
+			break
+		}
+	}
+
+	if !ingressWorks {
+		fmt.Println(styles.ErrorText.Render("Ingress network is not working correctly on manager"))
+		fmt.Println("Automatic fix failed, please try to run fix-ingress and setup swarm-deploy manually")
+	}
+
+	return nil
+}
+
+// swarmDeploy performs the swarm deployment step
+func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) error {
+
 	// Find manager ip before we start collecting data in case manager is not
 	// available.
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
@@ -220,9 +262,10 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 			}
 		}
 		if !matchFound {
+			// Allowed executor was either different or not found for selected chain
 			fmt.Println(
 				styles.ErrorText.Render(
-					"provided referral executor address did not match any allowedExecutor address in ./broker-server/chainConfig.json",
+					"provided referral executor address did not match any allowedExecutor address for chain id" + strconv.Itoa(int(cfg.ChainId)) + " in ./broker-server/chainConfig.json",
 				),
 			)
 		}
@@ -233,12 +276,14 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("temp storage of keyfile failed: %w", err)
 	}
 
-	fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
-	fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-	for _, f := range swarmDeployConfigFilesToCopy[:6] {
-		fmt.Println(f.Dst)
+	if showConfigConfirmation {
+		fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
+		fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
+		for _, f := range swarmDeployConfigFilesToCopy[:6] {
+			fmt.Println(f.Dst)
+		}
+		c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
 	}
-	c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
 
 	pwd, err := c.GetPassword(ctx)
 	if err != nil {
@@ -664,4 +709,54 @@ var hostsTpl = []hostnameTuple{
 		find:        "%candles_ws%",
 		serviceName: configs.D8XServiceCandlesWs,
 	},
+}
+
+type NameIp struct {
+	Name string `json:"name"`
+	IP   string `json:"IP"`
+}
+
+// CheckSwarmIngressIsCorrect checks if swarm manager's ingress network
+// configuration contains worker servers as peers and is in correct state
+func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
+	// Check if ingress's peers property contains all the workers on manager
+	managerIp, err := c.HostsCfg.GetMangerPublicIp()
+	if err != nil {
+		return err
+	}
+	managerConn, err := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return err
+	}
+
+	out, err := managerConn.ExecCommand(`docker network inspect -f "{{json .Peers}}" ingress`)
+	if err != nil {
+		return err
+	}
+	peers := []NameIp{}
+	if err := json.Unmarshal([]byte(out), &peers); err != nil {
+		return fmt.Errorf("parsing docker network inspect output: %w", err)
+	}
+
+	// Check if all workers are present in peers list
+	workerIps, err := c.HostsCfg.GetWorkerPrivateIps()
+	if err != nil {
+		return err
+	}
+
+	for _, workerIp := range workerIps {
+		found := false
+		for _, peer := range peers {
+			if workerIp == peer.IP {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			return fmt.Errorf("worker with IP %s is not present in ingress network peers", workerIp)
+		}
+	}
+
+	return nil
 }

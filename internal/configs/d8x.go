@@ -222,6 +222,12 @@ type D8XConfigReadWriter interface {
 
 	// Write writes given D8XConfig to underlying storage system
 	Write(*D8XConfig) error
+
+	// GetPath returns the full path of config file
+	GetPath() string
+
+	// WriteTo writes the contents of cfg to the provided filePath
+	WriteTo(filePath string, cfg *D8XConfig) error
 }
 
 func NewFileBasedD8XConfigRW(filePath string) D8XConfigReadWriter {
@@ -234,6 +240,10 @@ type d8xConfigFileReadWriter struct {
 	filePath string
 
 	warningShown bool
+}
+
+func (d *d8xConfigFileReadWriter) GetPath() string {
+	return d.filePath
 }
 
 func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
@@ -275,6 +285,17 @@ func (d *d8xConfigFileReadWriter) Write(cfg *D8XConfig) error {
 		return err
 	} else {
 		if err := os.WriteFile(d.filePath, buf, 0666); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *d8xConfigFileReadWriter) WriteTo(filePath string, cfg *D8XConfig) error {
+	if buf, err := json.MarshalIndent(cfg, "", "\t"); err != nil {
+		return err
+	} else {
+		if err := os.WriteFile(filePath, buf, 0666); err != nil {
 			return err
 		}
 	}
