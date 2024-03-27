@@ -3,7 +3,6 @@
     "chainId": 195,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 14 * * 2",
-    "multiPayContractAddr": "0x3594D0eAAaC82D3AFA7347d098bc4a39A71e918c",
     "tokenX": {
       "address": "0xd08B8E59a36BaA7EED60E21C1D6a7778811C30eD",
       "decimals": 18
@@ -20,7 +19,6 @@
     "chainId": 1101,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
-    "multiPayContractAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",
     "tokenX": {
       "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
@@ -50,10 +48,25 @@
     "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
   },
   {
+    "chainId": 42161,
+    "paymentMaxLookBackDays": 14,
+    "paymentScheduleCron": "0 08 * * 2",
+    "tokenX": {
+      "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
+      "decimals": 18
+    },
+    "referrerCutPercentForTokenXHolding": [
+      [0.2, 0],
+      [1.5, 100],
+      [2.5, 1000],
+      [3.75, 10000]
+    ],
+    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+  },
+  {
     "chainId": 2442,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
-    "multiPayContractAddr": "0xF08A1E0d5E5a0b90D082e218f5CA2416916C5e8c",
     "tokenX": {
       "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
       "decimals": 18
@@ -70,7 +83,6 @@
     "chainId": 80085,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
-    "multiPayContractAddr": "0xDa7f988605Abe824dF767Aa583d8fD60f09E23D0",
     "tokenX": {
       "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
       "decimals": 18
