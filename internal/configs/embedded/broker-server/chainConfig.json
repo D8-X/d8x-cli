@@ -6,12 +6,6 @@
     "allowedExecutors": []
   },
   {
-    "chainId": 1442,
-    "name": "zkEVM Testnet",
-    "multiPayCtrctAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5",
-    "allowedExecutors": []
-  },
-  {
     "chainId": 1101,
     "name": "zkEVM Mainnet",
     "multiPayCtrctAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",

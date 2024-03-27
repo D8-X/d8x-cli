@@ -4,7 +4,7 @@
 - When using Linode, deploy a database cluster (PostgreSQL) and create a database (use the name 'history'). The database should be deployed in the same region as you choose to deploy the servers. Provisioned database cluster in linode. You can get the ID of your database cluster
   from the cluster management url
   (https://cloud.linode.com/databases/postgresql/THEID) or via `linode-cli`.
-- Decide on which of the available chains you will run the backend. For example zkEVM Testnet with chainId 1442.
+- Decide on which of the available chains you will run the backend. For example Arbitrum Sepolia with chainId 421614.
 - You will need two private keys:
   - "the executor", for which the address is whitelisted on the broker-server
     under “allowedExecutors”.
@@ -67,11 +67,10 @@ Lines preceeded with `#` in this file, serve as comments.
   #NETWORK_NAME=testnet #<-- use this for testnet backends
   NETWORK_NAME=mainnet  #<-- use this for mainnet backends
   ```
-- Choose the relevant chain. For example, to enable zkEVM mainnet:
+- Choose the relevant chain. For example, to enable Arbitrum Sepolia testnet:
   ```
-  # zkEVM testnet
-  # CHAIN_ID=1442
-  # SDK_CONFIG_NAME=zkevmTestnet
+  # CHAIN_ID=421614
+  # SDK_CONFIG_NAME=arbitrumSepolia
   # MUMBAI
   # CHAIN_ID=80001
   # SDK_CONFIG_NAME=testnet
