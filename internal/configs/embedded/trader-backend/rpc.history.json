@@ -26,5 +26,15 @@
     "chainId": 80085,
     "HTTP": ["https://rpc.ankr.com/berachain_testnet"],
     "WS": []
+  },
+  {
+    "chainId": 80085,
+    "HTTP": ["https://rpc.ankr.com/berachain_testnet"],
+    "WS": []
+  },
+  {
+    "chainId": 42161,
+    "HTTP": ["https://arb1.arbitrum.io/rpc"],
+    "WS": []
   }
 ]

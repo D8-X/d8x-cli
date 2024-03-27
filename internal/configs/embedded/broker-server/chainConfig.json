@@ -2,31 +2,31 @@
   {
     "chainId": 195,
     "name": "x1",
-    "multiPayCtrctAddr": "0x3594D0eAAaC82D3AFA7347d098bc4a39A71e918c",
     "allowedExecutors": []
   },
   {
     "chainId": 1101,
     "name": "zkEVM Mainnet",
-    "multiPayCtrctAddr": "0x5a1e7BBCf0A02a84C5BcE8865aC88668FC6389fE",
     "allowedExecutors": []
   },
   {
     "chainId": 2442,
     "name": "cardona",
-    "multiPayCtrctAddr": "0xF08A1E0d5E5a0b90D082e218f5CA2416916C5e8c",
     "allowedExecutors": []
   },
   {
     "chainId": 421614,
     "name": "arbitrumSepolia",
-    "multiPayCtrctAddr": "0x35672963523bc874f13da5CeED024249794E6a16",
+    "allowedExecutors": []
+  },
+  {
+    "chainId": 42161,
+    "name": "arbitrum",
     "allowedExecutors": []
   },
   {
     "chainId": 80085,
     "name": "artio",
-    "multiPayCtrctAddr": "0xDa7f988605Abe824dF767Aa583d8fD60f09E23D0",
     "allowedExecutors": []
   }
 ]

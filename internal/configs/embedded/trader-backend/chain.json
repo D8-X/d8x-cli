@@ -27,6 +27,13 @@
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
   },
+  "42161": {
+    "type": "mainnet",
+    "sdkNetwork": "arbitrum",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
+  },
   "80085": {
     "type": "mainnet",
     "sdkNetwork": "artio",
