@@ -6,13 +6,6 @@
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
   },
-  "1442": {
-    "type": "testnet",
-    "sdkNetwork": "zkevmTestnet",
-    "priceFeedNetwork": "testnet",
-    "priceServiceWSEndpoint": "wss://hermes-beta.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
-  },
   "1101": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
@@ -30,6 +23,13 @@
   "421614": {
     "type": "testnet",
     "sdkNetwork": "arbitrumSepolia",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
+  },
+  "42161": {
+    "type": "mainnet",
+    "sdkNetwork": "arbitrum",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""

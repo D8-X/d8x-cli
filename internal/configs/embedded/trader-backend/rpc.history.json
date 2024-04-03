@@ -5,11 +5,6 @@
     "WS": ["wss://x1testws.okx.com", "wss://testws.x1.tech"]
   },
   {
-    "chainId": 1442,
-    "HTTP": ["https://rpc.public.zkevm-test.net"],
-    "WS": []
-  },
-  {
     "chainId": 1101,
     "HTTP": ["https://zkevm-rpc.com"],
     "WS": []
@@ -30,6 +25,16 @@
   {
     "chainId": 80085,
     "HTTP": ["https://rpc.ankr.com/berachain_testnet"],
+    "WS": []
+  },
+  {
+    "chainId": 80085,
+    "HTTP": ["https://rpc.ankr.com/berachain_testnet"],
+    "WS": []
+  },
+  {
+    "chainId": 42161,
+    "HTTP": ["https://arb1.arbitrum.io/rpc"],
     "WS": []
   }
 ]
