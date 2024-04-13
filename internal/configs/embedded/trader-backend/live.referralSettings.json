@@ -94,5 +94,21 @@
       [3.75, 10000]
     ],
     "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+  },
+  {
+    "chainId": 196,
+    "paymentMaxLookBackDays": 14,
+    "paymentScheduleCron": "0 08 * * 2",
+    "tokenX": {
+      "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
+      "decimals": 18
+    },
+    "referrerCutPercentForTokenXHolding": [
+      [0.2, 0],
+      [1.5, 100],
+      [2.5, 1000],
+      [3.75, 10000]
+    ],
+    "brokerPayoutAddr": ""
   }
 ]

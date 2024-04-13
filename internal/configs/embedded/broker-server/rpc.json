@@ -24,7 +24,14 @@
   },
   {
     "chainId": 42161,
-    "HTTP": ["https://arb1.arbitrum.io/rpc"],
-    "WS": []
+    "HTTP": ["https://arb1.arbitrum.io/rpc"]
+  },
+  {
+    "chainId": 196,
+    "HTTP": [
+      "https://rpc.xlayer.tech",
+      "https://endpoints.omniatech.io/v1/xlayer/mainnet/public",
+      "https://xlayerrpc.okx.com"
+    ]
   }
 ]

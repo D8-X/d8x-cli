@@ -41,6 +41,13 @@
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
   },
+  "196": {
+    "type": "mainnet",
+    "sdkNetwork": "xlayer",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
+  },
   "default": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
