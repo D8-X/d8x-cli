@@ -39,6 +39,13 @@
     "sdkNetwork": "artio",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
+  },
+  "196": {
+    "type": "mainnet",
+    "sdkNetwork": "xlayer",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
   },
   "default": {

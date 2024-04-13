@@ -13,7 +13,7 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0xfCBE2f332b1249cDE226DFFE8b2435162426AfE5"
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
   },
   {
     "chainId": 1101,
@@ -29,7 +29,7 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
   },
   {
     "chainId": 421614,
@@ -45,7 +45,7 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
   },
   {
     "chainId": 42161,
@@ -61,7 +61,7 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
   },
   {
     "chainId": 2442,
@@ -77,7 +77,7 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
   },
   {
     "chainId": 80085,
@@ -93,6 +93,22 @@
       [2.5, 1000],
       [3.75, 10000]
     ],
-    "brokerPayoutAddr": "0x9d5aaB428e98678d0E645ea4AeBd25f744341a05"
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
+  },
+  {
+    "chainId": 196,
+    "paymentMaxLookBackDays": 14,
+    "paymentScheduleCron": "0 08 * * 2",
+    "tokenX": {
+      "address": "0xe538905cf8410324e03A5A23C1c177a474D59b2b",
+      "decimals": 18
+    },
+    "referrerCutPercentForTokenXHolding": [
+      [0.2, 0],
+      [1.5, 100],
+      [2.5, 1000],
+      [3.75, 10000]
+    ],
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84"
   }
 ]
