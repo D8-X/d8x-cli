@@ -4,7 +4,7 @@
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 14 * * 2",
     "tokenX": {
-      "address": "0xd08B8E59a36BaA7EED60E21C1D6a7778811C30eD",
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
@@ -36,7 +36,7 @@
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
     "tokenX": {
-      "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
@@ -52,7 +52,7 @@
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
     "tokenX": {
-      "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
@@ -68,7 +68,7 @@
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
     "tokenX": {
-      "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
@@ -84,7 +84,7 @@
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
     "tokenX": {
-      "address": "0x9a1E6C2f81bE72Af2C4138Bbec3d9029516f27a6",
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
@@ -100,7 +100,7 @@
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
     "tokenX": {
-      "address": "0xe538905cf8410324e03A5A23C1c177a474D59b2b",
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
