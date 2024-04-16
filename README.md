@@ -40,12 +40,13 @@ servers, deploying swarm cluster and individual services.
 
 # CLI Installation
 
-When using Linux, head to [releases](https://github.com/D8-X/d8x-cli/releases), download and
-extract the d8x binary.
+In our releases, we provide binaries for Linux and Macos. Head to
+[releases page on GitHub](https://github.com/D8-X/d8x-cli/releases).
+Depening on what system you use, select a tar for Linux or Macos, download and
+extract it and place the extracted `d8x` binary in your globally accessible directory (e.g., `/usr/local/bin`).
 
-To run D8X-CLI on MacOS you will need to build it from source.
-
-Building from source requires you to have Go 1.21+ installed on your machine.
+You can also clone this repository and build the CLI from source. Building from
+source requires you to have Go 1.21+ installed on your machine.
 
 ## Using make
 

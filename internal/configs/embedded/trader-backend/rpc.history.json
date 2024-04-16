@@ -36,5 +36,10 @@
     "chainId": 42161,
     "HTTP": ["https://arb1.arbitrum.io/rpc"],
     "WS": []
+  },
+  {
+    "chainId": 196,
+    "HTTP": ["https://xlayerrpc.okx.com", "https://rpc.xlayer.tech"],
+    "WS": ["wss://xlayerws.okx.com", "wss://ws.xlayer.tech"]
   }
 ]

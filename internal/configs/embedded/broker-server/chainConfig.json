@@ -28,5 +28,10 @@
     "chainId": 80085,
     "name": "artio",
     "allowedExecutors": []
+  },
+  {
+    "chainId": 196,
+    "name": "xlayer",
+    "allowedExecutors": []
   }
 ]
