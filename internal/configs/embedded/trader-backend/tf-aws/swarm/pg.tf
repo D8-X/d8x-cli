@@ -54,7 +54,7 @@ resource "aws_db_instance" "pg" {
   instance_class         = var.db_instance_class
   allocated_storage      = 5
   engine                 = "postgres"
-  engine_version         = "15.2"
+  engine_version         = "15.4"
   username               = "d8xtrader"
   password               = random_password.db_password.result
   vpc_security_group_ids = [aws_security_group.db_access.id]
