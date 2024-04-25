@@ -62,9 +62,35 @@ jobs:
         with:
           name: macos
           path: d8x-macos.tar.gz
+  build-macos-arm:
+    permissions:
+      contents: write
+      packages: write
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+      - name: Set build date
+        id: build_date
+        run: echo "BUILD_DATE=$(date +'%Y-%m-%d %H:%M:%S')" >> "$GITHUB_OUTPUT"
+      - name: Run tests
+        run: go test ./...
+      - name: Build D8X CLI
+        run: |
+          GOARCH=arm64 GOOS=darwin go build -o d8x -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.sha }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=${{ steps.build_date.outputs.BUILD_DATE }}"' main.go
+      - name: Tar d8x cli
+        run: tar -czvf d8x-macos-arm.tar.gz d8x
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: d8x-macos.tar.gz
 
   make-release:
-    needs: [build-linux, build-macos]
+    needs: [build-linux, build-macos, build-macos-arm]
     permissions:
       contents: write
       packages: write
@@ -80,4 +106,5 @@ jobs:
         with:
           artifacts: |
             macos/d8x-macos.tar.gz
+            macos/d8x-macos-arm.tar.gz
             linux/d8x-linux.tar.gz
