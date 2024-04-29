@@ -4,7 +4,7 @@
     "sdkNetwork": "x1",
     "priceFeedNetwork": "pythnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
+    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz/api"
   },
   "1101": {
     "type": "mainnet",
@@ -18,7 +18,7 @@
     "sdkNetwork": "cardona",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
+    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz/api"
   },
   "421614": {
     "type": "testnet",
@@ -46,7 +46,7 @@
     "sdkNetwork": "xlayer",
     "priceFeedNetwork": "mainnet",
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": "https://odin.quantena.tech/api"
+    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz/api"
   },
   "default": {
     "type": "mainnet",
