@@ -5,11 +5,23 @@
   },
   {
     "chainId": 195,
-    "HTTP": ["https://testrpc.x1.tech/", "https://x1testrpc.okx.com/"]
+    "HTTP": ["https://testrpc.xlayer.tech", "https://xlayertestrpc.okx.com/"]
+  },
+  {
+    "chainId": 196,
+    "HTTP": ["https://xlayerrpc.okx.com"]
   },
   {
     "chainId": 2442,
     "HTTP": ["https://rpc.cardona.zkevm-rpc.com"]
+  },
+  {
+    "chainId": 80085,
+    "HTTP": ["https://rpc.ankr.com/berachain_testnet"]
+  },
+  {
+    "chainId": 80084,
+    "HTTP": ["https://bartio.rpc.berachain.com/"]
   },
   {
     "chainId": 421614,
@@ -19,17 +31,8 @@
     ]
   },
   {
-    "chainId": 80085,
-    "HTTP": ["https://rpc.ankr.com/berachain_testnet"]
-  },
-  {
     "chainId": 42161,
     "HTTP": ["https://arb1.arbitrum.io/rpc"],
-    "WS": []
-  },
-  {
-    "chainId": 196,
-    "HTTP": ["https://xlayerrpc.okx.com"],
     "WS": []
   }
 ]

@@ -41,6 +41,13 @@
     "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
     "priceServiceHTTPSEndpoint": ""
   },
+  "80084": {
+    "type": "testnet",
+    "sdkNetwork": "bartio",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
+    "priceServiceHTTPSEndpoint": ""
+  },
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",

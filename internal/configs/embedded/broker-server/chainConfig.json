@@ -5,6 +5,11 @@
     "allowedExecutors": []
   },
   {
+    "chainId": 196,
+    "name": "xlayer",
+    "allowedExecutors": []
+  },
+  {
     "chainId": 1101,
     "name": "zkEVM Mainnet",
     "allowedExecutors": []
@@ -24,14 +29,15 @@
     "name": "arbitrum",
     "allowedExecutors": []
   },
+
   {
     "chainId": 80085,
     "name": "artio",
     "allowedExecutors": []
   },
   {
-    "chainId": 196,
-    "name": "xlayer",
+    "chainId": 80084,
+    "name": "bartio",
     "allowedExecutors": []
   }
 ]
