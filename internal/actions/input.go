@@ -135,6 +135,12 @@ type SwarmNginxInput struct {
 
 	// Collected service domain names
 	collectedServiceDomains []hostnameTuple
+
+	// If selected, set_real_ip_from directives with cloudflare ips will be
+	// added to the nginx server config/
+	setupWithCloudflareIps bool
+
+	setupNginxRateLimiting bool
 }
 
 // Whether deployment is broker only
@@ -685,6 +691,18 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 	}
 	input.swarmNginxInput.setupCertbot = setupCertbot
 
+	// Cloudflare and rate limiting
+	useCloudflare, err := input.TUI.NewPrompt("Will you use Cloudflare DNS proxying?", true)
+	if err != nil {
+		return err
+	}
+	input.swarmNginxInput.setupWithCloudflareIps = useCloudflare
+	useRateLimiting, err := input.TUI.NewPrompt("Do you want to setup Nginx rate limiting?", true)
+	if err != nil {
+		return err
+	}
+	input.swarmNginxInput.setupNginxRateLimiting = useRateLimiting
+
 	// Collect domain name
 	_, err = input.CollectSetupDomain(cfg)
 	if err != nil {
@@ -704,7 +722,6 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 	}
 
 	input.swarmNginxInput.collected = true
-
 	return nil
 }
 

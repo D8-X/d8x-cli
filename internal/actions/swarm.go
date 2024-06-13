@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,6 +26,16 @@ import (
 // cluster deployment.
 // TODO - store this in config and make this configurable via flags
 var dockerStackName = "stack"
+
+// NginxConfigSection defines a comment section that can be uncommented via
+// processNginxConfigComments. Section starts with {NginxConfigSection} and ends
+// with {/NginxConfigSection}. All lines starting with # will be trimmed and
+// replaced in between these tags.
+type NginxConfigSection string
+
+const (
+	RealIpCloudflare NginxConfigSection = "real_ip_cloudflare"
+)
 
 // EditSwarmEnv edits the .env file for swarm deployment with user provided and
 // provisioning values.
@@ -834,4 +846,68 @@ func (c *Container) validateReferralConfigTokenX(liveReferralCfg io.Reader, cfg 
 	)
 
 	return nil
+}
+
+// processNginxConfigComments enables (uncomments) provided enableSection in
+// given nginxConf if that section can be found. Section starts with comment
+// line and enableSection wrapped in curly braces {enableSection} and ends with
+// a comment line and enableSection wrapped in curly braces with forward slach
+// after first brace {/enableSection}. Nested sections are not supported, but
+// multiple seqeantial ones are.
+func processNginxConfigComments(nginxConf io.Reader, enableSection NginxConfigSection) ([]byte, error) {
+	config, err := io.ReadAll(nginxConf)
+	if err != nil {
+		return nil, err
+	}
+
+	opened := false
+
+	result := bytes.NewBuffer(nil)
+	sc := bufio.NewScanner(bytes.NewReader(config))
+	for sc.Scan() {
+		line := sc.Text()
+		writeLine := line
+		line = strings.TrimSpace(line)
+
+		// Check for section open/close tags first
+		isSectionTag := false
+		if strings.HasPrefix(line, "#") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+			// Open tag
+			if line == "{"+string(enableSection)+"}" {
+				opened = true
+				isSectionTag = true
+			}
+			// Close tag
+			if line == "{/"+string(enableSection)+"}" {
+				opened = false
+				isSectionTag = true
+			}
+		}
+
+		if opened && !isSectionTag {
+			// Keep any whitespace or identation in place, simply remove the
+			// initial comment(s) chars, but leave any other comments in place
+			temp := strings.Builder{}
+			hashFound := false
+			lastHash := false
+			for _, ch := range writeLine {
+				if ch == '#' && (!hashFound || lastHash) {
+					hashFound = true
+					lastHash = true
+					continue
+				}
+				lastHash = false
+				temp.WriteRune(ch)
+			}
+
+			writeLine = temp.String()
+		}
+
+		if _, err := result.Write([]byte(writeLine + "\n")); err != nil {
+			return nil, err
+		}
+	}
+
+	return result.Bytes(), nil
 }
