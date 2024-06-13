@@ -61,7 +61,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	fmt.Printf("Determining postgres version\n")
 	pgConn, err := pgConnTunnel(managerConn, pgCfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("connecting to postgres database via manager tunnel: %w", err)
 	}
 	row := pgConn.QueryRow(context.Background(), "select version()")
 	versionString := ""

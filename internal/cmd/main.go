@@ -238,6 +238,11 @@ func RunD8XCli() {
 				Name:  "chdir",
 				Usage: "Change directory to provided one before executing anything",
 			},
+			&cli.BoolFlag{
+				Name:    "quiet",
+				Aliases: []string{"q"},
+				Usage:   "Suppress verbose output",
+			},
 		},
 		Action: func(ctx *cli.Context) error {
 			// Disallow running d8x with incorrect subcommands
@@ -277,13 +282,15 @@ func RunD8XCli() {
 			}
 
 			// Welcome msg
-			fmt.Println(
-				styles.PurpleBgText.
-					Copy().
-					Padding(0, 2, 0, 2).
-					Border(lipgloss.NormalBorder()).
-					Render(D8XASCII),
-			)
+			if !ctx.Bool("quiet") {
+				fmt.Println(
+					styles.PurpleBgText.
+						Copy().
+						Padding(0, 2, 0, 2).
+						Border(lipgloss.NormalBorder()).
+						Render(D8XASCII),
+				)
+			}
 
 			// Create config directory if it does not exist already
 			if err := container.MakeConfigDir(); err != nil {
