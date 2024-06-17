@@ -3,16 +3,20 @@ package actions
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/D8-X/d8x-cli/internal/actions/contracts"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
 
@@ -186,6 +190,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if err != nil {
 		return err
 	}
+
 	// Copy embed files before starting
 	if err := c.CopySwarmDeployConfigs(); err != nil {
 		return err
@@ -231,6 +236,17 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 			UpdateReferralSettingsBrokerPayoutAddress(cfg.ReferralConfig.BrokerPayoutAddress, int(cfg.ChainId)),
 		); err != nil {
 			return fmt.Errorf("updating referralSettings.json: %w", err)
+		}
+		// Validate token X to be a valid erc-20 in live.referralSettings.json
+		refSettings, err := os.Open("./trader-backend/live.referralSettings.json")
+		if err != nil {
+			return err
+		}
+		defer refSettings.Close()
+		fmt.Println("Validating selected tokenX contract...")
+		if err := c.validateReferralConfigTokenX(refSettings, cfg); err != nil {
+			// This error is not critical and should not stop the deployment
+			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("validating tokenX contract: %s", err)))
 		}
 
 		// Update price configs with pyth ws endpoints
@@ -757,6 +773,58 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 			return fmt.Errorf("worker with IP %s is not present in ingress network peers", workerIp)
 		}
 	}
+
+	return nil
+}
+
+// validateReferralConfigTokenX validates if provided tokenX contract is a valid
+// erc-20 contract for selected chain in cfg by checking its decimals.
+func (c *Container) validateReferralConfigTokenX(liveReferralCfg io.Reader, cfg *configs.D8XConfig) error {
+	selectedChain := strconv.Itoa(int(cfg.ChainId))
+
+	cfgJson, err := io.ReadAll(liveReferralCfg)
+	if err != nil {
+		return fmt.Errorf("reading live.referralSettings.json: %w", err)
+	}
+	refCfg := []configs.ReferralSettingConfig{}
+	if err := json.Unmarshal(cfgJson, &refCfg); err != nil {
+		return fmt.Errorf("parsing live.referralSettings.json: %w", err)
+	}
+	var selectedChainRefCfg configs.ReferralSettingConfig
+	for _, refCfg := range refCfg {
+		if refCfg.ChainId == int(cfg.ChainId) {
+			selectedChainRefCfg = refCfg
+			break
+		}
+	}
+	selectedTokenX := selectedChainRefCfg.TokenX.Address
+	if selectedTokenX == "" {
+		return fmt.Errorf("no tokenX address was provided in live.referralSettings.json")
+	}
+
+	httpRpcsList := cfg.HttpRpcList[selectedChain]
+	if len(httpRpcsList) == 0 {
+		return fmt.Errorf("no http rpcs were provided")
+	}
+	ec, err := ethclient.Dial(httpRpcsList[0])
+	if err != nil {
+		return fmt.Errorf("could not connect to rpc: %w", err)
+	}
+
+	erc20, err := contracts.NewERC20(common.HexToAddress(selectedTokenX), ec)
+	if err != nil {
+		return fmt.Errorf("could not initialize erc20 contract: %w", err)
+	}
+	decimals, err := erc20.Decimals(nil)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(
+		styles.SuccessText.Render(
+			fmt.Sprintf("TokenX contract %s is a valid erc-20 contract with %d decimals\n", selectedTokenX, decimals),
+		),
+	)
 
 	return nil
 }
