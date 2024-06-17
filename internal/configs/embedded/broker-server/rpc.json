@@ -16,10 +16,6 @@
     "HTTP": ["https://rpc.cardona.zkevm-rpc.com"]
   },
   {
-    "chainId": 80085,
-    "HTTP": ["https://rpc.ankr.com/berachain_testnet"]
-  },
-  {
     "chainId": 80084,
     "HTTP": ["https://bartio.rpc.berachain.com/"]
   },
