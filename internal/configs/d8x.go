@@ -87,6 +87,10 @@ type D8XConfig struct {
 
 	// Ansible related configuration details
 	ConfigDetails ConfigurationDetails `json:"configuration_details"`
+
+	// Pyth/triton, etc. User supplied price feed endpoints which will be added
+	// to prices.config.json
+	UserSuppliedPriceFeedEndpoints []string `json:"user_supplied_price_feed_endpoints"`
 }
 
 func (c *D8XConfig) GetServersLabel() string {

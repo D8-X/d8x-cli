@@ -613,18 +613,26 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
 		}
 
-		// Collect price feeds endpoint for candles/prices.config.json. Make
-		// sure the default pyth.hermes entry is always the last one
+		// Collect optional, user supplied price feed endpoint for
+		// candles/prices.config.json. Note that public hermes (default value
+		// from chain.json) endpoint is always added at the end of price
+		// endpoints list in swarm deploy step.
 		dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
 		if err != nil {
 			return err
 		}
 		priceServiceHttpEndpoints := []string{}
 		if !dontAddAnotherPythEndpoint {
+			val := ""
+			if len(cfg.UserSuppliedPriceFeedEndpoints) > 0 {
+				val = cfg.UserSuppliedPriceFeedEndpoints[0]
+			}
+
 			fmt.Println("Enter additional Pyth priceServiceHTTPEndpoints entry")
 			additionalEndpoint, err := input.TUI.NewInput(
 				components.TextInputOptPlaceholder("https://hermes.pyth.network"),
 				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValue(val),
 				components.TextInputOptValidation(
 					func(s string) bool {
 						return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
@@ -637,6 +645,9 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 				return err
 			}
 			priceServiceHttpEndpoints = []string{additionalEndpoint}
+
+			// Store it in config
+			cfg.UserSuppliedPriceFeedEndpoints = priceServiceHttpEndpoints
 		}
 		input.swarmDeployInput.priceServiceHttpEndpoints = priceServiceHttpEndpoints
 
