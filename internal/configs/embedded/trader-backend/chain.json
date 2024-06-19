@@ -3,56 +3,48 @@
     "type": "testnet",
     "sdkNetwork": "x1",
     "priceFeedNetwork": "pythnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz/api"
+    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz"
   },
   "1101": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "2442": {
     "type": "testnet",
     "sdkNetwork": "cardona",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz/api"
+    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz"
   },
   "421614": {
     "type": "testnet",
     "sdkNetwork": "arbitrumSepolia",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "42161": {
     "type": "mainnet",
     "sdkNetwork": "arbitrum",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "80084": {
     "type": "testnet",
     "sdkNetwork": "bartio",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz/api"
+    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz"
   },
   "default": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
     "priceFeedNetwork": "mainnet",
-    "priceServiceWSEndpoint": "wss://hermes.pyth.network/ws",
-    "priceServiceHTTPSEndpoint": ""
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   }
 }

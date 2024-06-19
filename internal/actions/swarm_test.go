@@ -18,14 +18,11 @@ func TestUpdateReferralSettingsBrokerPayoutAddress(t *testing.T) {
 
 func TestUpdateCandlesPriceConfigPriceServices(t *testing.T) {
 	pricesConf := &map[string]any{
-		"priceServiceWSEndpoints":    []string{"some-ws-endpoint"},
 		"priceServiceHTTPSEndpoints": []string{},
 	}
 	err := UpdateCandlesPriceConfigPriceServices(
-		[]string{"new-ws-1", "new-ws-2"},
-		[]string{"new-http-endpoint-service"},
+		[]string{"new-http-endpoint-service", "new-http-endpoint-service1", "new-http-endpoint-service12"},
 	)(pricesConf)
 	assert.NoError(t, err)
-	assert.Equal(t, []string{"new-ws-1", "new-ws-2"}, (*pricesConf)["priceServiceWSEndpoints"])
-	assert.Equal(t, []string{"new-http-endpoint-service"}, (*pricesConf)["priceServiceHTTPSEndpoints"])
+	assert.Equal(t, []string{"new-http-endpoint-service", "new-http-endpoint-service1", "new-http-endpoint-service12"}, (*pricesConf)["priceServiceHTTPSEndpoints"])
 }
