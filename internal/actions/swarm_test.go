@@ -38,7 +38,7 @@ func TestProcessNginxConfigComments(t *testing.T) {
 		name              string
 		inputNginxConfig  io.Reader
 		inputNginxSection NginxConfigSection
-		wantOutput        []byte
+		wantOutput        string
 		wantErr           string
 	}{
 		{
@@ -46,7 +46,7 @@ func TestProcessNginxConfigComments(t *testing.T) {
 			inputNginxConfig:  iotest.ErrReader(errors.New("read error")),
 			inputNginxSection: "",
 			wantErr:           "read error",
-			wantOutput:        []byte{},
+			wantOutput:        "",
 		},
 		{
 			name: "should process one section correctly",
@@ -56,17 +56,92 @@ func TestProcessNginxConfigComments(t *testing.T) {
 # {thing}
 sdfsdf
 # this line shall be uncommented
-#{\thing}	
+#{/thing}	
 			`)),
 			inputNginxSection: "thing",
-			wantOutput: []byte(`
+			wantOutput: `
 # some comment	
 # another comment
 # {thing}
 sdfsdf
  this line shall be uncommented
-#{\thing}	
-			`),
+#{/thing}	
+			
+`, // <-- trailing \n
+		},
+		{
+			name: "should not process other sections",
+			inputNginxConfig: bytes.NewReader([]byte(`
+# some comment	
+# another comment
+# {thing}
+sdfsdf
+# this line shall be uncommented
+#{/thing}	
+			`)),
+			inputNginxSection: "not-thing",
+			wantOutput: `
+# some comment	
+# another comment
+# {thing}
+sdfsdf
+# this line shall be uncommented
+#{/thing}	
+			
+`, // <-- trailing \n
+		},
+		{
+			name: "should process sequential sections",
+			inputNginxConfig: bytes.NewReader([]byte(`
+# some comment	
+# another comment
+# {thing}
+sdfsdf
+# this line shall be uncommented
+#{/thing}	
+blah blah
+123123
+123
+123
+123123
+123
+server root.com
+# {thing}
+antoher-dir thing;
+# this line shall be uncommented
+#
+#
+#
+#
+#
+# comment 
+#{/thing}`)),
+			inputNginxSection: "thing",
+			wantOutput: `
+# some comment	
+# another comment
+# {thing}
+sdfsdf
+ this line shall be uncommented
+#{/thing}	
+blah blah
+123123
+123
+123
+123123
+123
+server root.com
+# {thing}
+antoher-dir thing;
+ this line shall be uncommented
+
+
+
+
+
+ comment 
+#{/thing}
+`, // <-- trailing \n
 		},
 	}
 
