@@ -2,7 +2,8 @@
   "195": {
     "type": "testnet",
     "sdkNetwork": "x1",
-    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz"
+    "priceFeedNetwork": "pythnet",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "1101": {
     "type": "mainnet",
@@ -12,7 +13,7 @@
   "2442": {
     "type": "testnet",
     "sdkNetwork": "cardona",
-    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "421614": {
     "type": "testnet",
@@ -32,7 +33,8 @@
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",
-    "priceServiceHTTPSEndpoint": "https://odin.d8x.xyz"
+    "priceFeedNetwork": "mainnet",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
   "default": {
     "type": "mainnet",
