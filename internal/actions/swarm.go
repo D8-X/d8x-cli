@@ -52,7 +52,6 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 
 	// We assume that all cfg values are present at this point
 	findReplaceOrCreateEnvs := map[string]string{
-		"NETWORK_NAME":       c.cachedChainJson.getChainPriceFeedName(strconv.Itoa(int(cfg.ChainId))),
 		"SDK_CONFIG_NAME":    c.cachedChainJson.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
 		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
 		"REDIS_PASSWORD":     cfg.SwarmRedisPassword,

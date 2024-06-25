@@ -16,7 +16,6 @@ import (
 
 type ChainJsonEntry struct {
 	SDKNetwork               string `json:"sdkNetwork"`
-	PriceFeedNetwork         string `json:"priceFeedNetwork"`
 	DefaultPythWSEndpoint    string `json:"priceServiceWSEndpoint"`
 	DefaultPythHTTPSEndpoint string `json:"priceServiceHTTPSEndpoint"`
 	// Chain type is either testnet or mainnet
@@ -214,15 +213,6 @@ func (c ChainJson) getChainSDKName(chainId string) string {
 		return c["default"].SDKNetwork
 	}
 	return entry.SDKNetwork
-}
-
-// getChainPriceFeedName retrieves the python compatible NETWORK_NAME
-func (c ChainJson) getChainPriceFeedName(chainId string) string {
-	entry, exists := c[chainId]
-	if !exists {
-		return c["default"].PriceFeedNetwork
-	}
-	return entry.PriceFeedNetwork
 }
 
 // getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
