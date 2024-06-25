@@ -65,6 +65,18 @@ type InputCollector struct {
 	// Only when ssh key changes, or when broker/swarm was not deployed before.
 	runBrokerNginxCertbot bool
 	runSwarmNginxCertbot  bool
+
+	nginxOverwrites NginxOverwrites
+}
+
+// NginxOverwrites determine nginx configuration changes. Whether user wants to
+// use real_ip module for cloudlfare proxying and rate limiting.
+type NginxOverwrites struct {
+	enableCloudflareRealIps bool
+	enableNginxRateLimiting bool
+
+	// Whether prompts were already shown for user in this session
+	asked bool
 }
 
 type ProvisioningInput struct {
@@ -469,6 +481,11 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 		return err
 	}
 	input.brokerNginxInput.setupNginx = setupNginx
+
+	if err := input.CollectNginxOverwrites(); err != nil {
+		return err
+	}
+
 	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
 	if err != nil {
 		return err
@@ -679,6 +696,11 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 		return err
 	}
 	input.swarmNginxInput.setupNginx = setupNginx
+
+	if err := input.CollectNginxOverwrites(); err != nil {
+		return err
+	}
+
 	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
 	if err != nil {
 		return err
@@ -704,7 +726,6 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 	}
 
 	input.swarmNginxInput.collected = true
-
 	return nil
 }
 
@@ -1199,6 +1220,28 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 			c.sshKeyChanged = true
 		}
 		cfg.SSHKeyMD5 = md5Hash
+	}
+	return nil
+}
+
+// CollectNginxOverwrites collects information about which sections in nginx
+// should be enabled: options are cloudflare real_ip and nginx rate limiting
+func (c *InputCollector) CollectNginxOverwrites() error {
+	if !c.nginxOverwrites.asked {
+
+		cfProxying, err := c.TUI.NewPrompt("Will you be using Cloudflare proxying?", true)
+		if err != nil {
+			return err
+		}
+		c.nginxOverwrites.enableCloudflareRealIps = cfProxying
+
+		rateLimits, err := c.TUI.NewPrompt("Do you want to enable nginx rate limiting?", true)
+		if err != nil {
+			return err
+		}
+		c.nginxOverwrites.enableNginxRateLimiting = rateLimits
+
+		c.nginxOverwrites.asked = true
 	}
 	return nil
 }
