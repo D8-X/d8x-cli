@@ -36,6 +36,12 @@
     "priceFeedNetwork": "mainnet",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
+  "1444673419": {
+    "type": "testnet",
+    "sdkNetwork": "europaTestnet",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+  },
   "default": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",

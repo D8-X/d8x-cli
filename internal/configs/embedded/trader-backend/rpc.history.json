@@ -36,5 +36,10 @@
     "chainId": 42161,
     "HTTP": ["https://arb1.arbitrum.io/rpc"],
     "WS": []
+  },
+  {
+    "chainId": 1444673419,
+    "HTTP": ["https://testnet.skalenodes.com/v1/juicy-low-small-testnet"],
+    "WS": []
   }
 ]
