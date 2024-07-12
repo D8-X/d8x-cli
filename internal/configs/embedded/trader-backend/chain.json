@@ -1,44 +1,52 @@
 {
-  "195": {
-    "type": "testnet",
-    "sdkNetwork": "x1",
-    "priceFeedNetwork": "pythnet",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
-  },
   "1101": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://hermes.pyth.network/"
   },
   "2442": {
     "type": "testnet",
     "sdkNetwork": "cardona",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://hermes.pyth.network/"
   },
   "421614": {
     "type": "testnet",
     "sdkNetwork": "arbitrumSepolia",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://hermes.pyth.network/"
   },
   "42161": {
     "type": "mainnet",
     "sdkNetwork": "arbitrum",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://hermes.pyth.network/"
   },
   "80084": {
     "type": "testnet",
     "sdkNetwork": "bartio",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://hermes.pyth.network/"
+  },
+  "195": {
+    "type": "testnet",
+    "sdkNetwork": "x1",
+    "priceFeedNetwork": "pythnet",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://odin.d8x.xyz/"
   },
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",
     "priceFeedNetwork": "mainnet",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://odin.d8x.xyz/"
   },
   "default": {
     "type": "mainnet",
     "sdkNetwork": "zkevm",
-    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
+    "priceServiceHTTPSWriteEndpoint": "https://hermes.pyth.network/"
   }
 }

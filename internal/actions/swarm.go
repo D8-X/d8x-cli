@@ -104,14 +104,18 @@ func UpdateReferralSettingsBrokerPayoutAddress(brokerPayoutAddress string, chain
 
 // UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
 // candles prices config files
-func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints []string) func(pricesConf *map[string]any) error {
+func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints, priceServiceHTTPSWriteEndpoints []string) func(pricesConf *map[string]any) error {
 	// Delete empty values just in case
 	priceServiceHTTPSEndpoints = slices.DeleteFunc(priceServiceHTTPSEndpoints, func(s string) bool {
+		return s == ""
+	})
+	priceServiceHTTPSWriteEndpoints = slices.DeleteFunc(priceServiceHTTPSWriteEndpoints, func(s string) bool {
 		return s == ""
 	})
 
 	return func(pricesConf *map[string]any) error {
 		(*pricesConf)["priceServiceHTTPSEndpoints"] = priceServiceHTTPSEndpoints
+		(*pricesConf)["priceServiceHTTPSWriteEndpoints"] = priceServiceHTTPSWriteEndpoints
 		return nil
 	}
 }
@@ -257,22 +261,29 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("validating tokenX contract: %s", err)))
 		}
 
-		// Update price configs with provided pyth https endpoints. Remove any
-		// duplicates and ensure that the default pyth endpoint is appended
-		// last.
-		userProvidedHttpEndpoints := c.Input.swarmDeployInput.priceServiceHttpEndpoints
-		slices.Sort(userProvidedHttpEndpoints)
-		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
-		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))
-		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
-		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
-			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
+		// Remove duplicates and append defaultHttpEndpoint to userProvidedHttpEndpoints list
+		prepPriceFeedEndpointSlice := func(userProvidedHttpEndpoints []string, defaultHttpEndpoint string) []string {
+			slices.Sort(userProvidedHttpEndpoints)
+			userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
+			priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
+			if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
+				priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
+			}
+			priceServiceHTTPSEndpoints = slices.Compact(priceServiceHTTPSEndpoints)
+			return priceServiceHTTPSEndpoints
 		}
-		priceServiceHTTPSEndpoints = slices.Compact(priceServiceHTTPSEndpoints)
+		priceServiceHTTPSEndpoints := prepPriceFeedEndpointSlice(
+			c.Input.swarmDeployInput.priceServiceHttpEndpoints,
+			c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId))),
+		)
+		priceServiceHTTPSWriteEndpoints := prepPriceFeedEndpointSlice(
+			c.Input.swarmDeployInput.priceServiceHttpWriteEndpoints,
+			c.cachedChainJson.getDefaultPythHTTPSWriteEndpoint(strconv.Itoa(int(cfg.ChainId))),
+		)
 
 		if err := UpdateConfig(
 			"./candles/prices.config.json",
-			UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints),
+			UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints, priceServiceHTTPSWriteEndpoints),
 		); err != nil {
 			return err
 		}

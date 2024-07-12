@@ -131,7 +131,8 @@ type SwarmDeployInput struct {
 	referralPaymentExecutorPrivateKey string
 
 	// Pyth endpoints for candles/prices.config.json
-	priceServiceHttpEndpoints []string
+	priceServiceHttpEndpoints      []string
+	priceServiceHttpWriteEndpoints []string
 
 	// Referral executor wallet address might be not empty when broker-only
 	// deployment is performed.
@@ -634,7 +635,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		// candles/prices.config.json. Note that public hermes (default value
 		// from chain.json) endpoint is always added at the end of price
 		// endpoints list in swarm deploy step.
-		dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+		dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public endpoint for priceServiceHTTPSEndpoint entry in ./candles/prices.config.json?", true)
 		if err != nil {
 			return err
 		}
@@ -667,6 +668,41 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.UserSuppliedPriceFeedEndpoints = priceServiceHttpEndpoints
 		}
 		input.swarmDeployInput.priceServiceHttpEndpoints = priceServiceHttpEndpoints
+
+		// Write endpoint
+		dontAddAnotherPythWriteEndpoint, err := input.TUI.NewPrompt("\nUse public endpoint for priceServiceHTTPWriteEndpoints entry in ./candles/prices.config.json?", true)
+		if err != nil {
+			return err
+		}
+		priceServiceHttpWriteEndpoints := []string{}
+		if !dontAddAnotherPythWriteEndpoint {
+			val := ""
+			if len(cfg.UserSuppliedPriceFeedWriteEndpoints) > 0 {
+				val = cfg.UserSuppliedPriceFeedWriteEndpoints[0]
+			}
+
+			fmt.Println("Enter additional Pyth priceServiceHTTPWriteEndpoints entry")
+			additionalEndpoint, err := input.TUI.NewInput(
+				components.TextInputOptPlaceholder("https://hermes.pyth.network"),
+				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValue(val),
+				components.TextInputOptValidation(
+					func(s string) bool {
+						return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
+					},
+					"url must start with https:// or http://",
+				),
+			)
+			additionalEndpoint = strings.TrimSpace(additionalEndpoint)
+			if err != nil {
+				return err
+			}
+			priceServiceHttpWriteEndpoints = []string{additionalEndpoint}
+
+			// Store it in config
+			cfg.UserSuppliedPriceFeedWriteEndpoints = priceServiceHttpWriteEndpoints
+		}
+		input.swarmDeployInput.priceServiceHttpWriteEndpoints = priceServiceHttpWriteEndpoints
 
 		// Update the config
 		if err := input.ConfigRWriter.Write(cfg); err != nil {

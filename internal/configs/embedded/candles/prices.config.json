@@ -1,4 +1,5 @@
 {
   "pythAPIEndpoint": "https://benchmarks.pyth.network/",
-  "priceServiceHTTPSEndpoints": []
+  "priceServiceHTTPSEndpoints": [],
+  "priceServiceHTTPSWriteEndpoints": []
 }

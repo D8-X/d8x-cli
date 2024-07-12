@@ -15,9 +15,10 @@ import (
 )
 
 type ChainJsonEntry struct {
-	SDKNetwork               string `json:"sdkNetwork"`
-	DefaultPythWSEndpoint    string `json:"priceServiceWSEndpoint"`
-	DefaultPythHTTPSEndpoint string `json:"priceServiceHTTPSEndpoint"`
+	SDKNetwork                    string `json:"sdkNetwork"`
+	DefaultPythWSEndpoint         string `json:"priceServiceWSEndpoint"`
+	DefaultPythHTTPSEndpoint      string `json:"priceServiceHTTPSEndpoint"`
+	DefaultPythHTTPSWriteEndpoint string `json:"priceServiceHTTPSWriteEndpoint"`
 	// Chain type is either testnet or mainnet
 	Type string `json:"type"`
 }
@@ -233,6 +234,14 @@ func (c ChainJson) getDefaultPythHTTPSEndpoint(chainId string) string {
 		return c["default"].DefaultPythHTTPSEndpoint
 	}
 	return entry.DefaultPythHTTPSEndpoint
+}
+
+func (c ChainJson) getDefaultPythHTTPSWriteEndpoint(chainId string) string {
+	entry, exists := c[chainId]
+	if !exists {
+		return c["default"].DefaultPythHTTPSWriteEndpoint
+	}
+	return entry.DefaultPythHTTPSWriteEndpoint
 }
 
 func (c ChainJson) GetChainType(chainId string) string {
