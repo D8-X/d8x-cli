@@ -32,14 +32,12 @@
   "195": {
     "type": "testnet",
     "sdkNetwork": "x1",
-    "priceFeedNetwork": "pythnet",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
     "priceServiceHTTPSWriteEndpoint": "https://odin.d8x.xyz/"
   },
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",
-    "priceFeedNetwork": "mainnet",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/",
     "priceServiceHTTPSWriteEndpoint": "https://odin.d8x.xyz/"
   },
