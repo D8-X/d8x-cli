@@ -153,6 +153,25 @@ services:
       - cfg_prices
     deploy:
       replicas: 1
+  candles-poly-client:
+    image: ghcr.io/d8-x/d8x-candles-poly-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      # 2024-07-18 poly client does not actually need prices config, but shared
+      # go code requires to set this env. 
+      - CONFIG_PATH=/cfg_prices
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "10"
+    configs:
+      - cfg_prices
+    deploy:
+      replicas: 1
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.2
     hostname: "{{ .Node.Hostname }}"
