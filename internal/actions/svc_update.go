@@ -394,6 +394,7 @@ var githubPackageVersionsPage = map[string]string{
 	"referral":            "https://github.com/D8-X/referral-system/pkgs/container/d8x-referral-system/versions",
 	"candles-pyth-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-pyth-client/versions",
 	"candles-ws-server":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-ws-server/versions",
+	"candles-poly-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-poly-client/versions",
 }
 
 // getTagsWithHashes is a hacky way for us to gather the sha digest hashes of
