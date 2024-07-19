@@ -33,5 +33,10 @@
     "chainId": 80084,
     "name": "bartio",
     "allowedExecutors": []
+  },
+  {
+    "chainId": 1444673419,
+    "name": "europaTestnet",
+    "allowedExecutors": []
   }
 ]
