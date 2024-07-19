@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -25,6 +27,17 @@ import (
 // TODO - store this in config and make this configurable via flags
 var dockerStackName = "stack"
 
+// NginxConfigSection defines a comment section that can be uncommented via
+// processNginxConfigComments. Section starts with {NginxConfigSection} and ends
+// with {/NginxConfigSection}. All lines starting with # will be trimmed and
+// replaced in between these tags.
+type NginxConfigSection string
+
+const (
+	RealIpCloudflare   NginxConfigSection = "real_ip_cloudflare"
+	EnableRateLimiting NginxConfigSection = "enable_rate_limiting"
+)
+
 // EditSwarmEnv edits the .env file for swarm deployment with user provided and
 // provisioning values.
 func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
@@ -39,7 +52,6 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 
 	// We assume that all cfg values are present at this point
 	findReplaceOrCreateEnvs := map[string]string{
-		"NETWORK_NAME":       c.cachedChainJson.getChainPriceFeedName(strconv.Itoa(int(cfg.ChainId))),
 		"SDK_CONFIG_NAME":    c.cachedChainJson.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
 		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
 		"REDIS_PASSWORD":     cfg.SwarmRedisPassword,
@@ -92,17 +104,13 @@ func UpdateReferralSettingsBrokerPayoutAddress(brokerPayoutAddress string, chain
 
 // UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
 // candles prices config files
-func UpdateCandlesPriceConfigPriceServices(priceServiceWSEndpoints []string, priceServiceHTTPSEndpoints []string) func(pricesConf *map[string]any) error {
+func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints []string) func(pricesConf *map[string]any) error {
 	// Delete empty values just in case
-	priceServiceWSEndpoints = slices.DeleteFunc(priceServiceWSEndpoints, func(s string) bool {
-		return s == ""
-	})
 	priceServiceHTTPSEndpoints = slices.DeleteFunc(priceServiceHTTPSEndpoints, func(s string) bool {
 		return s == ""
 	})
 
 	return func(pricesConf *map[string]any) error {
-		(*pricesConf)["priceServiceWSEndpoints"] = priceServiceWSEndpoints
 		(*pricesConf)["priceServiceHTTPSEndpoints"] = priceServiceHTTPSEndpoints
 		return nil
 	}
@@ -249,11 +257,22 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("validating tokenX contract: %s", err)))
 		}
 
-		// Update price configs with pyth ws endpoints
-		priceServiceHTTPSEndpoints := []string{c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
-		if err := UpdateConfig[map[string]any](
+		// Update price configs with provided pyth https endpoints. Remove any
+		// duplicates and ensure that the default pyth endpoint is appended
+		// last.
+		userProvidedHttpEndpoints := c.Input.swarmDeployInput.priceServiceHttpEndpoints
+		slices.Sort(userProvidedHttpEndpoints)
+		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
+		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))
+		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
+		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
+			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
+		}
+		priceServiceHTTPSEndpoints = slices.Compact(priceServiceHTTPSEndpoints)
+
+		if err := UpdateConfig(
 			"./candles/prices.config.json",
-			UpdateCandlesPriceConfigPriceServices(c.Input.swarmDeployInput.priceServiceWSEndpoints, priceServiceHTTPSEndpoints),
+			UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints),
 		); err != nil {
 			return err
 		}
@@ -569,6 +588,23 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
+	// Process any nginx config overwrites
+	enableNginxSections := make([]NginxConfigSection, 0, 2)
+	if c.Input.nginxOverwrites.enableCloudflareRealIps {
+		enableNginxSections = append(enableNginxSections, RealIpCloudflare)
+	}
+	if c.Input.nginxOverwrites.enableNginxRateLimiting {
+		enableNginxSections = append(enableNginxSections, EnableRateLimiting)
+	}
+	if len(enableNginxSections) > 0 {
+		if err := enableSectionsInNginxFile("./nginx/nginx.conf", enableNginxSections); err != nil {
+			return fmt.Errorf("enabling nginx sections in ./nginx/nginx.conf: %w", err)
+		}
+		if err := enableSectionsInNginxFile("./nginx.server.conf", enableNginxSections); err != nil {
+			return fmt.Errorf("enabling nginx sections in ./nginx.server.conf: %w", err)
+		}
+	}
+
 	password, err := c.GetPassword(ctx)
 	if err != nil {
 		return err
@@ -827,4 +863,100 @@ func (c *Container) validateReferralConfigTokenX(liveReferralCfg io.Reader, cfg 
 	)
 
 	return nil
+}
+
+// enableSectionsInNginxFile reads contents of nginx configuration file at
+// nginxCfgPath and processes it to enable priovided enableSections sections and
+// writes the result in place.
+func enableSectionsInNginxFile(nginxCfgPath string, enableSections []NginxConfigSection) error {
+	nginxConf, err := os.Open(nginxCfgPath)
+	if err != nil {
+		return err
+	}
+	defer nginxConf.Close()
+
+	contents, err := io.ReadAll(nginxConf)
+	if err != nil {
+		return err
+	}
+
+	cfgBuf := bytes.NewBuffer(contents)
+
+	for _, enableSection := range enableSections {
+		nginxConfUpdated, err := processNginxConfigComments(cfgBuf, enableSection)
+		if err != nil {
+			return err
+		}
+		cfgBuf = bytes.NewBuffer(nginxConfUpdated)
+	}
+
+	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0644)
+}
+
+// processNginxConfigComments enables (uncomments) provided enableSection in
+// given nginxConf if that section can be found. Section starts with comment
+// line and enableSection wrapped in curly braces {enableSection} and ends with
+// a comment line and enableSection wrapped in curly braces with forward slash
+// after first brace {/enableSection}. Nested sections are not supported, but
+// multiple sequential ones are.
+func processNginxConfigComments(nginxConf io.Reader, enableSection NginxConfigSection) ([]byte, error) {
+	config, err := io.ReadAll(nginxConf)
+	if err != nil {
+		return nil, err
+	}
+
+	// Is a section currently opened and comments should be removed for all
+	// commented lines in the section
+	opened := false
+
+	result := bytes.NewBuffer(nil)
+	sc := bufio.NewScanner(bytes.NewReader(config))
+	for sc.Scan() {
+		line := sc.Text()
+		writeLine := line
+		line = strings.TrimSpace(line)
+
+		// Check for section open/close tags first
+		isSectionTag := false
+		if strings.HasPrefix(line, "#") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+			// Open tag
+			if line == "{"+string(enableSection)+"}" {
+				opened = true
+				isSectionTag = true
+			}
+			// Close tag
+			if line == "{/"+string(enableSection)+"}" {
+				opened = false
+				isSectionTag = true
+			}
+		}
+
+		if opened && !isSectionTag {
+			// Keep any whitespace or identation in place, simply remove the
+			// initial comment(s) chars, but leave any other comments in the
+			// same line in place
+			temp := strings.Builder{}
+			hashFound := false
+			lastHash := false
+			for _, ch := range writeLine {
+				if ch == '#' && (!hashFound || lastHash) {
+					hashFound = true
+					lastHash = true
+					continue
+				}
+
+				lastHash = false
+				temp.WriteRune(ch)
+			}
+
+			writeLine = temp.String()
+		}
+
+		if _, err := result.Write([]byte(writeLine + "\n")); err != nil {
+			return nil, err
+		}
+	}
+
+	return result.Bytes(), nil
 }

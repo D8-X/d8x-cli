@@ -65,6 +65,18 @@ type InputCollector struct {
 	// Only when ssh key changes, or when broker/swarm was not deployed before.
 	runBrokerNginxCertbot bool
 	runSwarmNginxCertbot  bool
+
+	nginxOverwrites NginxOverwrites
+}
+
+// NginxOverwrites determine nginx configuration changes. Whether user wants to
+// use real_ip module for cloudlfare proxying and rate limiting.
+type NginxOverwrites struct {
+	enableCloudflareRealIps bool
+	enableNginxRateLimiting bool
+
+	// Whether prompts were already shown for user in this session
+	asked bool
 }
 
 type ProvisioningInput struct {
@@ -116,10 +128,10 @@ type SwarmDeployInput struct {
 	// whether user selected to be guided through configuration by cli
 	guideConfig bool
 
-	// Pyth endpoints for candles/prices.config.json
-	priceServiceWSEndpoints []string
-
 	referralPaymentExecutorPrivateKey string
+
+	// Pyth endpoints for candles/prices.config.json
+	priceServiceHttpEndpoints []string
 
 	// Referral executor wallet address might be not empty when broker-only
 	// deployment is performed.
@@ -469,6 +481,11 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 		return err
 	}
 	input.brokerNginxInput.setupNginx = setupNginx
+
+	if err := input.CollectNginxOverwrites(); err != nil {
+		return err
+	}
+
 	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
 	if err != nil {
 		return err
@@ -613,32 +630,43 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
 		}
 
-		// Collect hermes endpoint for candles/prices.config.json. Make sure the
-		// default pyth.hermes entry is always the last one
-		dontAddAnotherPythWss, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+		// Collect optional, user supplied price feed endpoint for
+		// candles/prices.config.json. Note that public hermes (default value
+		// from chain.json) endpoint is always added at the end of price
+		// endpoints list in swarm deploy step.
+		dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
 		if err != nil {
 			return err
 		}
-		priceServiceWSEndpoints := []string{input.ChainJson.getDefaultPythWSEndpoint(strconv.Itoa(int(cfg.ChainId)))}
-		if !dontAddAnotherPythWss {
-			fmt.Println("Enter additional Pyth priceServiceWSEndpoints entry")
-			additioanalWsEndpoint, err := input.TUI.NewInput(
-				components.TextInputOptPlaceholder("wss://hermes.pyth.network/ws"),
+		priceServiceHttpEndpoints := []string{}
+		if !dontAddAnotherPythEndpoint {
+			val := ""
+			if len(cfg.UserSuppliedPriceFeedEndpoints) > 0 {
+				val = cfg.UserSuppliedPriceFeedEndpoints[0]
+			}
+
+			fmt.Println("Enter additional Pyth priceServiceHTTPEndpoints entry")
+			additionalEndpoint, err := input.TUI.NewInput(
+				components.TextInputOptPlaceholder("https://hermes.pyth.network"),
 				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValue(val),
 				components.TextInputOptValidation(
 					func(s string) bool {
-						return strings.HasPrefix(s, "wss://") || strings.HasPrefix(s, "ws://")
+						return strings.HasPrefix(s, "https://") || strings.HasPrefix(s, "http://")
 					},
-					"websockets url must start with wss:// or ws://",
+					"url must start with https:// or http://",
 				),
 			)
-			additioanalWsEndpoint = strings.TrimSpace(additioanalWsEndpoint)
+			additionalEndpoint = strings.TrimSpace(additionalEndpoint)
 			if err != nil {
 				return err
 			}
-			priceServiceWSEndpoints = append([]string{additioanalWsEndpoint}, priceServiceWSEndpoints...)
+			priceServiceHttpEndpoints = []string{additionalEndpoint}
+
+			// Store it in config
+			cfg.UserSuppliedPriceFeedEndpoints = priceServiceHttpEndpoints
 		}
-		input.swarmDeployInput.priceServiceWSEndpoints = priceServiceWSEndpoints
+		input.swarmDeployInput.priceServiceHttpEndpoints = priceServiceHttpEndpoints
 
 		// Update the config
 		if err := input.ConfigRWriter.Write(cfg); err != nil {
@@ -668,6 +696,11 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 		return err
 	}
 	input.swarmNginxInput.setupNginx = setupNginx
+
+	if err := input.CollectNginxOverwrites(); err != nil {
+		return err
+	}
+
 	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
 	if err != nil {
 		return err
@@ -693,7 +726,6 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 	}
 
 	input.swarmNginxInput.collected = true
-
 	return nil
 }
 
@@ -1188,6 +1220,28 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 			c.sshKeyChanged = true
 		}
 		cfg.SSHKeyMD5 = md5Hash
+	}
+	return nil
+}
+
+// CollectNginxOverwrites collects information about which sections in nginx
+// should be enabled: options are cloudflare real_ip and nginx rate limiting
+func (c *InputCollector) CollectNginxOverwrites() error {
+	if !c.nginxOverwrites.asked {
+
+		cfProxying, err := c.TUI.NewPrompt("Will you be using Cloudflare proxying?", true)
+		if err != nil {
+			return err
+		}
+		c.nginxOverwrites.enableCloudflareRealIps = cfProxying
+
+		rateLimits, err := c.TUI.NewPrompt("Do you want to enable nginx rate limiting?", true)
+		if err != nil {
+			return err
+		}
+		c.nginxOverwrites.enableNginxRateLimiting = rateLimits
+
+		c.nginxOverwrites.asked = true
 	}
 	return nil
 }

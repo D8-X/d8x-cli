@@ -118,7 +118,6 @@ services:
       - REDIS_ADDR=redis:6379
       - REDIS_DB_NUM=0
       - CONFIG_PATH=/cfg_prices
-      - NETWORK_NAME=${NETWORK_NAME}
     networks:
       - candles
       - d8x_backend
@@ -143,6 +142,25 @@ services:
       - REDIS_DB_NUM=0
       - CONFIG_PATH=/cfg_prices
       - WS_ADDR=0.0.0.0:8080
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "10"
+    configs:
+      - cfg_prices
+    deploy:
+      replicas: 1
+  candles-poly-client:
+    image: ghcr.io/d8-x/d8x-candles-poly-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      # 2024-07-18 poly client does not actually need prices config, but shared
+      # go code requires to set this env. 
+      - CONFIG_PATH=/cfg_prices
     networks:
       - candles
       - d8x_backend
