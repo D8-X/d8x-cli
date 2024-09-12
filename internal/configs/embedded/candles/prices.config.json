@@ -1,4 +1,5 @@
 {
   "pythAPIEndpoint": "https://benchmarks.pyth.network/",
+  "predMktPriceEndpoints": ["https://odin-poly.d8x.xyz"],
   "priceServiceHTTPSEndpoints": []
 }
