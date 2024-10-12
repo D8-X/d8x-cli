@@ -116,6 +116,7 @@
           - containerd.io
           - docker-buildx-plugin
           - docker-compose-plugin
+          - python3-docker
         update_cache: true
     - name: Add default user to docker group
       ansible.builtin.user:
@@ -123,10 +124,11 @@
         groups:
           - docker
         append: true
-    - name: Install docker pip module
-      ansible.builtin.pip:
-        name:
-          - docker
+    # - name: Install docker pip module
+    #   ansible.builtin.pip:
+    #     name:
+    #       - docker
+    #
 
     # Docker swarm setup
     - name: Init a new swarm on manager with private ip address
