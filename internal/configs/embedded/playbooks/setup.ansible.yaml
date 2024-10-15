@@ -20,12 +20,31 @@
   handlers:
     - name: Restart SSHD
       ansible.builtin.service:
-        name: sshd
+        name: ssh
         state: restarted
+      # https://discourse.ubuntu.com/t/sshd-now-uses-socket-based-activation-ubuntu-22-10-and-later/30189
+      ignore_errors: true
   tasks:
     - name: Wait for connection to server
       ansible.builtin.wait_for_connection:
         timeout: 360
+    - name: Install essential packages
+      ansible.builtin.apt:
+        pkg:
+          - ca-certificates
+          - curl
+          - gnupg
+          - python3
+          - python3-pip
+          - git
+          - certbot
+          - nfs-common
+          # iptables-persistent is broken by ufw in ubuntu 24.04 and deb 12,
+          # therfore ufw will be removed automatically. Since we need
+          # iptables-persistent we will simply use iptables.
+          - iptables-persistent
+        state: latest
+        update_cache: true
     # Essentials, hostnames, users setup, ssh keys
     - name: Set hostname
       ansible.builtin.hostname:
@@ -55,47 +74,25 @@
         - { key: "PasswordAuthentication", value: "no" }
       notify:
         - Restart SSHD
-    # UFW configuration
-    - name: Allow port 22 ufw
-      community.general.ufw:
-        rule: allow
-        port: 22
+    # Firewall setup without ufw
+    - name: Configure iptables rules
+      ansible.builtin.shell:
+        cmd: |
+          iptables -A INPUT -i lo -j ACCEPT
+          iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+          iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+          iptables -A INPUT -p tcp --dport 2377 -j ACCEPT
+          iptables -A INPUT -p tcp --dport 7946 -j ACCEPT
+          iptables -A INPUT -p udp --dport 7946 -j ACCEPT
+          iptables -A INPUT -p udp --dport 4789 -j ACCEPT
+          iptables -P INPUT DROP
+          iptables -P FORWARD DROP
       when: setup_ufw
-    # Docker swarm ports
-    - name: Allow port 2377 ufw
-      community.general.ufw:
-        rule: allow
-        port: 2377
-      when: setup_ufw
-    - name: Allow port 7946 ufw
-      community.general.ufw:
-        rule: allow
-        port: 7946
-      when: setup_ufw
-    - name: Allow port 4789 ufw
-      community.general.ufw:
-        rule: allow
-        port: 4789
-      when: setup_ufw
-    - name: Enable ufw
-      community.general.ufw:
-        state: enabled
+    - name: Persist iptables rules
+      ansible.builtin.shell:
+        cmd: iptables-save > /etc/iptables/rules.v4
       when: setup_ufw
     # Installation of docker
-    - name: Install essential packages
-      ansible.builtin.apt:
-        pkg:
-          - ca-certificates
-          - curl
-          - gnupg
-          - python3
-          - python3-pip
-          - git
-          - certbot
-          - nfs-common
-          - iptables-persistent
-        state: latest
-        update_cache: true
     - name: Get Docker apt repo key
       ansible.builtin.get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
@@ -200,18 +197,15 @@
         state: started
 
     # HTTP(s) ports should be exposed only on manager
-    - name: Allow port 80 ufw
-      community.general.ufw:
-        rule: allow
-        port: 80
-        proto: tcp
+    - name: Allow ports 80, 443 iptables
+      ansible.builtin.shell:
+        cmd: |
+          iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+          iptables -A INPUT -p tcp --dport 443 -j ACCEPT
       when: setup_ufw
-    - name: Allow port 443 ufw
-      community.general.ufw:
-        rule: allow
-        port: 443
-        proto: tcp
-        state: reloaded
+    - name: Persist iptables rules
+      ansible.builtin.shell:
+        cmd: iptables-save > /etc/iptables/rules.v4
       when: setup_ufw
 
 - hosts:

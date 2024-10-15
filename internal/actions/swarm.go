@@ -370,10 +370,15 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	cmd := fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir /var/nfs/general -p && chown nobody:nogroup /var/nfs/general" `, pwd)
 	configEtcExports := "#"
 	for _, ip := range ipWorkersPriv {
-		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "ufw allow from %s to any port nfs" `, pwd, ip)
+		// Essentially ufw allow from %s to any port nfs (tcp/udp)
+		iptables := fmt.Sprintf(`iptables -A INPUT -s %[1]s -p tcp --dport 2049 -j ACCEPT && iptables -A INPUT -s %[1]s -p udp --dport 2049 -j ACCEPT`, ip)
+		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "%s" `, pwd, iptables)
 		cmd = cmd + cmdUfw
 		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
+	// Persist rules
+	cmd = cmd + `&& echo '%s' | sudo -S bash -c "iptables-save > /etc/iptables/rules.v4" `
+
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
