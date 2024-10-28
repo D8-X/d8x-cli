@@ -315,7 +315,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if showConfigConfirmation {
 		fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
 		fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-		for _, f := range swarmDeployConfigFilesToCopy[:6] {
+		for _, f := range swarmDeployConfigFilesToCopy {
 			fmt.Println(f.Dst)
 		}
 		c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
@@ -391,6 +391,8 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		"cfg_rpc_history",
 		"cfg_referral",
 		"cfg_prices",
+		"cfg_v3_rpc",
+		"cfg_v3_idx",
 	}
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
@@ -400,7 +402,8 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
 		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
-
+		`docker config create cfg_v3_rpc ./candles/v3_idx_conf.json >/dev/null 2>&1`,
+		`docker config create cfg_v3_idx ./candles/v3_rpc_conf.json >/dev/null 2>&1`,
 		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
@@ -415,6 +418,8 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
 		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
 		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
+		{Src: "./candles/v3_idx_conf.json", Dst: "./candles/v3_idx_conf.json"},
+		{Src: "./candles/v3_rpc_conf.json", Dst: "./candles/v3_rpc_conf.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
@@ -439,7 +444,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		cmd,
 	)
 	if err != nil {
-		return fmt.Errorf("Error starting NFS server: %w", err)
+		return fmt.Errorf("starting NFS server: %w", err)
 	}
 
 	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
