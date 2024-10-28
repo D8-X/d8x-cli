@@ -126,7 +126,8 @@ var swarmDeployConfigFilesToCopy = []files.EmbedCopierOp{
 	{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 	// Candles configs
 	{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
-
+	{Src: "embedded/candles/v3_rpc_conf.json", Dst: "./candles/v3_rpc_conf.json", Overwrite: false},
+	{Src: "embedded/candles/v3_idx_conf.json", Dst: "./candles/v3_idx_conf.json", Overwrite: false},
 	// Docker swarm file - do not overwrite and allow user to modify the config
 	// (for example choose specific image manually).
 	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
