@@ -147,8 +147,8 @@ services:
         max-size: "5m"
         max-file: "10"
     configs:
-      - v3_rpc_conf
-      - v3_idx_conf
+      - cfg_v3_rpc
+      - cfg_v3_idx
     deploy:
       replicas: 1
 
