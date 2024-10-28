@@ -402,8 +402,8 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
 		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
 		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
-		`docker config create cfg_v3_rpc ./candles/v3_idx_conf.json >/dev/null 2>&1`,
-		`docker config create cfg_v3_idx ./candles/v3_rpc_conf.json >/dev/null 2>&1`,
+		`docker config create cfg_v3_idx ./candles/v3_idx_conf.json >/dev/null 2>&1`,
+		`docker config create cfg_v3_rpc ./candles/v3_rpc_conf.json >/dev/null 2>&1`,
 		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
