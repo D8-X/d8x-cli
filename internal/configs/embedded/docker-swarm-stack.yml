@@ -137,8 +137,8 @@ services:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
       - REDIS_DB_NUM=0
-      - CONFIG_V3_RPC=/cfg_v3_rpc
-      - CONFIG_V3_IDX=/cfg_v3_idx
+      - CHAIN_ID=${CHAIN_ID}
+      - CONFIG_RPC=/cfg_rpc_candles
     networks:
       - candles
       - d8x_backend
@@ -147,9 +147,32 @@ services:
         max-size: "5m"
         max-file: "10"
     configs:
-      - cfg_v3_rpc
-      - cfg_v3_idx
+      - cfg_rpc_candles
     deploy:
+      restart_policy:
+        condition: on-failure
+      replicas: 1
+
+  candles-v2-client:
+    image: ghcr.io/d8-x/d8x-candles-v2-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      - REDIS_DB_NUM=0
+      - CHAIN_ID=${CHAIN_ID}
+      - CONFIG_RPC=/cfg_rpc_candles
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "10"
+    configs:
+      - cfg_rpc_candles
+    deploy:
+      restart_policy:
+        condition: on-failure
       replicas: 1
 
   # Candles websockets server
@@ -240,7 +263,5 @@ configs:
     external: true
   cfg_prices:
     external: true
-  cfg_v3_rpc:
-    external: true
-  cfg_v3_idx:
+  cfg_rpc_candles:
     external: true

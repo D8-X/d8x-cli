@@ -395,6 +395,7 @@ var githubPackageVersionsPage = map[string]string{
 	"candles-pyth-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-pyth-client/versions",
 	"candles-ws-server":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-ws-server/versions",
 	"candles-poly-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-poly-client/versions",
+	"candles-v2-client":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-v2-client/versions",
 	"candles-v3-client":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-v3-client/versions",
 }
 
