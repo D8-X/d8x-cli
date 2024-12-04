@@ -31,7 +31,7 @@
     "HTTP": ["https://arb1.arbitrum.io/rpc"]
   },
   {
-    "chainId": 1444673419,
-    "HTTP": ["https://testnet.skalenodes.com/v1/juicy-low-small-testnet"]
+    "chainId": 8453,
+    "HTTP": ["https://mainnet.base.org"]
   }
 ]
