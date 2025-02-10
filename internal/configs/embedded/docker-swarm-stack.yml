@@ -49,6 +49,7 @@ services:
       options:
         max-size: "5m"
         max-file: "10"
+
   history:
     image: ghcr.io/d8-x/d8x-trader-history:main
     environment:
@@ -130,6 +131,50 @@ services:
     deploy:
       replicas: 1
 
+  candles-v3-client:
+    image: ghcr.io/d8-x/d8x-candles-v3-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      - REDIS_DB_NUM=0
+      - CHAIN_ID=${CHAIN_ID}
+      - CONFIG_RPC=/cfg_rpc_candles
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "10"
+    configs:
+      - cfg_rpc_candles
+    deploy:
+      restart_policy:
+        condition: on-failure
+      replicas: 1
+
+  candles-v2-client:
+    image: ghcr.io/d8-x/d8x-candles-v2-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      - REDIS_DB_NUM=0
+      - CHAIN_ID=${CHAIN_ID}
+      - CONFIG_RPC=/cfg_rpc_candles
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "10"
+    configs:
+      - cfg_rpc_candles
+    deploy:
+      restart_policy:
+        condition: on-failure
+      replicas: 1
+
   # Candles websockets server
   candles-ws-server:
     image: ghcr.io/d8-x/d8x-candles-ws-server:main
@@ -153,13 +198,14 @@ services:
       - cfg_prices
     deploy:
       replicas: 1
+
   candles-poly-client:
     image: ghcr.io/d8-x/d8x-candles-poly-client:main
     environment:
       - REDIS_PW=${REDIS_PASSWORD}
       - REDIS_ADDR=redis:6379
       # 2024-07-18 poly client does not actually need prices config, but shared
-      # go code requires to set this env. 
+      # go code requires to set this env.
       - CONFIG_PATH=/cfg_prices
     networks:
       - candles
@@ -178,8 +224,8 @@ services:
     deploy:
       mode: global
     ports:
-        # If published port is changed, make sure to edit cadvisor_port security
-        # group port too
+      # If published port is changed, make sure to edit cadvisor_port security
+      # group port too
       - target: 8080
         published: 4003
         protocol: tcp
@@ -216,4 +262,6 @@ configs:
   cfg_referral:
     external: true
   cfg_prices:
+    external: true
+  cfg_rpc_candles:
     external: true
