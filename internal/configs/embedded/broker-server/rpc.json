@@ -20,6 +20,10 @@
     "HTTP": ["https://bartio.rpc.berachain.com/"]
   },
   {
+    "chainId": 80094,
+    "HTTP": ["https://rpc.berachain.com/"]
+  },
+  {
     "chainId": 421614,
     "HTTP": [
       "https://sepolia-rollup.arbitrum.io/rpc",
