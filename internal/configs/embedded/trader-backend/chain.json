@@ -30,6 +30,11 @@
     "sdkNetwork": "bartio",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
+  "80094": {
+    "type": "mainnet",
+    "sdkNetwork": "bera",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+  },
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",

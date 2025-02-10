@@ -102,6 +102,23 @@
     "brokerId": "broker1"
   },
   {
+    "chainId": 80094,
+    "paymentMaxLookBackDays": 14,
+    "paymentScheduleCron": "0 08 * * 2",
+    "tokenX": {
+      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
+      "decimals": 18
+    },
+    "referrerCutPercentForTokenXHolding": [
+      [0.2, 0],
+      [1.5, 100],
+      [2.5, 1000],
+      [3.75, 10000]
+    ],
+    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
+    "brokerId": "broker1"
+  },
+  {
     "chainId": 196,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",

@@ -35,6 +35,11 @@
     "allowedExecutors": []
   },
   {
+    "chainId": 80094,
+    "name": "bera",
+    "allowedExecutors": []
+  },
+  {
     "chainId": 8453,
     "name": "base",
     "allowedExecutors": []
