@@ -25,6 +25,11 @@
     "WS": []
   },
   {
+    "chainId": 80094,
+    "HTTP": ["https://rpc.berachain.com/"],
+    "WS": []
+  },
+  {
     "chainId": 421614,
     "HTTP": [
       "https://sepolia-rollup.arbitrum.io/rpc",
@@ -38,8 +43,8 @@
     "WS": []
   },
   {
-    "chainId": 1444673419,
-    "HTTP": ["https://testnet.skalenodes.com/v1/juicy-low-small-testnet"],
+    "chainId": 8453,
+    "HTTP": ["https://mainnet.base.org"],
     "WS": []
   }
 ]

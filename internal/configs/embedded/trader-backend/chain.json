@@ -30,15 +30,20 @@
     "sdkNetwork": "bartio",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
+  "80094": {
+    "type": "mainnet",
+    "sdkNetwork": "bera",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+  },
   "196": {
     "type": "mainnet",
     "sdkNetwork": "xlayer",
     "priceFeedNetwork": "mainnet",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
-  "1444673419": {
-    "type": "testnet",
-    "sdkNetwork": "europaTestnet",
+  "8453": {
+    "type": "mainnet",
+    "sdkNetwork": "base",
     "priceFeedNetwork": "mainnet",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },

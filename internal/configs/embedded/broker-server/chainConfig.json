@@ -35,8 +35,13 @@
     "allowedExecutors": []
   },
   {
-    "chainId": 1444673419,
-    "name": "europaTestnet",
+    "chainId": 80094,
+    "name": "bera",
+    "allowedExecutors": []
+  },
+  {
+    "chainId": 8453,
+    "name": "base",
     "allowedExecutors": []
   }
 ]
