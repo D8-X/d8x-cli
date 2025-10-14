@@ -1,32 +1,52 @@
 [
   {
     "chainId": 195,
-    "HTTP": ["https://testrpc.xlayer.tech", "https://xlayertestrpc.okx.com/"],
-    "WS": ["wss://xlayertestws.okx.com", "wss://testws.xlayer.tech"]
+    "HTTP": [
+      "https://testrpc.xlayer.tech",
+      "https://xlayertestrpc.okx.com/"
+    ],
+    "WS": [
+      "wss://xlayertestws.okx.com",
+      "wss://testws.xlayer.tech"
+    ]
   },
   {
     "chainId": 196,
-    "HTTP": ["https://xlayerrpc.okx.com", "https://rpc.xlayer.tech"],
-    "WS": ["wss://xlayerws.okx.com", "wss://ws.xlayer.tech"]
+    "HTTP": [
+      "https://xlayerrpc.okx.com",
+      "https://rpc.xlayer.tech"
+    ],
+    "WS": [
+      "wss://xlayerws.okx.com",
+      "wss://ws.xlayer.tech"
+    ]
   },
   {
     "chainId": 1101,
-    "HTTP": ["https://zkevm-rpc.com"],
+    "HTTP": [
+      "https://zkevm-rpc.com"
+    ],
     "WS": []
   },
   {
     "chainId": 2442,
-    "HTTP": ["https://rpc.cardona.zkevm-rpc.com"],
+    "HTTP": [
+      "https://rpc.cardona.zkevm-rpc.com"
+    ],
     "WS": []
   },
   {
     "chainId": 80084,
-    "HTTP": ["https://bartio.rpc.berachain.com/"],
+    "HTTP": [
+      "https://bartio.rpc.berachain.com/"
+    ],
     "WS": []
   },
   {
     "chainId": 80094,
-    "HTTP": ["https://rpc.berachain.com/"],
+    "HTTP": [
+      "https://rpc.berachain.com/"
+    ],
     "WS": []
   },
   {
@@ -39,12 +59,23 @@
   },
   {
     "chainId": 42161,
-    "HTTP": ["https://arb1.arbitrum.io/rpc"],
+    "HTTP": [
+      "https://arb1.arbitrum.io/rpc"
+    ],
+    "WS": []
+  },
+  {
+    "chainId": 84532,
+    "HTTP": [
+      "https://sepolia.base.org"
+    ],
     "WS": []
   },
   {
     "chainId": 8453,
-    "HTTP": ["https://mainnet.base.org"],
+    "HTTP": [
+      "https://mainnet.base.org"
+    ],
     "WS": []
   }
 ]

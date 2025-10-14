@@ -41,6 +41,12 @@
     "priceFeedNetwork": "mainnet",
     "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
   },
+  "84532": {
+    "type": "testnet",
+    "sdkNetwork": "base_sepolia",
+    "priceFeedNetwork": "mainnet",
+    "priceServiceHTTPSEndpoint": "https://hermes.pyth.network/"
+  },
   "8453": {
     "type": "mainnet",
     "sdkNetwork": "base",

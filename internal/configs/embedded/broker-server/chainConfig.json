@@ -40,6 +40,11 @@
     "allowedExecutors": []
   },
   {
+    "chainId": 84532,
+    "name": "base",
+    "allowedExecutors": []
+  },
+  {
     "chainId": 8453,
     "name": "base",
     "allowedExecutors": []
