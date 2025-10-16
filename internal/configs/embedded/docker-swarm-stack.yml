@@ -112,6 +112,27 @@ services:
     volumes:
       - nfsvol:/keyfile
 
+  candles-sports-client:
+    image: ghcr.io/d8-x/d8x-candles-sports-client:main
+    environment:
+      - REDIS_PW=${REDIS_PASSWORD}
+      - REDIS_ADDR=redis:6379
+      - REDIS_DB_NUM=0
+      - WS_SPORTSLINEINDEX=${WS_SPORTSLINEINDEX}
+      - CHAIN_ID=${CHAIN_ID}
+      - CONFIG_PATH=/cfg_prices
+    networks:
+      - candles
+      - d8x_backend
+    logging:
+      options:
+        max-size: "5m"
+        max-file: "10"
+    configs:
+      - cfg_prices
+    deploy:
+      replicas: 1
+      
   candles-pyth-client:
     image: ghcr.io/d8-x/d8x-candles-pyth-client:main
     environment:
