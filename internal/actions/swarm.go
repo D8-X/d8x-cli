@@ -182,7 +182,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 // swarmDeploy performs the swarm deployment step
 func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) error {
-
 	// Find manager ip before we start collecting data in case manager is not
 	// available.
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
@@ -367,13 +366,21 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
-	cmd := fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir /var/nfs/general -p && chown nobody:nogroup /var/nfs/general" `, pwd)
+	cmd := fmt.Sprintf(
+		`echo '%s' | sudo -S bash -c 'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general`,
+		pwd,
+	)
+
 	configEtcExports := "#"
 	for _, ip := range ipWorkersPriv {
-		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "ufw allow from %s to any port nfs" `, pwd, ip)
-		cmd = cmd + cmdUfw
-		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
+		// Allow the worker to access NFS (TCP 2049)
+		cmd += fmt.Sprintf(` && iptables -A INPUT -p tcp -s %s --dport 2049 -j ACCEPT`, ip)
+
+		configEtcExports += "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
+	cmd += `'`
+	fmt.Println("CMD:", cmd)
+
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
@@ -892,7 +899,7 @@ func enableSectionsInNginxFile(nginxCfgPath string, enableSections []NginxConfig
 		cfgBuf = bytes.NewBuffer(nginxConfUpdated)
 	}
 
-	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0644)
+	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0o644)
 }
 
 // processNginxConfigComments enables (uncomments) provided enableSection in
