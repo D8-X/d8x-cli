@@ -56,7 +56,6 @@ func (c *Container) CopyLinodeTFFiles() error {
 			Overwrite: true,
 		},
 	)
-
 }
 
 // BuildTerraformCMD builds terraform configuration for linode cluster creation.
@@ -85,7 +84,7 @@ func (l linodeConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 func (l linodeConfigurer) generateArgs() []string {
 	args := []string{
 		"apply", "-auto-approve",
-		//"-var", fmt.Sprintf(`authorized_keys=["%s"]`, strings.TrimSpace(l.authorizedKey)),
+		"-var", fmt.Sprintf(`authorized_keys=["%s"]`, strings.TrimSpace(l.authorizedKey)),
 		"-var", fmt.Sprintf(`region=%s`, l.Region),
 		"-var", fmt.Sprintf(`server_label_prefix=%s`, l.LabelPrefix),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, l.CreateBrokerServer),
@@ -170,7 +169,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 		components.TextInputOptValue(defaultToken),
 		components.TextInputOptMasked(),
 	)
-
 	if err != nil {
 		return l, err
 	}
