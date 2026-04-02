@@ -202,6 +202,12 @@ func RunD8XCli() {
 				Description: "Create a ssh tunnel to database server. Database credentials are read from d8x.conf.json file.",
 			},
 			{
+				Name:    "staging-origins",
+				Aliases: []string{"so"},
+				Usage:   "Update whitelisted staging origins",
+				Action:  container.UpdateStagingOrigins,
+			},
+			{
 				Name:   "fix-ingress",
 				Usage:  "Fix faulty ingress network",
 				Action: container.IngressFix,
