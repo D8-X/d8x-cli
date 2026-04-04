@@ -250,7 +250,6 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 	fmt.Println(styles.ItalicText.Render("Collecting provisioning information...\n"))
 
 	opts := []components.SelectionOpts{
-
 		components.SelectionOptAllowOnlySingleItem(),
 		components.SelectionOptRequireSelection(),
 	}
@@ -517,9 +516,6 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			pwd, err := generatePassword(20)
 			if err != nil {
 				return fmt.Errorf("generating password for redis: %w", err)
-			}
-			if err != nil {
-				return err
 			}
 			cfg.SwarmRedisPassword = pwd
 		}
