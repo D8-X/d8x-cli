@@ -128,14 +128,8 @@ type SwarmDeployInput struct {
 	// whether user selected to be guided through configuration by cli
 	guideConfig bool
 
-	referralPaymentExecutorPrivateKey string
-
 	// Pyth endpoints for candles/prices.config.json
 	priceServiceHttpEndpoints []string
-
-	// Referral executor wallet address might be not empty when broker-only
-	// deployment is performed.
-	referralPaymentExecutorWalletAddress string
 }
 
 type SwarmNginxInput struct {
@@ -351,65 +345,13 @@ func (input *InputCollector) CollectBrokerPrivateKey() error {
 	return nil
 }
 
-// CollectReferralExecutorPrivateKey collects referral executor private key (or
-// just wallet of allowed executor on broker-only deployments) and stores it in
-// input state
-func (input *InputCollector) CollectReferralExecutorPrivateKey(cfg *configs.D8XConfig, ctx *cli.Context) error {
-	executorWalletAddress := cfg.BrokerServerConfig.ExecutorAddress
-
-	// If we deploy swarm - we want to collect referral executor private key
-	if input.setup.deploySwarm || ctx.Command.Name == "swarm-deploy" {
-		pk, pkWalletAddress, err := input.CollectAndValidatePrivateKey("Enter your referral executor private key:")
-		if err != nil {
-			return err
-		}
-		input.swarmDeployInput.referralPaymentExecutorPrivateKey = pk
-		input.swarmDeployInput.referralPaymentExecutorWalletAddress = pkWalletAddress
-
-		executorWalletAddress = pkWalletAddress
-	}
-
-	// if we ONLY deploy broker - we don't need the private key and only ask for
-	// wallet address. Once per session.
-	if input.swarmDeployInput.referralPaymentExecutorWalletAddress == "" && (input.BrokerOnly() || ctx.Command.Name == "broker-deploy") {
-		keep := false
-		if cfg.BrokerServerConfig.ExecutorAddress != "" {
-			fmt.Printf("Found referral executor wallet address: %s\n", cfg.BrokerServerConfig.ExecutorAddress)
-			ok, err := input.TUI.NewPrompt("Do you want to keep this referral executor wallet address?", true)
-			if err != nil {
-				return err
-			}
-			keep = ok
-		}
-		if !keep {
-			wallet, err := input.CollectAndValidateWalletAddress("Enter allowed executor wallet address", cfg.BrokerServerConfig.ExecutorAddress)
-			if err != nil {
-				return err
-			}
-			executorWalletAddress = wallet
-			input.swarmDeployInput.referralPaymentExecutorWalletAddress = executorWalletAddress
-		}
-	}
-
-	// Store the referral executor wallet address for broker-deploy step
-	cfg.BrokerServerConfig.ExecutorAddress = executorWalletAddress
-
-	return input.ConfigRWriter.Write(cfg)
-}
-
-// CollectPrivateKeys collects broker and referral executor private keys. Only
-// once per session
+// CollectPrivateKeys collects broker private key. Only once per session.
 func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
-	if input.brokerDeployInput.privateKey != "" && input.swarmDeployInput.referralPaymentExecutorPrivateKey != "" {
+	if input.brokerDeployInput.privateKey != "" {
 		return nil
 	}
 
 	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
-
-	cfg, err := input.ConfigRWriter.Read()
-	if err != nil {
-		return err
-	}
 
 	// Broker private key must be collected only once per session. Do not
 	// collect it for individual swarm-deploy or if user chooses not to deploy
@@ -424,14 +366,6 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 			if err := input.CollectBrokerPrivateKey(); err != nil {
 				return err
 			}
-		}
-	}
-
-	// Collect referral executor private key. If we are deploying single broker
-	// server we only need the wallet address.
-	if input.swarmDeployInput.referralPaymentExecutorPrivateKey == "" || input.swarmDeployInput.referralPaymentExecutorWalletAddress == "" {
-		if err := input.CollectReferralExecutorPrivateKey(cfg, ctx); err != nil {
-			return err
 		}
 	}
 
@@ -588,11 +522,6 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 				return err
 			}
 			cfg.SwarmRedisPassword = pwd
-		}
-
-		// Collect broker payout address
-		if err := input.CollecteBrokerPayoutAddress(cfg); err != nil {
-			return err
 		}
 
 		// Collect broker http endpoint
@@ -955,32 +884,6 @@ func collectAwsRdsDsnString(cfg *configs.D8XConfig) error {
 		credsMap["port"],
 	)
 
-	return nil
-}
-
-func (c *InputCollector) CollecteBrokerPayoutAddress(cfg *configs.D8XConfig) error {
-	// Collect referrral broker payout address
-	changeReferralPayoutAddress := true
-	if cfg.ReferralConfig.BrokerPayoutAddress != "" {
-		fmt.Printf("Found referralSettings.json broker payout address: %s\n", cfg.ReferralConfig.BrokerPayoutAddress)
-		if keep, err := c.TUI.NewPrompt("Do you want to keep this broker payout address?", true); err != nil {
-			return err
-		} else if keep {
-			changeReferralPayoutAddress = false
-		}
-	}
-	if changeReferralPayoutAddress {
-		info := "Enter broker payout address:\n"
-		info = info + styles.GrayText.Render("See config README (live.referralSettings.json) for more info: \nhttps://github.com/D8-X/d8x-cli/blob/main/README_CONFIG.md\n")
-
-		brokerPayoutAddress, err := c.CollectAndValidateWalletAddress(info, cfg.ReferralConfig.BrokerPayoutAddress)
-		if err != nil {
-			return err
-		}
-		cfg.ReferralConfig.BrokerPayoutAddress = brokerPayoutAddress
-
-		return c.ConfigRWriter.Write(cfg)
-	}
 	return nil
 }
 

@@ -151,10 +151,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 	}
 	wg.Wait()
 
-	// Prompt user to enter referral executor key whenever we update referral
-	// service.
-	referralExecutorKey := ""
-
 	// Prompt user to select the tags to use for updating services. Use image
 	// tags with hashes fetched from github but also allow to enter the image
 	// reference manually
@@ -201,16 +197,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		}
 
 		selectedImageReferenceForUpdate[svcToUpdate] = imgToUse
-
-		// Collect private key for referral service
-		if svcToUpdate == "referral" {
-			executorkey, _, err := c.Input.CollectAndValidatePrivateKey("Enter your referral payment executor private key:")
-			if err != nil {
-				return err
-			}
-			referralExecutorKey = "0x" + strings.TrimPrefix(executorkey, "0x")
-		}
-
 	}
 
 	workerIps, err := c.HostsCfg.GetWorkerIps()
@@ -223,10 +209,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 		return err
 	}
 
-	password, err := c.GetPassword(ctx)
-	if err != nil {
-		return err
-	}
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return err
@@ -239,35 +221,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 	for _, svcToUpdate := range selectedSwarmServicesToUpdate {
 		imgToUse := selectedImageReferenceForUpdate[svcToUpdate]
 		fmt.Printf("Updating %s to %s\n", svcToUpdate, imgToUse)
-
-		// For referral system - we need to update the referral executor private
-		// key, since the new version will have different encryption key and
-		// keyfile.txt will be reencrypted
-		// var oldKeyfile string = ""
-		if svcToUpdate == "referral" {
-			// Remove existing referral service
-			fmt.Println("Scaling down referral service")
-			if err := sshConn.ExecCommandPiped(
-				fmt.Sprintf("docker service scale %s_%s=0", dockerStackName, svcToUpdate),
-			); err != nil {
-				fmt.Println(styles.ErrorText.Render(
-					fmt.Sprintf("removing referral service: %v\n", err),
-				))
-				continue
-			}
-
-			// Store old key just in case
-			_, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S cat /var/nfs/general/keyfile.txt`, password))
-			if err != nil {
-				return err
-			}
-			// Write new keyfile
-			out, err := sshConn.ExecCommand(fmt.Sprintf(`echo '%s' | sudo -S bash -c "echo -n '%s' > /var/nfs/general/keyfile.txt"`, password, referralExecutorKey))
-			if err != nil {
-				fmt.Println(string(out))
-				return fmt.Errorf("updating executor private key file: %w", err)
-			}
-		}
 
 		// Append stack name for service
 		svcStackName := dockerStackName + "_" + svcToUpdate
@@ -290,17 +243,6 @@ func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesT
 						fmt.Sprintf("Service %s updated successfully\n", svcToUpdate),
 					),
 				)
-			}
-
-			// Scale back the referral service
-			if svcToUpdate == "referral" {
-				if err := sshConn.ExecCommandPiped(
-					fmt.Sprintf("docker service scale %s_%s=1", dockerStackName, svcToUpdate),
-				); err != nil {
-					fmt.Println(styles.ErrorText.Render(
-						fmt.Sprintf("scaling referral service: %v\n", err),
-					))
-				}
 			}
 
 			done <- struct{}{}
@@ -391,7 +333,6 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 var githubPackageVersionsPage = map[string]string{
 	"api":                 "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-main/versions",
 	"history":             "https://github.com/D8-X/d8x-trader-backend/pkgs/container/d8x-trader-history/versions",
-	"referral":            "https://github.com/D8-X/referral-system/pkgs/container/d8x-referral-system/versions",
 	"candles-pyth-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-pyth-client/versions",
 	"candles-ws-server":   "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-ws-server/versions",
 	"candles-poly-client": "https://github.com/D8-X/d8x-candles/pkgs/container/d8x-candles-poly-client/versions",

@@ -329,16 +329,15 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 
 // DistributeRpcs distribute rpc from cfg (user supplied rpcs) based on provided
 // serviceIndex. RPC distribution is done in a card dealing way (serviceIndex 0
-// gets 0, 0 + numServices, 0 + 2*numServices, etc.). We currently support 4
-// services which need rpcs: main, history, referral and broker-server
-// (optional) with serviceIndex values 0, 1,2 and 3 respectively. It is
-// suggested to have at least 4 Http rpcs added (3 without broker). Only
-// serviceIndex 0 and 1 gets websockets (main, history). Returned slices are
-// http and ws rpcs list.
+// gets 0, 0 + numServices, 0 + 2*numServices, etc.). We currently support 3
+// services which need rpcs: main, history and broker-server (optional) with
+// serviceIndex values 0, 1 and 2 respectively. It is suggested to have at least
+// 3 Http rpcs added (2 without broker). Only serviceIndex 0 and 1 gets
+// websockets (main, history). Returned slices are http and ws rpcs list.
 func DistributeRpcs(serviceIndex int, chainId string, cfg *configs.D8XConfig) ([]string, []string) {
 	// Maximum number of serviceIndex for http/ws lists
-	// main, history, referral
-	httpServices := 3
+	// main, history
+	httpServices := 2
 	// main, history
 	wsServices := 2
 	if cfg.BrokerDeployed {

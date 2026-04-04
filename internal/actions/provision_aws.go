@@ -229,7 +229,7 @@ func parseAwsRDSCredentialsFile(contents []byte) map[string]string {
 
 // createRDSDatabases automatically creates new databases on provisioned RDS
 // postgres instance.
-func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName, referralDbName string) error {
+func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName string) error {
 	// Get RDS credentials
 	creds, err := os.ReadFile(RDS_CREDS_FILE)
 	if err != nil {
@@ -238,7 +238,7 @@ func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName, referral
 	credsMap := parseAwsRDSCredentialsFile(creds)
 
 	fmt.Println(styles.ItalicText.Render(
-		fmt.Sprintf("Creating databases %s, %s on %s ...", historyDbName, referralDbName, credsMap["host"]),
+		fmt.Sprintf("Creating database %s on %s ...", historyDbName, credsMap["host"]),
 	))
 
 	ip, err := c.HostsCfg.GetMangerPublicIp()
@@ -272,7 +272,6 @@ func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName, referral
 	}
 
 	pgConn, err := pgx.ConnectConfig(context.Background(), pgCnfg)
-
 	if err != nil {
 		return fmt.Errorf("connecting to postgres instance: %w", err)
 	}
@@ -287,19 +286,6 @@ func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName, referral
 		fmt.Println(
 			styles.SuccessText.Render(
 				fmt.Sprintf("History database %s was created!", historyDbName),
-			),
-		)
-	}
-	if _, err := pgConn.Exec(context.Background(), "CREATE DATABASE "+referralDbName); err != nil {
-		fmt.Println(
-			styles.ErrorText.Render(
-				fmt.Sprintf("creating referral database: %v", err),
-			),
-		)
-	} else {
-		fmt.Println(
-			styles.SuccessText.Render(
-				fmt.Sprintf("Referral database %s was created!", referralDbName),
 			),
 		)
 	}
