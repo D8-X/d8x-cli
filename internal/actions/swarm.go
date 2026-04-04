@@ -288,7 +288,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	}
 	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
 	cmd := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c 'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general`,
+		`echo '%s' | sudo -S bash -c 'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general'`,
 		pwd,
 	)
 
@@ -301,7 +301,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
 	// Persist rules
-	cmd = cmd + `&& echo '%s' | sudo -S bash -c "iptables-save > /etc/iptables/rules.v4" `
+	cmd = cmd + fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4" `, pwd)
 
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
@@ -353,9 +353,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	// enable nfs server
 	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mv ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
-	cmd = cmd + fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports \
-		&& systemctl restart nfs-kernel-server" `, pwd)
+	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server"`, pwd)
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
