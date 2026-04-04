@@ -31,6 +31,7 @@ type rpcTransport string
 func (r rpcTransport) SecureProtocolPrefix() string {
 	return string(r) + "s://"
 }
+
 func (r rpcTransport) ProtocolPrefix() string {
 	return string(r) + "://"
 }
@@ -213,16 +214,6 @@ func (c ChainJson) getChainSDKName(chainId string) string {
 		return c["default"].SDKNetwork
 	}
 	return entry.SDKNetwork
-}
-
-// getDefaultPythWSEndpoint retrieves the default pyth websocket endpoint from
-// chain.json config
-func (c ChainJson) getDefaultPythWSEndpoint(chainId string) string {
-	entry, exists := c[chainId]
-	if !exists {
-		return c["default"].DefaultPythWSEndpoint
-	}
-	return entry.DefaultPythWSEndpoint
 }
 
 // getDefaultPythHTTPSEndpoint retrieves the default pyth https endpoint from

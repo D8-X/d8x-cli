@@ -125,7 +125,7 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	return c.HealthCheck(ctx)
 }
 
-func (c *Container) updateSwarmServices(ctx *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
+func (c *Container) updateSwarmServices(_ *cli.Context, selectedSwarmServicesToUpdate []string, services map[string]configs.DockerService) error {
 	if len(selectedSwarmServicesToUpdate) == 0 {
 		return nil
 	}
