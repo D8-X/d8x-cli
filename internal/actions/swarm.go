@@ -373,13 +373,14 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	configEtcExports := "#"
 	for _, ip := range ipWorkersPriv {
-		// Allow the worker to access NFS (TCP 2049)
-		cmd += fmt.Sprintf(` && iptables -A INPUT -p tcp -s %s --dport 2049 -j ACCEPT`, ip)
-
-		configEtcExports += "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
+		// Essentially ufw allow from %s to any port nfs (tcp/udp)
+		iptables := fmt.Sprintf(`iptables -A INPUT -s %[1]s -p tcp --dport 2049 -j ACCEPT && iptables -A INPUT -s %[1]s -p udp --dport 2049 -j ACCEPT`, ip)
+		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "%s" `, pwd, iptables)
+		cmd = cmd + cmdUfw
+		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
-	cmd += `'`
-	fmt.Println("CMD:", cmd)
+	// Persist rules
+	cmd = cmd + `&& echo '%s' | sudo -S bash -c "iptables-save > /etc/iptables/rules.v4" `
 
 	_, err = managerSSHConn.ExecCommand(
 		cmd,

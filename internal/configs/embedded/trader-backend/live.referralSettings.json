@@ -1,39 +1,5 @@
 [
   {
-    "chainId": 195,
-    "paymentMaxLookBackDays": 14,
-    "paymentScheduleCron": "0 14 * * 2",
-    "tokenX": {
-      "address": "0x2444BdA650cAAe90219aa15FEd3D195a6117579F",
-      "decimals": 18
-    },
-    "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
-    ],
-    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
-    "brokerId": "broker1"
-  },
-  {
-    "chainId": 1101,
-    "paymentMaxLookBackDays": 14,
-    "paymentScheduleCron": "0 08 * * 2",
-    "tokenX": {
-      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
-      "decimals": 18
-    },
-    "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
-    ],
-    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
-    "brokerId": "broker1"
-  },
-  {
     "chainId": 421614,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
@@ -42,10 +8,22 @@
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
+      [
+        0.2,
+        0
+      ],
+      [
+        1.5,
+        100
+      ],
+      [
+        2.5,
+        1000
+      ],
+      [
+        3.75,
+        10000
+      ]
     ],
     "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
     "brokerId": "broker1"
@@ -59,16 +37,28 @@
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
+      [
+        0.2,
+        0
+      ],
+      [
+        1.5,
+        100
+      ],
+      [
+        2.5,
+        1000
+      ],
+      [
+        3.75,
+        10000
+      ]
     ],
     "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
     "brokerId": "broker1"
   },
   {
-    "chainId": 2442,
+    "chainId": 84532,
     "paymentMaxLookBackDays": 14,
     "paymentScheduleCron": "0 08 * * 2",
     "tokenX": {
@@ -76,61 +66,22 @@
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
-    ],
-    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
-    "brokerId": "broker1"
-  },
-  {
-    "chainId": 80084,
-    "paymentMaxLookBackDays": 14,
-    "paymentScheduleCron": "0 08 * * 2",
-    "tokenX": {
-      "address": "0x2f8cDc8383ba7f60f005e8eA8214796523da7Faa",
-      "decimals": 18
-    },
-    "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
-    ],
-    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
-    "brokerId": "broker1"
-  },
-  {
-    "chainId": 80094,
-    "paymentMaxLookBackDays": 14,
-    "paymentScheduleCron": "0 08 * * 2",
-    "tokenX": {
-      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
-      "decimals": 18
-    },
-    "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
-    ],
-    "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
-    "brokerId": "broker1"
-  },
-  {
-    "chainId": 196,
-    "paymentMaxLookBackDays": 14,
-    "paymentScheduleCron": "0 08 * * 2",
-    "tokenX": {
-      "address": "0xDc28023CCdfbE553643c41A335a4F555Edf937Df",
-      "decimals": 18
-    },
-    "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
+      [
+        0.2,
+        0
+      ],
+      [
+        1.5,
+        100
+      ],
+      [
+        2.5,
+        1000
+      ],
+      [
+        3.75,
+        10000
+      ]
     ],
     "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
     "brokerId": "broker1"
@@ -144,10 +95,22 @@
       "decimals": 18
     },
     "referrerCutPercentForTokenXHolding": [
-      [0.2, 0],
-      [1.5, 100],
-      [2.5, 1000],
-      [3.75, 10000]
+      [
+        0.2,
+        0
+      ],
+      [
+        1.5,
+        100
+      ],
+      [
+        2.5,
+        1000
+      ],
+      [
+        3.75,
+        10000
+      ]
     ],
     "brokerPayoutAddr": "0xdef43CF2Dd024abc5447C1Dcdc2fE3FE58547b84",
     "brokerId": "broker1"

@@ -65,6 +65,13 @@
     "WS": []
   },
   {
+    "chainId": 84532,
+    "HTTP": [
+      "https://sepolia.base.org"
+    ],
+    "WS": []
+  },
+  {
     "chainId": 8453,
     "HTTP": [
       "https://mainnet.base.org"

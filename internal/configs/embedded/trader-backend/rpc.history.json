@@ -69,6 +69,13 @@
     "HTTP": [
       "https://sepolia.base.org"
     ],
+    "WS": []
+  },
+  {
+    "chainId": 84532,
+    "HTTP": [
+      "https://sepolia.base.org"
+    ],
     "WS": [
       "wss://base-sepolia.drpc.org"
     ]

@@ -15,7 +15,7 @@ resource "linode_instance" "manager" {
   region          = var.region
   private_ip      = true
   label           = format("%s-%s", var.server_label_prefix, "manager")
-  image           = "linode/ubuntu22.04"
+  image           = "linode/ubuntu24.04"
   booted          = true
   authorized_keys = var.authorized_keys
 }
@@ -27,7 +27,7 @@ resource "linode_instance" "nodes" {
   region          = var.region
   private_ip      = true
   label           = format("%s-%s", var.server_label_prefix, "worker-${count.index + 1}")
-  image           = "linode/ubuntu22.04"
+  image           = "linode/ubuntu24.04"
   booted          = true
   authorized_keys = var.authorized_keys
 }
@@ -38,7 +38,7 @@ resource "linode_instance" "broker_server" {
   region          = var.region
   private_ip      = true
   label           = format("%s-%s", var.server_label_prefix, "broker-server")
-  image           = "linode/ubuntu22.04"
+  image           = "linode/ubuntu24.04"
   booted          = true
   authorized_keys = var.authorized_keys
 }

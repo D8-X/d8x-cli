@@ -50,15 +50,15 @@
     ]
   },
   {
-    "chainId": 8453,
-    "HTTP": [
-      "https://mainnet.base.org"
-    ]
-  },
-  {
     "chainId": 84532,
     "HTTP": [
       "https://sepolia.base.org"
+    ]
+  },
+  {
+    "chainId": 8453,
+    "HTTP": [
+      "https://mainnet.base.org"
     ]
   }
 ]
