@@ -59,7 +59,6 @@ services:
       - CHAIN_ID=${CHAIN_ID}
       - CORS_ON=${CORS_ON:-FALSE}
       - CONFIG_PATH_RPC=/cfg_rpc_history
-      - CONFIG_PATH_REFERRAL_SETTINGS=/cfg_referral
     ports:
       - "${HISTORY_API_PORT_HTTP:-3003}:${HISTORY_API_PORT_HTTP:-3003}"
     logging:
@@ -71,46 +70,8 @@ services:
       replicas: 1
     configs:
       - cfg_rpc_history
-      - cfg_referral
     networks:
       - d8x_backend
-
-  referral:
-    image: ghcr.io/d8-x/d8x-referral-system:main
-    deploy:
-      # Restart up to 20 times with 60 seconds delay before giving up. Referral
-      # has to wait for history service to start and run the migrations.
-      restart_policy:
-        condition: any
-        delay: 60s
-        # Do not limit referral restart attempts
-        # max_attempts: 20
-        # Do not wait to verify restart
-        window: 0s
-    environment:
-      - DATABASE_DSN_HISTORY=${DATABASE_DSN}
-      - BROKER_KEY=${BROKER_KEY}
-      - CHAIN_ID=${CHAIN_ID}
-      - REMOTE_BROKER_HTTP=${REMOTE_BROKER_HTTP}
-      - CONFIG_PATH=/cfg_referral
-      - RPC_URL_PATH=/cfg_rpc_referral
-      - API_BIND_ADDR=0.0.0.0
-      - API_PORT=8080
-      - KEYFILE_PATH=/keyfile/
-    ports:
-      - "${REFERRAL_API_PORT_HTTP:-3004}:8080"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "10"
-    configs:
-      - cfg_rpc_referral
-      - cfg_referral
-    networks:
-      - d8x_backend
-    volumes:
-      - nfsvol:/keyfile
 
   candles-sports-client:
     image: ghcr.io/d8-x/d8x-candles-sports-client:main
@@ -276,11 +237,7 @@ volumes:
 configs:
   cfg_rpc:
     external: true
-  cfg_rpc_referral:
-    external: true
   cfg_rpc_history:
-    external: true
-  cfg_referral:
     external: true
   cfg_prices:
     external: true

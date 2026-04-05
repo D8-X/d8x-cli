@@ -1,57 +1,46 @@
 [
   {
     "chainId": 195,
-    "name": "x1",
-    "allowedExecutors": []
+    "name": "x1"
   },
   {
     "chainId": 196,
-    "name": "xlayer",
-    "allowedExecutors": []
+    "name": "xlayer"
   },
   {
     "chainId": 1101,
-    "name": "zkEVM Mainnet",
-    "allowedExecutors": []
+    "name": "zkEVM Mainnet"
   },
   {
     "chainId": 2442,
-    "name": "cardona",
-    "allowedExecutors": []
+    "name": "cardona"
   },
   {
     "chainId": 421614,
-    "name": "arbitrumSepolia",
-    "allowedExecutors": []
+    "name": "arbitrumSepolia"
   },
   {
     "chainId": 42161,
-    "name": "arbitrum",
-    "allowedExecutors": []
+    "name": "arbitrum"
   },
   {
     "chainId": 80084,
-    "name": "bartio",
-    "allowedExecutors": []
+    "name": "bartio"
   },
   {
     "chainId": 80094,
-    "name": "bera",
-    "allowedExecutors": []
+    "name": "bera"
   },
   {
     "chainId": 84532,
-    "name": "base",
-    "allowedExecutors": []
+    "name": "base"
   },
   {
     "chainId": 8453,
-    "name": "base",
-    "allowedExecutors": []
+    "name": "base"
   },
   {
     "chainId": 84532,
-    "name": "base sepolia",
-    "allowedExecutors": []
+    "name": "base sepolia"
   }
 ]

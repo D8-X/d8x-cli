@@ -79,7 +79,7 @@ const SwarmDeployDescription = `Command swarm-deploy performs docker swarm clust
 
 This command establishes ssh access to your manager node, copies required
 configurations files to the server and deploys the docker stack which consists 
-of d8x trader backend services (main, history, referral, candles).
+of d8x trader backend services (main, history, candles).
 
 Subsequent runs will reupload modified configuration files and redeploy the
 stack. Old running stack will be removed, therefore you should make sure to

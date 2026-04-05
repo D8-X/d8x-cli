@@ -1,7 +1,6 @@
 package actions
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,65 +18,6 @@ import (
 const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
-
-// UpdateBrokerChainConfigAllowedExecutors is updateFn for UpdateConfig for
-// broker-server/chainConfig.json configuration. It updates allowedExecutors
-// field and appends allowedExecutorAddress to the list for all chain ids.
-func UpdateBrokerChainConfigAllowedExecutors(allowedExecutorAddress string) func(*[]map[string]any) error {
-	return func(chainConfig *[]map[string]any) error {
-		for i, conf := range *chainConfig {
-			executors := []string{}
-			if len(allowedExecutorAddress) > 0 {
-				executors = append(executors, allowedExecutorAddress)
-			}
-			// Make sure we don't overwrite existing allowedExecutors
-			v, ok := conf["allowedExecutors"].([]any)
-			if ok {
-				for _, executorAddr := range v {
-					if a, ok2 := executorAddr.(string); ok2 {
-						executors = append(executors, a)
-					}
-				}
-			}
-
-			// Remove duplicates
-			conf["allowedExecutors"] = UniqStrings(executors)
-
-			// Update the entry
-			(*chainConfig)[i] = conf
-		}
-		return nil
-	}
-}
-
-func (c *Container) GetBrokerChainConfigJsonAllowedExecutors(chainConfigPath string, cfg *configs.D8XConfig) ([]string, error) {
-	contents, err := os.ReadFile(chainConfigPath)
-	if err != nil {
-		return nil, err
-	}
-
-	chainConfig := []map[string]any{}
-
-	if err := json.Unmarshal(contents, &chainConfig); err != nil {
-		return nil, err
-	}
-
-	allowedExecutors := []string{}
-	for _, conf := range chainConfig {
-		if int(conf["chainId"].(float64)) == int(cfg.ChainId) {
-			v, ok := conf["allowedExecutors"].([]any)
-			if ok {
-				allowedExecutors = make([]string, len(v))
-				for i, executorAddr := range v {
-					if a, ok2 := executorAddr.(string); ok2 {
-						allowedExecutors[i] = a
-					}
-				}
-			}
-		}
-	}
-	return allowedExecutors, nil
-}
 
 var (
 	brokerDeployChainConfig   = "./broker-server/chainConfig.json"
@@ -133,17 +73,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 	// Dest filenames for copying from embed. TODO - centralize this via flags
 	if err := c.CopyBrokerDeployConfigs(); err != nil {
-		return err
-	}
-
-	// Update chainConfig.json with referral executor address
-	fmt.Printf("Updating %s config...\n", brokerDeployChainConfig)
-	if err := UpdateConfig[[]map[string]any](
-		brokerDeployChainConfig,
-		UpdateBrokerChainConfigAllowedExecutors(
-			cfg.BrokerServerConfig.ExecutorAddress,
-		),
-	); err != nil {
 		return err
 	}
 
