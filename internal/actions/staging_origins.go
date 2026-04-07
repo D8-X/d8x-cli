@@ -10,34 +10,118 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+const originsFilePath = "./nginx/staging_origins.map"
+
 func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Updating staging origins...")
+	styles.PrintCommandTitle("Manage whitelisted origins")
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return err
 	}
 
-	input, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("https://staging.predictex.io,https://dev.predictex.io"),
-	)
-	if err != nil {
-		return err
-	}
+	current := loadOrigins()
 
-	var lines []string
-	lines = append(lines, "# Staging origins - managed by: ./cli staging-origins")
-	lines = append(lines, "# After editing, run: nginx -s reload")
-	for _, o := range strings.Split(input, ",") {
-		if o = strings.TrimSpace(o); o != "" {
-			lines = append(lines, fmt.Sprintf("%q 1;", o))
+	for {
+		if len(current) > 0 {
+			fmt.Println(styles.ItalicText.Render("\nCurrent whitelisted staging origins:"))
+			for i, o := range current {
+				fmt.Printf("  %d. %s\n", i+1, o)
+			}
+		} else {
+			fmt.Println(styles.ItalicText.Render("\nNo staging origins configured."))
+		}
+
+		actions := []string{"Add origin", "Remove origin", "Deploy and exit", "Exit without deploying"}
+		if len(current) == 0 {
+			actions = []string{"Add origin", "Deploy and exit", "Exit without deploying"}
+		}
+
+		selected, err := c.TUI.NewSelection(actions, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+		if err != nil {
+			return err
+		}
+		action := selected[0]
+
+		switch action {
+		case "Add origin":
+			input, err := c.TUI.NewInput(
+				components.TextInputOptPlaceholder("https://staging.example.com"),
+			)
+			if err != nil {
+				return err
+			}
+			for _, o := range strings.Split(input, ",") {
+				o = strings.TrimSpace(o)
+				o = strings.TrimRight(o, "/")
+				if o != "" && !contains(current, o) {
+					current = append(current, o)
+					fmt.Println(styles.SuccessText.Render("  + " + o))
+				}
+			}
+
+		case "Remove origin":
+			if len(current) == 0 {
+				continue
+			}
+			toRemove, err := c.TUI.NewSelection(current)
+			if err != nil {
+				return err
+			}
+			for _, r := range toRemove {
+				current = remove(current, r)
+				fmt.Println(styles.ErrorText.Render("  - " + r))
+			}
+
+		case "Deploy and exit":
+			content := buildOriginsFile(current)
+			if err := writeAndDeploy(c, managerIp, content); err != nil {
+				return err
+			}
+			fmt.Println(styles.SuccessText.Render("Origins deployed and nginx reloaded."))
+			return nil
+
+		case "Exit without deploying":
+			return nil
 		}
 	}
-	content := strings.Join(lines, "\n") + "\n"
+}
 
-	localPath := "./nginx/staging_origins.map"
+func loadOrigins() []string {
+	data, err := os.ReadFile(originsFilePath)
+	if err != nil {
+		return nil
+	}
+	var origins []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Parse: "https://example.com" 1;
+		parts := strings.Fields(line)
+		if len(parts) >= 1 {
+			origin := strings.Trim(parts[0], "\"")
+			if origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+	}
+	return origins
+}
+
+func buildOriginsFile(origins []string) string {
+	var lines []string
+	lines = append(lines, "# Staging origins > managed by: ./d8x staging-origins")
+	for _, o := range origins {
+		lines = append(lines, fmt.Sprintf("%q 1;", o))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func writeAndDeploy(c *Container, managerIp, content string) error {
 	os.MkdirAll("./nginx", 0755)
-	if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(originsFilePath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("writing file: %w", err)
 	}
 
@@ -52,6 +136,24 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 		return fmt.Errorf("updating nginx: %w", err)
 	}
 
-	fmt.Println(styles.SuccessText.Render("Staging origins updated! Nginx reloaded (no service restart)."))
 	return nil
+}
+
+func contains(list []string, item string) bool {
+	for _, v := range list {
+		if v == item {
+			return true
+		}
+	}
+	return false
+}
+
+func remove(list []string, item string) []string {
+	var result []string
+	for _, v := range list {
+		if v != item {
+			result = append(result, v)
+		}
+	}
+	return result
 }
