@@ -20,7 +20,11 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 		return err
 	}
 
-	current := loadOrigins()
+	current, err := fetchOriginsFromServer(c, managerIp)
+	if err != nil {
+		fmt.Println(styles.ItalicText.Render("Could not fetch origins from server, using local file"))
+		current = loadOrigins()
+	}
 
 	for {
 		if len(current) > 0 {
@@ -87,18 +91,33 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 	}
 }
 
+func fetchOriginsFromServer(c *Container, managerIp string) ([]string, error) {
+	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("SSH connection: %w", err)
+	}
+	output, err := sshConn.ExecCommand("cat /etc/nginx/conf.d/staging_origins.map 2>/dev/null || echo ''")
+	if err != nil {
+		return nil, fmt.Errorf("reading remote file: %w", err)
+	}
+	return parseOrigins(string(output)), nil
+}
+
 func loadOrigins() []string {
 	data, err := os.ReadFile(originsFilePath)
 	if err != nil {
 		return nil
 	}
+	return parseOrigins(string(data))
+}
+
+func parseOrigins(content string) []string {
 	var origins []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		// Parse: "https://example.com" 1;
 		parts := strings.Fields(line)
 		if len(parts) >= 1 {
 			origin := strings.Trim(parts[0], "\"")
