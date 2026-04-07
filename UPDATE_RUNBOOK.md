@@ -163,3 +163,87 @@ Service api updated successfully
 <...>
 ```
 
+## Managing staging origins (whitelist)
+
+The nginx configuration includes an origin whitelist that controls which
+frontends can access the backend APIs. Production origins (`https://app.predictex.io`,
+`https://predictex.io`, `https://app.predictex.com`, `https://predictex.com`)
+are hardcoded in the nginx config. Staging and preview
+origins can be managed dynamically using the CLI.
+
+### Viewing and updating staging origins
+
+Run the `staging-origins` command to add or remove whitelisted staging domains:
+
+```bash
+d8x staging-origins
+```
+
+Will result with output similar to the following:
+```bash
+Manage whitelisted origins
+
+Current whitelisted staging origins:
+  1. https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev
+
+   [x] Add origin
+   [ ] Remove origin
+   [ ] Deploy and exit
+   [ ] Exit without deploying
+╭────────╮
+│   OK   │
+╰────────╯
+> https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev
+
+
+Current whitelisted staging origins:
+  1. https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev
+
+   [ ] Add origin
+   [x] Remove origin
+   [ ] Deploy and exit
+   [ ] Exit without deploying
+╭────────╮
+│   OK   │
+╰────────╯
+
+   [x] https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev
+╭────────╮
+│   OK   │
+╰────────╯
+  - https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev
+
+No staging origins configured.
+
+   [x] Add origin
+   [ ] Deploy and exit
+   [ ] Exit without deploying
+╭────────╮
+│   OK   │
+╰────────╯
+> https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev
+```
+
+This opens an interactive menu where you can:
+- **Add origin**: enter one or more URLs (comma-separated, e.g.
+  `https://feature-mainnet-ready.d8x-based-predictex-frontend.pages.dev`). Trailing slashes
+  are removed automatically.
+- **Remove origin**: select origins to remove from the whitelist.
+- **Deploy and exit**: writes the updated origins to the server and reloads
+  nginx. No downtime or service restart is required.
+- **Exit without deploying**: discards changes.
+
+The staging origins file is stored locally at `./nginx/staging_origins.map` and
+deployed to `/etc/nginx/conf.d/staging_origins.map` on the manager node.
+Changes take effect immediately after nginx reload.
+
+### How the whitelist works
+
+Requests are allowed if either condition is met:
+- The `Origin` header matches a whitelisted domain (production or staging)
+- The `X-Api-Key` header contains a valid API key
+
+Requests that match neither are rejected with `403 Forbidden`. WebSocket
+endpoints (`ws`, `candles`) are not behind the whitelist. The `/health`
+endpoint on the history service is also excluded.
+
