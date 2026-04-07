@@ -75,7 +75,6 @@ Select swarm services to update
    [x] candles-pyth-client
    [x] candles-ws-server
    [x] history
-   [x] referral
 ╭────────╮
 │   OK   │
 ╰────────╯
@@ -86,7 +85,6 @@ Select broker-server services to update
 ╭────────╮
 │   OK   │
 ╰────────╯
-Fetching image tags with sha hashes for service referral
 Fetching image tags with sha hashes for service candles-pyth-client
 Fetching image tags with sha hashes for service candles-ws-server
 Fetching image tags with sha hashes for service api
@@ -95,7 +93,6 @@ Image tags fetched for service ghcr.io/d8-x/d8x-candles-pyth-client
 Image tags fetched for service ghcr.io/d8-x/d8x-trader-main
 Image tags fetched for service ghcr.io/d8-x/d8x-trader-history
 Image tags fetched for service ghcr.io/d8-x/d8x-candles-ws-server
-Image tags fetched for service ghcr.io/d8-x/d8x-referral-system
 
 Choose which image reference to update api service to
 
@@ -136,25 +133,6 @@ Choose which image reference to update history service to
 │   OK   │
 ╰────────╯
 Service history will be updated to ghcr.io/d8-x/d8x-trader-history:main@sha256:001704f5249a88cbd93272da705cd92c933837190653b1ad02e7b63add4a24df
-
-Choose which image reference to update referral service to
-
-   [x] ghcr.io/d8-x/d8x-referral-system:main@sha256:5c38fc8938f9cc85a4168386a684930a97cbe1bcdf06e51df1cf7f34b247cfcd
-   [ ] ghcr.io/d8-x/d8x-referral-system:dev@sha256:cd1925abdcbb17fb063e17370bb3b376d5f85f395e9233873db7e05217098992
-   [ ] Enter image reference manually
-╭────────╮
-│   OK   │
-╰────────╯
-Service referral will be updated to ghcr.io/d8-x/d8x-referral-system:main@sha256:5c38fc8938f9cc85a4168386a684930a97cbe1bcdf06e51df1cf7f34b247cfcd
-Enter your referral payment executor private key:
-> ****************************************************************
-
-Wallet address of entered private key: 0xAc35CA4cC617CFf4143A1471151a904FE535F0c6
-Is this the correct address?
-
-╭─────────╮  ╭────────╮
-│   yes   │  │   no   │
-╰─────────╯  ╰────────╯
 
 Pruning unused resources on worker servers...
 Running docker prune on worker-1:

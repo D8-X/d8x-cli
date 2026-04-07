@@ -56,7 +56,6 @@ func (c *Container) CopyLinodeTFFiles() error {
 			Overwrite: true,
 		},
 	)
-
 }
 
 // BuildTerraformCMD builds terraform configuration for linode cluster creation.
@@ -170,7 +169,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 		components.TextInputOptValue(defaultToken),
 		components.TextInputOptMasked(),
 	)
-
 	if err != nil {
 		return l, err
 	}

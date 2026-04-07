@@ -12,13 +12,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/D8-X/d8x-cli/internal/actions/contracts"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
 
@@ -86,22 +83,6 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 	return c.FS.WriteFile(envPath, []byte(strings.Join(envFileLines, "\n")))
 }
 
-// UpdateReferralSettings is an updateFn for UpdateConfig for referral settings
-// json file
-func UpdateReferralSettingsBrokerPayoutAddress(brokerPayoutAddress string, chainId int) func(referralSettings *[]map[string]any) error {
-	return func(referralSettings *[]map[string]any) error {
-		referralSettingsV := *referralSettings
-		for i, refSetting := range referralSettingsV {
-			if int(refSetting["chainId"].(float64)) == chainId {
-				refSetting["brokerPayoutAddr"] = brokerPayoutAddress
-				(*referralSettings)[i] = refSetting
-				break
-			}
-		}
-		return nil
-	}
-}
-
 // UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
 // candles prices config files
 func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints []string) func(pricesConf *map[string]any) error {
@@ -120,13 +101,11 @@ var swarmDeployConfigFilesToCopy = []files.EmbedCopierOp{
 	// Trader backend configs
 	// Note that .env.example is not recognized in embed.FS
 	{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
-	{Src: "embedded/trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json", Overwrite: false},
 	{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
-	{Src: "embedded/trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json", Overwrite: false},
 	{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
 	// Candles configs
 	{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
-
+	{Src: "embedded/candles/rpc_conf.json", Dst: "./candles/rpc_conf.json", Overwrite: false},
 	// Docker swarm file - do not overwrite and allow user to modify the config
 	// (for example choose specific image manually).
 	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
@@ -182,7 +161,6 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 
 // swarmDeploy performs the swarm deployment step
 func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) error {
-
 	// Find manager ip before we start collecting data in case manager is not
 	// available.
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
@@ -214,7 +192,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		for i, rpconfigFilePath := range []string{
 			"./trader-backend/rpc.main.json",
 			"./trader-backend/rpc.history.json",
-			"./trader-backend/rpc.referral.json",
 		} {
 			httpRpcs, wsRpcs := DistributeRpcs(
 				i,
@@ -224,11 +201,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 			fmt.Printf("Updating %s config...\n", rpconfigFilePath)
 
-			// No wsRPC for referral
-			if i == 2 {
-				wsRpcs = nil
-			}
-
 			if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
 				fmt.Println(
 					styles.ErrorText.Render(
@@ -236,25 +208,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 					),
 				)
 			}
-		}
-
-		// Update referralSettings
-		if err := UpdateConfig[[]map[string]any](
-			"./trader-backend/live.referralSettings.json",
-			UpdateReferralSettingsBrokerPayoutAddress(cfg.ReferralConfig.BrokerPayoutAddress, int(cfg.ChainId)),
-		); err != nil {
-			return fmt.Errorf("updating referralSettings.json: %w", err)
-		}
-		// Validate token X to be a valid erc-20 in live.referralSettings.json
-		refSettings, err := os.Open("./trader-backend/live.referralSettings.json")
-		if err != nil {
-			return err
-		}
-		defer refSettings.Close()
-		fmt.Println("Validating selected tokenX contract...")
-		if err := c.validateReferralConfigTokenX(refSettings, cfg); err != nil {
-			// This error is not critical and should not stop the deployment
-			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("validating tokenX contract: %s", err)))
 		}
 
 		// Update price configs with provided pyth https endpoints. Remove any
@@ -278,43 +231,10 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		}
 	}
 
-	// Collected input data
-	pk := c.Input.swarmDeployInput.referralPaymentExecutorPrivateKey
-	pkWalletAddress := c.Input.swarmDeployInput.referralPaymentExecutorWalletAddress
-
-	// Check if user provided broker allowed executor pk's address matches
-	// with values in broker/chainConfig.json and report if not
-	if cfg.BrokerDeployed {
-		allowedExecutorAddrs, err := c.GetBrokerChainConfigJsonAllowedExecutors("./broker-server/chainConfig.json", cfg)
-		if err != nil {
-			return fmt.Errorf("reading ./broker-server/chainConfig.json: %w", err)
-		}
-		matchFound := false
-		for _, allowedAddr := range allowedExecutorAddrs {
-			if strings.EqualFold(strings.TrimSpace(pkWalletAddress), strings.TrimSpace(allowedAddr)) {
-				matchFound = true
-				break
-			}
-		}
-		if !matchFound {
-			// Allowed executor was either different or not found for selected chain
-			fmt.Println(
-				styles.ErrorText.Render(
-					"provided referral executor address did not match any allowedExecutor address for chain id" + strconv.Itoa(int(cfg.ChainId)) + " in ./broker-server/chainConfig.json",
-				),
-			)
-		}
-	}
-
-	keyfileLocal := "./trader-backend/keyfile.txt"
-	if err := c.FS.WriteFile(keyfileLocal, []byte("0x"+pk)); err != nil {
-		return fmt.Errorf("temp storage of keyfile failed: %w", err)
-	}
-
 	if showConfigConfirmation {
 		fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
 		fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-		for _, f := range swarmDeployConfigFilesToCopy[:6] {
+		for _, f := range swarmDeployConfigFilesToCopy {
 			fmt.Println(f.Dst)
 		}
 		c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
@@ -367,13 +287,22 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
-	cmd := fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir /var/nfs/general -p && chown nobody:nogroup /var/nfs/general" `, pwd)
+	cmd := fmt.Sprintf(
+		`echo '%s' | sudo -S bash -c 'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general'`,
+		pwd,
+	)
+
 	configEtcExports := "#"
 	for _, ip := range ipWorkersPriv {
-		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "ufw allow from %s to any port nfs" `, pwd, ip)
+		// Essentially ufw allow from %s to any port nfs (tcp/udp)
+		iptables := fmt.Sprintf(`iptables -A INPUT -s %[1]s -p tcp --dport 2049 -j ACCEPT && iptables -A INPUT -s %[1]s -p udp --dport 2049 -j ACCEPT`, ip)
+		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "%s" `, pwd, iptables)
 		cmd = cmd + cmdUfw
 		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
+	// Persist rules
+	cmd = cmd + fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4" `, pwd)
+
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
@@ -386,41 +315,34 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	managedConfigNames := []string{
 		"cfg_rpc",
-		"cfg_rpc_referral",
 		"cfg_rpc_history",
-		"cfg_referral",
 		"cfg_prices",
+		"cfg_rpc_candles",
 	}
 	// Lines of docker config commands which we will concat into single
 	// bash -c ssh call
 	dockerConfigsCMD := []string{
 		`docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1`,
-		`docker config create cfg_rpc_referral ./trader-backend/rpc.referral.json >/dev/null 2>&1`,
 		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
-		`docker config create cfg_referral ./trader-backend/live.referralSettings.json >/dev/null 2>&1`,
 		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
-
+		`docker config create cfg_rpc_candles ./candles/rpc_conf.json >/dev/null 2>&1`,
 		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
 	// List of files to transfer to manager
 	copyList := []conn.SftpCopySrcDest{
 		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
-		{Src: "./trader-backend/live.referralSettings.json", Dst: "./trader-backend/live.referralSettings.json"},
 		{Src: "./trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json"},
-		{Src: "./trader-backend/rpc.referral.json", Dst: "./trader-backend/rpc.referral.json"},
 		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
-		// Keyfile contains unencrypted private key
-		{Src: "./trader-backend/keyfile.txt", Dst: "./trader-backend/keyfile.txt"},
 		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
 		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
+		{Src: "./candles/rpc_conf.json", Dst: "./candles/rpc_conf.json"},
 		// Note we are renaming to docker-stack.yml on remote!
 		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
 	}
 
 	// Copy files to remote
 	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
-	defer os.Remove(keyfileLocal)
 	if err := managerSSHConn.CopyFilesOverSftp(
 		copyList...,
 	); err != nil {
@@ -431,14 +353,12 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	// enable nfs server
 	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mv ./trader-backend/keyfile.txt /var/nfs/general/keyfile.txt && chown nobody:nogroup /var/nfs/general/keyfile.txt && chmod 775 /var/nfs/general/keyfile.txt" && `, pwd)
-	cmd = cmd + fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports \
-		&& systemctl restart nfs-kernel-server" `, pwd)
+	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server"`, pwd)
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
 	if err != nil {
-		return fmt.Errorf("Error starting NFS server: %w", err)
+		return fmt.Errorf("starting NFS server: %w", err)
 	}
 
 	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
@@ -750,12 +670,6 @@ var hostsTpl = []hostnameTuple{
 		serviceName: configs.D8XServiceHistory,
 	},
 	{
-		prompt:      "Enter Referral HTTP (sub)domain: ",
-		placeholder: "referral.d8x.xyz",
-		find:        "%referral%",
-		serviceName: configs.D8XServiceReferral,
-	},
-	{
 		prompt:      "Enter Candlesticks Websockets (sub)domain: ",
 		placeholder: "candles.d8x.xyz",
 		find:        "%candles_ws%",
@@ -813,58 +727,6 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 	return nil
 }
 
-// validateReferralConfigTokenX validates if provided tokenX contract is a valid
-// erc-20 contract for selected chain in cfg by checking its decimals.
-func (c *Container) validateReferralConfigTokenX(liveReferralCfg io.Reader, cfg *configs.D8XConfig) error {
-	selectedChain := strconv.Itoa(int(cfg.ChainId))
-
-	cfgJson, err := io.ReadAll(liveReferralCfg)
-	if err != nil {
-		return fmt.Errorf("reading live.referralSettings.json: %w", err)
-	}
-	refCfg := []configs.ReferralSettingConfig{}
-	if err := json.Unmarshal(cfgJson, &refCfg); err != nil {
-		return fmt.Errorf("parsing live.referralSettings.json: %w", err)
-	}
-	var selectedChainRefCfg configs.ReferralSettingConfig
-	for _, refCfg := range refCfg {
-		if refCfg.ChainId == int(cfg.ChainId) {
-			selectedChainRefCfg = refCfg
-			break
-		}
-	}
-	selectedTokenX := selectedChainRefCfg.TokenX.Address
-	if selectedTokenX == "" {
-		return fmt.Errorf("no tokenX address was provided in live.referralSettings.json")
-	}
-
-	httpRpcsList := cfg.HttpRpcList[selectedChain]
-	if len(httpRpcsList) == 0 {
-		return fmt.Errorf("no http rpcs were provided")
-	}
-	ec, err := ethclient.Dial(httpRpcsList[0])
-	if err != nil {
-		return fmt.Errorf("could not connect to rpc: %w", err)
-	}
-
-	erc20, err := contracts.NewERC20(common.HexToAddress(selectedTokenX), ec)
-	if err != nil {
-		return fmt.Errorf("could not initialize erc20 contract: %w", err)
-	}
-	decimals, err := erc20.Decimals(nil)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(
-		styles.SuccessText.Render(
-			fmt.Sprintf("TokenX contract %s is a valid erc-20 contract with %d decimals\n", selectedTokenX, decimals),
-		),
-	)
-
-	return nil
-}
-
 // enableSectionsInNginxFile reads contents of nginx configuration file at
 // nginxCfgPath and processes it to enable priovided enableSections sections and
 // writes the result in place.
@@ -890,7 +752,7 @@ func enableSectionsInNginxFile(nginxCfgPath string, enableSections []NginxConfig
 		cfgBuf = bytes.NewBuffer(nginxConfUpdated)
 	}
 
-	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0644)
+	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0o644)
 }
 
 // processNginxConfigComments enables (uncomments) provided enableSection in

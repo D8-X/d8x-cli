@@ -22,8 +22,6 @@ const (
 
 	D8XServiceHistory D8XServiceName = "history"
 
-	D8XServiceReferral D8XServiceName = "referral"
-
 	D8XServiceCandlesWs D8XServiceName = "candles_ws"
 )
 
@@ -33,7 +31,6 @@ var SuggestedSubdomains = map[D8XServiceName]string{
 	D8XServiceMainHTTP:  "api",
 	D8XServiceMainWS:    "ws",
 	D8XServiceHistory:   "history",
-	D8XServiceReferral:  "referral",
 	D8XServiceCandlesWs: "candles",
 }
 
@@ -45,8 +42,6 @@ type D8XConfig struct {
 	AWSConfig    *D8XAWSConfig    `json:"aws_config"`
 
 	BrokerServerConfig D8XBrokerServerConfig `json:"broker_server_config"`
-
-	ReferralConfig ReferralConfig `json:"referral_config"`
 
 	// Chain id of all services
 	ChainId uint `json:"chain_id"`
@@ -134,11 +129,6 @@ func (d *D8XConfig) ResetDeploymentStatus() {
 	}
 }
 
-type ReferralConfig struct {
-	// ExecutorAddress     string `json:"executor_address"`
-	BrokerPayoutAddress string `json:"broker_payout_address"`
-}
-
 func (d *D8XConfig) IsEmpty() bool {
 	return d.ServerProvider == ""
 }
@@ -205,10 +195,6 @@ type D8XBrokerServerConfig struct {
 
 	RedisPassword string `json:"redis_password"`
 
-	// Executor address must match the provided Executor private key in swarm
-	// setup. This is referral executor address, even though managed on broker
-	// config.
-	ExecutorAddress string `json:"executor_address"`
 }
 
 func NewD8XConfig() *D8XConfig {
