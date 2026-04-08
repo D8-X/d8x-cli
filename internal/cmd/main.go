@@ -226,6 +226,7 @@ func RunD8XCli() {
 			&cli.StringFlag{
 				Name:        flags.PrivateKeyPath,
 				Value:       "./id_ed25519",
+				EnvVars:     []string{"SSH_KEY_PATH"},
 				Destination: &container.SshKeyPath,
 				Usage:       "Default ssh key path used to access servers",
 			},
