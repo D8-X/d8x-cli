@@ -143,9 +143,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 	// Exec broker-server deployment cmd
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up -d"
+	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d docker compose up -d"
 	out, err = sshClient.ExecCommand(
-		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw),
+		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw, cfg.ChainId),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
