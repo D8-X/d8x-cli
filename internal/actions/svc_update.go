@@ -315,14 +315,19 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		}
 
 		cfg, _ := c.ConfigRWriter.Read()
+		brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
+		if brokerPrivateIp == "" {
+			brokerPrivateIp = "127.0.0.1"
+		}
 		if err := sshConn.ExecCommandPiped(
 			fmt.Sprintf(
-				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d docker compose up %[2]s -d`,
+				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s docker compose up %[2]s -d`,
 				brokerDir,
 				svcToUpdate,
 				feeTBPS,
 				redisPassword,
 				cfg.ChainId,
+				brokerPrivateIp,
 			),
 		); err != nil {
 			return err
