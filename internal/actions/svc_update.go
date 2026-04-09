@@ -323,9 +323,9 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 		}
 
 		cfg, _ := c.ConfigRWriter.Read()
-		brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
-		if brokerPrivateIp == "" {
-			brokerPrivateIp = "127.0.0.1"
+		brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
+		if err != nil || brokerPrivateIp == "" {
+			return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 		}
 		if err := sshConn.ExecCommandPiped(
 			fmt.Sprintf(

@@ -102,9 +102,10 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 	if err == nil {
 		brokerConn, err := conn.NewSSHConnection(brokerIp, c.DefaultClusterUserName, c.SshKeyPath)
 		if err == nil {
-			brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
-			if brokerPrivateIp == "" {
-				brokerPrivateIp = "127.0.0.1"
+			brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
+			if err != nil || brokerPrivateIp == "" {
+				fmt.Printf("\n%s broker_private_ip not found in hosts.cfg\n", notok)
+				return nil
 			}
 
 			fmt.Printf("\nBroker services (docker compose):\n")

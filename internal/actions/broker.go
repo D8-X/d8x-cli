@@ -150,9 +150,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 
 	// Exec broker-server deployment cmd
-	brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
-	if brokerPrivateIp == "" {
-		brokerPrivateIp = "127.0.0.1"
+	brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
+	if err != nil || brokerPrivateIp == "" {
+		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 	}
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
 	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s docker compose up -d"
@@ -206,9 +206,9 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return fmt.Errorf("broker server ip not found in hosts.cfg: %w", err)
 	}
 
-	brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
-	if brokerPrivateIp == "" {
-		brokerPrivateIp = "127.0.0.1"
+	brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
+	if err != nil || brokerPrivateIp == "" {
+		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 	}
 
 	sshConn, err := c.CreateSSHConn(brokerIpAddr, c.DefaultClusterUserName, c.SshKeyPath)
