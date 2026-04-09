@@ -32,17 +32,18 @@ func (c *Container) DisplayPasswordAlert() {
 }
 
 // Get password gets the password with the following precedence:
-// 1. --password flag
-// 2. ./password.txt file in cwd
+// 1. Container.UserPassword (set by EnsureEnvironment from SERVER_PASSWORD_{ENV})
+// 2. --password flag
+// 3. ./password.txt file in cwd
+// 4. Prompt the user
 func defaultPasswordGetter(ctx *cli.Context) (string, error) {
 	if pwd := ctx.String(flags.Password); pwd != "" {
 		return pwd, nil
 	}
-	if pwd, err := os.ReadFile(configs.DEFAULT_PASSWORD_FILE); err != nil {
-		return "", fmt.Errorf("could not retrieve the password: %w", err)
-	} else {
-		return string(pwd), nil
+	if pwd, err := os.ReadFile(configs.DEFAULT_PASSWORD_FILE); err == nil && len(strings.TrimSpace(string(pwd))) > 0 {
+		return strings.TrimSpace(string(pwd)), nil
 	}
+	return "", fmt.Errorf("password not found")
 }
 
 // TrimHttpsPrefix removes http:// or https:// prefix from the url

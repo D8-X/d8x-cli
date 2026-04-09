@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/actions"
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -15,6 +17,34 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/urfave/cli/v2"
 )
+
+// loadDotEnv reads a .env file and sets env vars that are not already set.
+func loadDotEnv(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		v = strings.Trim(v, "\"'")
+		// Don't override existing env vars
+		if os.Getenv(k) == "" {
+			os.Setenv(k, v)
+		}
+	}
+}
 
 const D8XASCII = ` ____     ___   __  __
 |  _ \   ( _ )  \ \/ /
@@ -87,6 +117,8 @@ func RunD8XCli() {
 						"swarm-deploy",
 						"swarm-nginx",
 						"metrics-deploy",
+						"staging-origins",
+						"so",
 
 						// Help is always included
 						"help",
@@ -142,6 +174,12 @@ func RunD8XCli() {
 						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
 						Action:      container.DeployMetrics,
 						Description: DeployMetricsDescription,
+					},
+					{
+						Name:    "staging-origins",
+						Aliases: []string{"so"},
+						Usage:   "Update whitelisted staging origins",
+						Action:  container.UpdateStagingOrigins,
 					},
 				},
 			},
@@ -202,12 +240,6 @@ func RunD8XCli() {
 				Description: "Create a ssh tunnel to database server. Database credentials are read from d8x.conf.json file.",
 			},
 			{
-				Name:    "staging-origins",
-				Aliases: []string{"so"},
-				Usage:   "Update whitelisted staging origins",
-				Action:  container.UpdateStagingOrigins,
-			},
-			{
 				Name:   "fix-ingress",
 				Usage:  "Fix faulty ingress network",
 				Action: container.IngressFix,
@@ -238,8 +270,19 @@ func RunD8XCli() {
 			},
 			&cli.StringFlag{
 				Name:        flags.Password,
+				EnvVars:     []string{"SERVER_PASSWORD"},
 				Destination: &container.UserPassword,
 				Usage:       "User's password used for tasks requiring elevated permissions, if not provided, default password file will be read.",
+			},
+			&cli.StringFlag{
+				Name:    flags.GithubToken,
+				EnvVars: []string{"GITHUB_TOKEN"},
+				Usage:   "GitHub token for accessing backend-nginx-infra-config repo",
+			},
+			&cli.StringFlag{
+				Name:    flags.NginxApiKey,
+				EnvVars: []string{"NGINX_API_KEY"},
+				Usage:   "API key for nginx auth_check.conf",
 			},
 			&cli.StringFlag{
 				Name:  "chdir",
@@ -260,6 +303,9 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
+			// Load .env file if present
+			loadDotEnv(".env")
+
 			// Cached ChainJson information
 			chainJsonData, err := container.LoadChainJson()
 			if err != nil {

@@ -47,12 +47,20 @@ func (c *Container) CopyBrokerDeployConfigs() error {
 func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting broker server deployment configuration...")
 
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+
 	if err := c.Input.CollectBrokerDeployInput(ctx); err != nil {
 		return fmt.Errorf("collecting broker deploy input: %w", err)
 	}
 
 	// Refresh the cfg after input was collected
-	cfg, err := c.ConfigRWriter.Read()
+	cfg, err = c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
@@ -170,13 +178,19 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Performing nginx and certbot setup for broker server...")
 
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+
 	if err := c.Input.CollectBrokerNginxInput(ctx); err != nil {
 		return err
 	}
 
-	// Load config which we will later use to write details about broker sever
-	// service.
-	cfg, err := c.ConfigRWriter.Read()
+	cfg, err = c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}

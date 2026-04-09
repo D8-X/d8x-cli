@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
@@ -120,6 +120,14 @@ func (c *Container) CopySwarmDeployConfigs() error {
 
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
 
 	if err := c.swarmDeploy(ctx, true); err != nil {
 		return err
@@ -486,43 +494,24 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 }
 
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Starting swarm nginx and certbot setup...")
+	styles.PrintCommandTitle("Starting swarm nginx setup...")
 
-	if err := c.Input.CollectSwarmNginxInputs(ctx); err != nil {
-		return err
-	}
-
-	// Load config which we will later use to write details about services.
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
-
-	// Copy nginx config and ansible playbook for swarm nginx setup
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/nginx/nginx.conf", Dst: "./nginx/nginx.conf", Overwrite: true},
-		files.EmbedCopierOp{Src: "embedded/nginx/nginx.server.conf", Dst: "./nginx.server.conf", Overwrite: true},
-		files.EmbedCopierOp{Src: "embedded/playbooks/nginx.ansible.yaml", Dst: "./playbooks/nginx.ansible.yaml", Overwrite: true},
-	); err != nil {
+	env, err := c.EnsureEnvironment(cfg)
+	if err != nil {
 		return err
 	}
 
-	// Process any nginx config overwrites
-	enableNginxSections := make([]NginxConfigSection, 0, 2)
-	if c.Input.nginxOverwrites.enableCloudflareRealIps {
-		enableNginxSections = append(enableNginxSections, RealIpCloudflare)
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN is required in .env file")
 	}
-	if c.Input.nginxOverwrites.enableNginxRateLimiting {
-		enableNginxSections = append(enableNginxSections, EnableRateLimiting)
-	}
-	if len(enableNginxSections) > 0 {
-		if err := enableSectionsInNginxFile("./nginx/nginx.conf", enableNginxSections); err != nil {
-			return fmt.Errorf("enabling nginx sections in ./nginx/nginx.conf: %w", err)
-		}
-		if err := enableSectionsInNginxFile("./nginx.server.conf", enableNginxSections); err != nil {
-			return fmt.Errorf("enabling nginx sections in ./nginx.server.conf: %w", err)
-		}
+	apiKey := os.Getenv("NGINX_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("NGINX_API_KEY is required in .env file")
 	}
 
 	password, err := c.GetPassword(ctx)
@@ -535,104 +524,69 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	setupCertbot := c.Input.swarmNginxInput.setupCertbot
-	emailForCertbot := cfg.CertbotEmail
-	services := c.Input.swarmNginxInput.collectedServiceDomains
-
-	replacements := make([]files.ReplacementTuple, len(services))
-	for i, svc := range services {
-		replacements[i] = files.ReplacementTuple{
-			Find:    svc.find,
-			Replace: svc.server,
-		}
+	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return fmt.Errorf("SSH connection: %w", err)
 	}
-	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))
-	// Replace server_name's in nginx.conf
-	if err := c.FS.ReplaceAndCopy(
-		"./nginx/nginx.conf",
-		"./nginx.configured.conf",
-		replacements,
-	); err != nil {
+
+	fmt.Println(styles.ItalicText.Render("Fetching nginx configs from GitHub..."))
+	deployCfg, err := fetchAndBuildNginxConfig(token, env)
+	if err != nil {
+		return err
+	}
+	deployCfg.sshConn = sshConn
+	deployCfg.password = password
+	deployCfg.apiKey = apiKey
+
+	fmt.Println("Installing certbot...")
+	sshExecSudo(sshConn, password, "apt-get remove -y certbot 2>/dev/null; true")
+	sshExecSudo(sshConn, password, "snap install --classic certbot 2>/dev/null; true")
+	sshExecSudo(sshConn, password, "ln -sf /snap/bin/certbot /usr/bin/certbot")
+
+	if err := deployNginxFull(*deployCfg); err != nil {
 		return err
 	}
 
-	fmt.Println(
-		styles.AlertImportant.Render(
-			"Please create the following DNS records on your domain provider's website now:",
-		),
-	)
-	for _, svc := range services {
-		fmt.Printf("Hostname: %s\tType: A\tIP: %s\n", svc.server, managerIp)
-	}
-	c.TUI.NewConfirmation("\nPress enter when done...")
-
-	// Hostnames - domains list provided for certbot
-	hostnames := make([]string, len(services))
-	for i, svc := range services {
-		hostnames[i] = svc.server
-		// Store services in d8x config
-		cfg.Services[svc.serviceName] = configs.D8XService{
-			Name:      svc.serviceName,
-			UsesHTTPS: setupCertbot,
-			HostName:  svc.server,
-		}
-	}
-
-	// Run ansible-playbook for nginx setup on broker server
-	args := []string{
-		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, c.SshKeyPath),
-		"--extra-vars", "ansible_host_key_checking=false",
-		"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, password),
-		"-i", configs.DEFAULT_HOSTS_FILE,
-		"-u", c.DefaultClusterUserName,
-		"./playbooks/nginx.ansible.yaml",
-	}
-	cmd := exec.Command("ansible-playbook", args...)
-	connectCMDToCurrentTerm(cmd)
-	if err := c.RunCmd(cmd); err != nil {
+	setupCertbot, err := c.TUI.NewPrompt("Setup SSL certificates with certbot?", true)
+	if err != nil {
 		return err
-	} else {
-		fmt.Println(styles.SuccessText.Render("Manager node nginx setup done!"))
-
-		// Update sate
-		cfg.SwarmNginxDeployed = true
 	}
-
 	if setupCertbot {
-		fmt.Println(styles.ItalicText.Render("Setting up ssl certificates with certbot..."))
-		sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
-		if err != nil {
-			return err
+		fmt.Println("Enter email for certbot:")
+		email := cfg.CertbotEmail
+		if email == "" {
+			email, err = c.TUI.NewInput(components.TextInputOptPlaceholder("admin@example.com"))
+			if err != nil {
+				return err
+			}
+			cfg.CertbotEmail = email
 		}
 
-		out, err := c.certbotNginxSetup(
-			sshConn,
-			password,
-			emailForCertbot,
-			hostnames,
-		)
-		fmt.Println(string(out))
-
-		if err != nil {
-			restart, err2 := c.TUI.NewPrompt("Certbot setup failed, do you want to restart the swarm-nginx setup?", true)
-			if err2 != nil {
-				return err2
+		// Issue certs for all server_names in sites.conf
+		hostnames := extractAllServerNames(deployCfg.sitesConfContent)
+		for _, host := range hostnames {
+			fmt.Printf("  Issuing cert for %s...\n", host)
+			cmd := fmt.Sprintf("echo '%s' | sudo -S certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", password, host, email)
+			out, err := sshConn.ExecCommand(cmd)
+			if err != nil {
+				fmt.Printf("  %s certbot failed for %s: %s\n", notok, host, strings.TrimSpace(string(out)))
+			} else {
+				fmt.Printf("  %s %s\n", ok, host)
 			}
-			if restart {
-				return c.SwarmNginx(ctx)
-			}
-			return fmt.Errorf("certbot setup failed: %w", err)
-		} else {
-			fmt.Println(styles.SuccessText.Render("Manager server certificates setup done!"))
-
-			cfg.SwarmCertbotDeployed = true
 		}
+
+		// Enable certbot renewal timer
+		sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer")
+
+		cfg.SwarmCertbotDeployed = true
 	}
 
+	cfg.SwarmNginxDeployed = true
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return fmt.Errorf("could not update config: %w", err)
 	}
 
+	fmt.Println(styles.SuccessText.Render("Nginx deployment complete."))
 	return nil
 }
 

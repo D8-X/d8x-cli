@@ -21,6 +21,9 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
 
 	serverName := ctx.Args().First()
 	ip := ""

@@ -8,4 +8,6 @@ const (
 	ConfigDir      = "config-directory"
 	PrivateKeyPath = "ssh-key-path"
 	PgCertPath     = "pg-cert"
+	GithubToken    = "github-token"
+	NginxApiKey    = "nginx-api-key"
 )

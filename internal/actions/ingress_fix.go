@@ -16,6 +16,14 @@ import (
 // recreate ingress on manager; reboot manager's docker; reboot all workers'
 // docker.
 func (c *Container) IngressFix(ctx *cli.Context) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+
 	pwd, err := c.GetPassword(ctx)
 	if err != nil {
 		return err

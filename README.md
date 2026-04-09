@@ -545,6 +545,25 @@ using manager server as jump host.
 	- password: `password` value from `aws_rds_postgres.txt`
 6. Inspect the database
 
+# Nginx & Environment Configuration
+
+The CLI reads nginx configs from [D8-X/backend-nginx-infra-config](https://github.com/D8-X/backend-nginx-infra-config) via the GitHub API. Each folder in that repo (`testnet/`, `mainnet/`, ...) is an environment.
+
+To pass the secrets to it create a `.env` file in the working working directory:
+
+```
+GITHUB_TOKEN=ghp_xxx
+NGINX_API_KEY=your-api-key
+SSH_KEY_PATH_TESTNET=./id_ed25519
+SERVER_PASSWORD_TESTNET=sudo-password
+```
+
+`SSH_KEY_PATH_` and `SERVER_PASSWORD_` must end with the environment name (uppercase folder name from the infra repo). Missing values are prompted interactively. It is also possible to pass the secrets values via the CLI command line flags, but using a `.env` file is more convenient.
+
+
+- `d8x setup swarm-nginx`: full nginx deploy + SSL certs
+- `d8x setup staging-origins`: manage staging origins only (alias: `so`)
+
 # Broker .env
 
 You can place `.env` file in the `broker-server` directory. This file will be

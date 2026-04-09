@@ -1,34 +1,84 @@
 package actions
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
 
-const originsFilePath = "./nginx/staging_origins.map"
+const ghRepo = "D8-X/backend-nginx-infra-config"
+
+type ghFileResponse struct {
+	Content string `json:"content"`
+	SHA     string `json:"sha"`
+}
 
 func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Manage whitelisted origins")
+
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN is required in .env file")
+	}
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		cfg = &configs.D8XConfig{}
+	}
+
+	apiKey := os.Getenv("NGINX_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("NGINX_API_KEY is required in .env file")
+	}
+
+	env, err := c.EnsureEnvironment(cfg)
+	if err != nil {
+		return err
+	}
+
+	nginxConfPath := env + "/nginx.conf"
+	stagingPath := env + "/staging_origins.map"
+
+	nginxConf, err := ghReadFile(token, nginxConfPath)
+	if err != nil {
+		fmt.Println(styles.ItalicText.Render("Could not read nginx.conf from GitHub: " + err.Error()))
+	} else {
+		prodOrigins := parseProductionOrigins(nginxConf.Content)
+		if len(prodOrigins) > 0 {
+			fmt.Println(styles.ItalicText.Render("\nProduction origins (nginx.conf):"))
+			for _, o := range prodOrigins {
+				fmt.Printf("  %s\n", o)
+			}
+		}
+	}
+
+	stagingFile, err := ghReadFile(token, stagingPath)
+	var current []string
+	var currentSHA string
+	if err != nil {
+		fmt.Println(styles.ItalicText.Render("Could not read staging_origins.map from GitHub, starting fresh"))
+	} else {
+		current = parseOrigins(stagingFile.Content)
+		currentSHA = stagingFile.SHA
+	}
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return err
 	}
 
-	current, err := fetchOriginsFromServer(c, managerIp)
-	if err != nil {
-		fmt.Println(styles.ItalicText.Render("Could not fetch origins from server, using local file"))
-		current = loadOrigins()
-	}
-
 	for {
 		if len(current) > 0 {
-			fmt.Println(styles.ItalicText.Render("\nCurrent whitelisted staging origins:"))
+			fmt.Println(styles.ItalicText.Render("\nStaging origins:"))
 			for i, o := range current {
 				fmt.Printf("  %d. %s\n", i+1, o)
 			}
@@ -41,11 +91,11 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 			actions = []string{"Add origin", "Deploy and exit", "Exit without deploying"}
 		}
 
-		selected, err := c.TUI.NewSelection(actions, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+		sel, err := c.TUI.NewSelection(actions, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
 			return err
 		}
-		action := selected[0]
+		action := sel[0]
 
 		switch action {
 		case "Add origin":
@@ -78,11 +128,59 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 			}
 
 		case "Deploy and exit":
-			content := buildOriginsFile(current)
-			if err := writeAndDeploy(c, managerIp, content); err != nil {
+			stagingContent := buildOriginsFile(current)
+
+			oldContent := ""
+			if stagingFile != nil {
+				oldContent = stagingFile.Content
+			}
+			if stagingContent != oldContent {
+				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA)
+				if err != nil {
+					return fmt.Errorf("pushing to GitHub: %w", err)
+				}
+				currentSHA = newSHA
+				fmt.Println(styles.SuccessText.Render("Pushed staging_origins.map to GitHub."))
+			} else {
+				fmt.Println(styles.ItalicText.Render("No changes to staging origins, skipping GitHub push."))
+			}
+
+			// Deploy only staging_origins.map and auth_check.conf (don't touch nginx.conf/sites.conf to preserve SSL)
+			password := c.UserPassword
+			if password == "" {
+				password, _ = c.GetPassword(ctx)
+			}
+			if password == "" {
+				fmt.Println("Enter server sudo password:")
+				password, err = c.TUI.NewInput(components.TextInputOptPlaceholder("password"))
+				if err != nil {
+					return err
+				}
+			}
+			sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+			if err != nil {
+				return fmt.Errorf("SSH connection: %w", err)
+			}
+
+			// Deploy staging origins
+			if err := sshWriteFileSudo(sshConn, password, "/etc/nginx/conf.d/staging_origins.map", stagingContent); err != nil {
 				return err
 			}
-			fmt.Println(styles.SuccessText.Render("Origins deployed and nginx reloaded."))
+			fmt.Println("  deployed /etc/nginx/conf.d/staging_origins.map")
+
+			authCheck, err := ghReadFile(token, env+"/auth_check.conf")
+			if err != nil {
+				return fmt.Errorf("reading auth_check.conf: %w", err)
+			}
+			authCheckContent := strings.ReplaceAll(authCheck.Content, "API_KEY_HERE", apiKey)
+			if err := sshWriteFileSudo(sshConn, password, "/etc/nginx/auth_check.conf", authCheckContent); err != nil {
+				return err
+			}
+			fmt.Println("  deployed /etc/nginx/auth_check.conf")
+
+			// Reload nginx
+			sshExecSudo(sshConn, password, "nginx -s reload")
+			fmt.Println(styles.SuccessText.Render("Nginx reloaded."))
 			return nil
 
 		case "Exit without deploying":
@@ -91,24 +189,142 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 	}
 }
 
-func fetchOriginsFromServer(c *Container, managerIp string) ([]string, error) {
-	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+func ghListDirs(token string) ([]string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/", ghRepo)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("SSH connection: %w", err)
+		return nil, err
 	}
-	output, err := sshConn.ExecCommand("cat /etc/nginx/conf.d/staging_origins.map 2>/dev/null || echo ''")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("reading remote file: %w", err)
+		return nil, err
 	}
-	return parseOrigins(string(output)), nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(body))
+	}
+
+	var entries []struct {
+		Name string `json:"name"`
+		Type string `json:"type"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&entries); err != nil {
+		return nil, err
+	}
+
+	var dirs []string
+	for _, e := range entries {
+		if e.Type == "dir" {
+			dirs = append(dirs, e.Name)
+		}
+	}
+	return dirs, nil
 }
 
-func loadOrigins() []string {
-	data, err := os.ReadFile(originsFilePath)
+func ghReadFile(token, path string) (*ghFileResponse, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", ghRepo, path)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return parseOrigins(string(data))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(body))
+	}
+
+	var file ghFileResponse
+	if err := json.NewDecoder(resp.Body).Decode(&file); err != nil {
+		return nil, err
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(file.Content, "\n", ""))
+	if err != nil {
+		return nil, fmt.Errorf("decoding base64: %w", err)
+	}
+	file.Content = string(decoded)
+	return &file, nil
+}
+
+func ghWriteFile(token, path, content, sha string) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", ghRepo, path)
+
+	payload := map[string]string{
+		"message": "update staging origins - committed by d8x-cli",
+		"content": base64.StdEncoding.EncodeToString([]byte(content)),
+	}
+	if sha != "" {
+		payload["sha"] = sha
+	}
+
+	body, _ := json.Marshal(payload)
+	req, err := http.NewRequest("PUT", url, strings.NewReader(string(body)))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Content struct {
+			SHA string `json:"sha"`
+		} `json:"content"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	return result.Content.SHA, nil
+}
+
+func parseProductionOrigins(nginxConf string) []string {
+	var origins []string
+	inMap := false
+	for _, line := range strings.Split(nginxConf, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "map $http_origin") {
+			inMap = true
+			continue
+		}
+		if inMap {
+			if line == "}" {
+				break
+			}
+			if strings.HasPrefix(line, "default") || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "include") || line == "" {
+				continue
+			}
+			parts := strings.Fields(line)
+			if len(parts) >= 1 {
+				origin := strings.Trim(parts[0], "\"")
+				origins = append(origins, origin)
+			}
+		}
+	}
+	return origins
 }
 
 func parseOrigins(content string) []string {
@@ -136,26 +352,6 @@ func buildOriginsFile(origins []string) string {
 		lines = append(lines, fmt.Sprintf("%q 1;", o))
 	}
 	return strings.Join(lines, "\n") + "\n"
-}
-
-func writeAndDeploy(c *Container, managerIp, content string) error {
-	os.MkdirAll("./nginx", 0755)
-	if err := os.WriteFile(originsFilePath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("writing file: %w", err)
-	}
-
-	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
-	if err != nil {
-		return fmt.Errorf("SSH connection: %w", err)
-	}
-
-	escaped := strings.ReplaceAll(content, "'", "'\\''")
-	cmd := fmt.Sprintf("echo '%s' | sudo tee /etc/nginx/conf.d/staging_origins.map > /dev/null && sudo nginx -s reload", escaped)
-	if _, err := sshConn.ExecCommand(cmd); err != nil {
-		return fmt.Errorf("updating nginx: %w", err)
-	}
-
-	return nil
 }
 
 func contains(list []string, item string) bool {

@@ -7,6 +7,14 @@ import (
 )
 
 func (c *Container) Ips(ctx *cli.Context) error {
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+
 	onlyIp := ctx.Bool("quiet")
 	switch ctx.Args().First() {
 	case "manager":

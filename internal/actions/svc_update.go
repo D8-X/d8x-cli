@@ -28,6 +28,14 @@ type DokcerStackFileServices struct {
 func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Updating swarm services...")
 
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+
 	// Swarm services
 	services, err := configs.GetSwarmDockerServices(true)
 	if err != nil {

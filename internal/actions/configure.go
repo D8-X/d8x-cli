@@ -22,6 +22,9 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
 
 	// Update hosts.cfg for linode provider in case d8x config was changed
 	// manually

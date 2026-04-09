@@ -34,6 +34,9 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -187,6 +190,9 @@ func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []str
 func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
 	}
 	if !cfg.MetricsDeployed {
