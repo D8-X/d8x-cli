@@ -545,24 +545,35 @@ using manager server as jump host.
 	- password: `password` value from `aws_rds_postgres.txt`
 6. Inspect the database
 
-# Nginx & Environment Configuration
+# Secrets
 
-The CLI reads nginx configs from [D8-X/backend-nginx-infra-config](https://github.com/D8-X/backend-nginx-infra-config) via the GitHub API. Each folder in that repo (`testnet/`, `mainnet/`, ...) is an environment.
+Install the Bitwarden CLI and log in to the quantena organization:
 
-To pass the secrets to it create a `.env` file in the working working directory:
+```bash
+brew install bitwarden-cli
+bw login
+```
+
+The CLI will prompt for your Bitwarden master password on each run and load secrets from the shared `d8x-cli` note in the quantena vault.
+
+Alternatively, create a `.env` file in the working directory. And copy the secrets from the Bitwarden note into the `.env` file in the format `KEY=VALUE`, for example:
 
 ```
 GITHUB_TOKEN=ghp_xxx
 NGINX_API_KEY=your-api-key
-SSH_KEY_PATH_TESTNET=./id_ed25519
 SERVER_PASSWORD_TESTNET=sudo-password
+SERVER_PASSWORD_MAINNET=sudo-password
+SSH_KEY_PATH_TESTNET=./id_ed25519
+...
 ```
 
-`SSH_KEY_PATH_` and `SERVER_PASSWORD_` must end with the environment name (uppercase folder name from the infra repo). Missing values are prompted interactively. It is also possible to pass the secrets values via the CLI command line flags, but using a `.env` file is more convenient.
+# Nginx & Environment Configuration
 
+The CLI reads nginx configs from [D8-X/backend-nginx-infra-config](https://github.com/D8-X/backend-nginx-infra-config) via the GitHub API. Each folder in that repo is an environment with a `config.json` containing the chain ID.
 
 - `d8x setup swarm-nginx`: full nginx deploy + SSL certs
-- `d8x setup staging-origins`: manage staging origins only (alias: `so`)
+- `d8x setup broker-nginx`: broker nginx deploy + SSL certs
+- `d8x setup staging-origins` (alias: `so`): manage staging origins only
 
 # Broker .env
 

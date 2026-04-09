@@ -306,6 +306,8 @@ func RunD8XCli() {
 			// Load .env file if present
 			loadDotEnv(".env")
 
+			container.LoadSecretsFromBitwarden()
+
 			// Cached ChainJson information
 			chainJsonData, err := container.LoadChainJson()
 			if err != nil {
