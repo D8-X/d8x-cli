@@ -322,7 +322,10 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 			}
 		}
 
-		cfg, _ := c.ConfigRWriter.Read()
+		cfg, err := c.ConfigRWriter.Read()
+		if err != nil {
+			return fmt.Errorf("reading config: %w", err)
+		}
 		brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
 		if err != nil || brokerPrivateIp == "" {
 			return fmt.Errorf("broker_private_ip not found in hosts.cfg")

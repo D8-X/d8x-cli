@@ -270,7 +270,10 @@ func ghWriteFile(token, path, content, sha string) (string, error) {
 		payload["sha"] = sha
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshalling payload: %w", err)
+	}
 	req, err := http.NewRequest("PUT", url, strings.NewReader(string(body)))
 	if err != nil {
 		return "", err

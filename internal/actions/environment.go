@@ -80,7 +80,10 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		}
 	}
 	if strings.HasPrefix(sshKey, "~/") {
-		home, _ := os.UserHomeDir()
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("could not resolve home directory: %w", err)
+		}
 		sshKey = filepath.Join(home, sshKey[2:])
 	}
 	keyContent, err := os.ReadFile(sshKey)
