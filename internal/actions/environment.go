@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,17 +32,25 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		return "", fmt.Errorf("listing environments from GitHub: %w", err)
 	}
 
+	type envConfig struct {
+		ChainID uint `json:"chain_id"`
+	}
+
 	var environments []string
 	var labels []string
+	var envConfigs []envConfig
 	for _, e := range allDirs {
-		sites, err := ghReadFile(token, e+"/sites.conf")
+		cfgFile, err := ghReadFile(token, e+"/config.json")
 		if err != nil {
 			continue
 		}
+		var ec envConfig
+		json.Unmarshal([]byte(cfgFile.Content), &ec)
 		environments = append(environments, e)
+		envConfigs = append(envConfigs, ec)
 		label := e
-		if chainID := extractChainID(sites.Content); chainID != "" {
-			label = fmt.Sprintf("%s  (chain %s)", e, chainID)
+		if ec.ChainID > 0 {
+			label = fmt.Sprintf("%s  (chain %d)", e, ec.ChainID)
 		}
 		labels = append(labels, label)
 	}
@@ -54,8 +63,14 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	env := environments[indexOf(labels, selected[0])]
+	idx := indexOf(labels, selected[0])
+	env := environments[idx]
 	fmt.Printf("Environment: %s\n", env)
+
+	if envConfigs[idx].ChainID > 0 {
+		cfg.ChainId = envConfigs[idx].ChainID
+		c.ConfigRWriter.Write(cfg)
+	}
 
 	// Fetch hosts.cfg from GitHub
 	hostsPath := filepath.Join(c.ConfigDir, env+"-hosts.cfg")
@@ -103,36 +118,6 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 
 	c.SelectedEnv = env
 	return env, nil
-}
-
-// extractChainID parses the chain ID from the first server_name in sites.conf.
-// e.g. "server_name api-8453.d8x.xyz;" -> "8453"
-func extractChainID(sitesConf string) string {
-	for _, line := range strings.Split(sitesConf, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "server_name ") {
-			continue
-		}
-		name := strings.TrimPrefix(line, "server_name ")
-		name = strings.TrimSuffix(name, ";")
-		name = strings.TrimSpace(name)
-		parts := strings.SplitN(name, "-", 2)
-		if len(parts) < 2 {
-			continue
-		}
-		id := ""
-		for _, ch := range parts[1] {
-			if ch >= '0' && ch <= '9' {
-				id += string(ch)
-			} else {
-				break
-			}
-		}
-		if id != "" {
-			return id
-		}
-	}
-	return ""
 }
 
 func indexOf(list []string, item string) int {
