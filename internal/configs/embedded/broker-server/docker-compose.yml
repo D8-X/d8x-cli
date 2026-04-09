@@ -60,6 +60,27 @@ services:
       - path: .env
         required: false
 
+  rpc-proxy:
+    image: ghcr.io/d8-x/d8x-rpc-proxy:main
+    restart: always
+    depends_on:
+      - redis
+    ports:
+      - ${BROKER_PRIVATE_IP:-127.0.0.1}:8090:8080
+    networks:
+      - app-net
+    environment:
+      CHAIN_ID: "${CHAIN_ID}"
+      RPC_CONFIG_FILE: /rpc_config
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: "${REDIS_PW}"
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
+    configs:
+      - rpc_config
+
   redis:
     image: redis
     command: redis-server --requirepass ${REDIS_PW}

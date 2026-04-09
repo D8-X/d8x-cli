@@ -327,8 +327,8 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 // websockets (main, history). Returned slices are http and ws rpcs list.
 func DistributeRpcs(serviceIndex int, chainId string, cfg *configs.D8XConfig) ([]string, []string) {
 	// Maximum number of serviceIndex for http/ws lists
-	// main, history
-	httpServices := 2
+	// main, history, candles
+	httpServices := 3
 	// main, history
 	wsServices := 2
 	if cfg.BrokerDeployed {
