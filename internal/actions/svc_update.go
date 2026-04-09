@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"slices"
 	"context"
 	"fmt"
 	"net/http"
@@ -78,18 +79,21 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	brokerRedisPassword := ""
 	brokerFeeTBPS := ""
 	brokerPrivateKey := ""
+	needsBrokerKey := slices.Contains(selectedBrokerServicesToUpdate, "broker")
+	
 	if len(selectedBrokerServicesToUpdate) > 0 {
 		cfg, err := c.ConfigRWriter.Read()
 		if err != nil {
 			return err
 		}
 
-		// Ask for private key
-		pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
-		if err != nil {
-			return err
+		if needsBrokerKey {
+			pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
+			if err != nil {
+				return err
+			}
+			brokerPrivateKey = pk
 		}
-		brokerPrivateKey = pk
 
 		if !cfg.BrokerDeployed {
 			fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
@@ -318,14 +322,20 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 			}
 		}
 
+		cfg, _ := c.ConfigRWriter.Read()
+		brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
+		if brokerPrivateIp == "" {
+			brokerPrivateIp = "127.0.0.1"
+		}
 		if err := sshConn.ExecCommandPiped(
 			fmt.Sprintf(
-				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s docker compose up %[2]s -d`,
+				`cd %s && docker compose down --rmi all %[2]s && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s docker compose up %[2]s -d`,
 				brokerDir,
 				svcToUpdate,
-
 				feeTBPS,
 				redisPassword,
+				cfg.ChainId,
+				brokerPrivateIp,
 			),
 		); err != nil {
 			return err

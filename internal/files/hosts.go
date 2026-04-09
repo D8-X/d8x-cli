@@ -10,6 +10,7 @@ import (
 // HostsFileInteractor interacts with hosts.cfg file
 type HostsFileInteractor interface {
 	GetBrokerPublicIp() (string, error)
+	GetBrokerPrivateIp() (string, error)
 	GetMangerPublicIp() (string, error)
 	GetMangerPrivateIp() (string, error)
 	GetWorkerIps() ([]string, error)
@@ -70,6 +71,12 @@ func (f *fsHostFileInteractor) GetBrokerPublicIp() (string, error) {
 		return "", err
 	}
 	return f.cached.GetBrokerPublicIp()
+}
+func (f *fsHostFileInteractor) GetBrokerPrivateIp() (string, error) {
+	if err := f.ensureFileLoaded(); err != nil {
+		return "", err
+	}
+	return f.cached.GetBrokerPrivateIp()
 }
 func (f *fsHostFileInteractor) GetMangerPublicIp() (string, error) {
 	if err := f.ensureFileLoaded(); err != nil {
@@ -172,6 +179,14 @@ func (h *HostsFile) GetBrokerPublicIp() (string, error) {
 	}
 	return ip, nil
 
+}
+
+func (h *HostsFile) GetBrokerPrivateIp() (string, error) {
+	ips, err := h.FindPrivateIps("broker")
+	if err != nil || len(ips) == 0 {
+		return "", fmt.Errorf("broker private ip was not found in hosts file")
+	}
+	return ips[0], nil
 }
 
 func (h *HostsFile) GetMangerPrivateIp() (string, error) {
