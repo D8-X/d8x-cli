@@ -184,15 +184,6 @@ func (h *HostsFile) GetBrokerPublicIp() (string, error) {
 func (h *HostsFile) GetBrokerPrivateIp() (string, error) {
 	ips, err := h.FindPrivateIps("broker")
 	if err != nil || len(ips) == 0 {
-		for _, l := range h.lines {
-			if strings.Contains(l, "private_ip=") && !strings.Contains(l, "manager") && !strings.Contains(l, "worker") {
-				parts := strings.Split(l, "private_ip=")
-				if len(parts) > 1 {
-					ip := strings.Split(parts[1], " ")[0]
-					return ip, nil
-				}
-			}
-		}
 		return "", fmt.Errorf("broker private ip was not found in hosts file")
 	}
 	return ips[0], nil
