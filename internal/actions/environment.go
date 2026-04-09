@@ -83,8 +83,12 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		home, _ := os.UserHomeDir()
 		sshKey = filepath.Join(home, sshKey[2:])
 	}
-	if _, err := os.Stat(sshKey); err != nil {
+	keyContent, err := os.ReadFile(sshKey)
+	if err != nil {
 		return "", fmt.Errorf("SSH key not found at %s", sshKey)
+	}
+	if !strings.Contains(string(keyContent), "PRIVATE KEY") {
+		return "", fmt.Errorf("file %s does not look like a valid SSH private key", sshKey)
 	}
 	c.SshKeyPath = sshKey
 

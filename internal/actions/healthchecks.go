@@ -98,6 +98,53 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 		fmt.Printf("\nDocker swarm services status:\n%s", dockerSwarmInfoString)
 	}
 
+	brokerIp, err := c.HostsCfg.GetBrokerPublicIp()
+	if err == nil {
+		brokerConn, err := conn.NewSSHConnection(brokerIp, c.DefaultClusterUserName, c.SshKeyPath)
+		if err == nil {
+			brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
+			if brokerPrivateIp == "" {
+				brokerPrivateIp = "127.0.0.1"
+			}
+
+			fmt.Printf("\nBroker services (docker compose):\n")
+			out, err := brokerConn.ExecCommand("docker ps --format '{{.Names}} {{.Status}}'")
+			if err == nil {
+				for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+					if line == "" {
+						continue
+					}
+					parts := strings.SplitN(line, " ", 2)
+					name := strings.TrimPrefix(parts[0], "broker-")
+					name = strings.TrimSuffix(name, "-1")
+					status := ""
+					if len(parts) > 1 {
+						status = parts[1]
+					}
+					icon := ok
+					if !strings.Contains(strings.ToLower(status), "up") {
+						icon = notok
+						status = styles.ErrorText.Render(status)
+					}
+					fmt.Printf("  %s %-20s %s\n", icon, name, status)
+				}
+			}
+
+			rpcURL := fmt.Sprintf("http://%s:8090/health", brokerPrivateIp)
+			out, err = brokerConn.ExecCommand(fmt.Sprintf("curl -s -o /dev/null -w '%%{http_code}' %s", rpcURL))
+			code := strings.TrimSpace(string(out))
+			icon := notok
+			codeDisplay := styles.ErrorText.Render("unreachable")
+			if err == nil && code == "200" {
+				icon = ok
+				codeDisplay = styles.SuccessText.Render(code)
+			} else if err == nil {
+				codeDisplay = styles.ErrorText.Render(code)
+			}
+			fmt.Printf("  %s %-20s %s  %s\n", icon, "rpc-proxy /health", codeDisplay, rpcURL)
+		}
+	}
+
 	return nil
 
 }

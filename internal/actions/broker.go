@@ -3,11 +3,11 @@ package actions
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/files"
@@ -186,28 +186,14 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
-		return err
-	}
-
-	if err := c.Input.CollectBrokerNginxInput(ctx); err != nil {
-		return err
-	}
-
-	cfg, err = c.ConfigRWriter.Read()
+	env, err := c.EnsureEnvironment(cfg)
 	if err != nil {
 		return err
 	}
 
-	nginxConfigNameTPL := "./nginx-broker.tpl.conf"
-	nginxConfigName := "./nginx-broker.configured.conf"
-
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/nginx/nginx-broker.conf", Dst: nginxConfigNameTPL, Overwrite: true},
-		files.EmbedCopierOp{Src: "embedded/playbooks/broker.ansible.yaml", Dst: "./playbooks/broker.ansible.yaml", Overwrite: true},
-	); err != nil {
-		return err
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN is required in .env file")
 	}
 
 	password, err := c.GetPassword(ctx)
@@ -217,106 +203,99 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 	brokerIpAddr, err := c.HostsCfg.GetBrokerPublicIp()
 	if err != nil {
-		fmt.Println(
-			styles.ErrorText.Render("Broker server ip address was not found. Did you provision broker server?"),
-		)
-		return err
+		return fmt.Errorf("broker server ip not found in hosts.cfg: %w", err)
 	}
 
-	setupCertbot := c.Input.brokerNginxInput.setupCertbot
-	setupNginx := c.Input.brokerNginxInput.setupNginx
-	emailForCertbot := cfg.CertbotEmail
-	brokerServerName := c.Input.brokerNginxInput.domainName
+	brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
+	if brokerPrivateIp == "" {
+		brokerPrivateIp = "127.0.0.1"
+	}
 
-	fmt.Printf("Using broker domain: %s\n", brokerServerName)
+	sshConn, err := c.CreateSSHConn(brokerIpAddr, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return fmt.Errorf("SSH connection to broker: %w", err)
+	}
 
-	// Print alert about DNS
-	fmt.Println(styles.AlertImportant.Render("Please create the following DNS record on your domain provider's website now:"))
-	fmt.Println("Hostname:", brokerServerName)
-	fmt.Println("Type: A")
-	fmt.Println("IP address:", brokerIpAddr)
+	// Fetch broker nginx config from GitHub
+	fmt.Println(styles.ItalicText.Render("Fetching broker nginx config from GitHub..."))
+	brokerNginx, err := ghReadFile(token, env+"/broker-nginx.conf")
+	if err != nil {
+		return fmt.Errorf("reading broker-nginx.conf: %w", err)
+	}
 
+	// Substitute private IP placeholder
+	brokerNginxContent := strings.ReplaceAll(brokerNginx.Content, "BROKER_PRIVATE_IP_HERE", brokerPrivateIp)
+
+	// Extract server_name for DNS instructions
+	allNames := extractAllServerNames(brokerNginxContent)
+	brokerServerName := ""
+	if len(allNames) > 0 {
+		brokerServerName = allNames[0]
+	}
+
+	fmt.Println(styles.AlertImportant.Render("Please ensure this DNS record exists:"))
+	fmt.Printf("  Hostname: %s  Type: A  IP: %s\n", brokerServerName, brokerIpAddr)
 	c.TUI.NewConfirmation("Press enter when done...")
 
-	if setupNginx {
-		fmt.Println(styles.ItalicText.Render("Setting up nginx for broker node"))
+	// Install certbot
+	fmt.Println("Installing certbot...")
+	sshExecSudo(sshConn, password, "apt-get remove -y certbot 2>/dev/null; true")
+	sshExecSudo(sshConn, password, "snap install --classic certbot 2>/dev/null; true")
+	sshExecSudo(sshConn, password, "ln -sf /snap/bin/certbot /usr/bin/certbot")
 
-		if err := c.FS.ReplaceAndCopy(
-			nginxConfigNameTPL,
-			nginxConfigName,
-			[]files.ReplacementTuple{
-				{
-					Find:    `%broker_server%`,
-					Replace: brokerServerName,
-				},
-			},
-		); err != nil {
-			return fmt.Errorf("could not create nginx configuration: %w", err)
-		}
-
-		// Run ansible-playbook for nginx setup on broker server
-		args := []string{
-			"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, c.SshKeyPath),
-			"--extra-vars", "ansible_host_key_checking=false",
-			"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, password),
-			"-i", configs.DEFAULT_HOSTS_FILE,
-			"-u", c.DefaultClusterUserName,
-			"./playbooks/broker.ansible.yaml",
-		}
-		cmd := exec.Command("ansible-playbook", args...)
-		connectCMDToCurrentTerm(cmd)
-		if err := c.RunCmd(cmd); err != nil {
-			return err
-		} else {
-			fmt.Println(styles.SuccessText.Render("Broker server nginx setup done!"))
-
-			// Add config entry for the service
-			cfg.Services[configs.D8XServiceBrokerServer] = configs.D8XService{
-				Name:     configs.D8XServiceBrokerServer,
-				HostName: brokerServerName,
-			}
-
-			// Update state
-			cfg.BrokerNginxDeployed = true
-		}
+	// Deploy nginx config
+	fmt.Println("Deploying broker nginx config...")
+	sshExecSudo(sshConn, password, "rm -f /etc/nginx/sites-enabled/default")
+	if err := sshWriteFileSudo(sshConn, password, "/etc/nginx/sites-enabled/broker", brokerNginxContent); err != nil {
+		return err
 	}
+	fmt.Println("  /etc/nginx/sites-enabled/broker")
 
+	// Test and reload
+	if out, err := sshConn.ExecCommand(fmt.Sprintf("echo '%s' | sudo -S nginx -t 2>&1", password)); err != nil {
+		return fmt.Errorf("nginx config test failed:\n%s", string(out))
+	}
+	sshExecSudo(sshConn, password, "systemctl reload nginx")
+	fmt.Println(styles.SuccessText.Render("Broker nginx deployed and reloaded."))
+
+	cfg.Services[configs.D8XServiceBrokerServer] = configs.D8XService{
+		Name:     configs.D8XServiceBrokerServer,
+		HostName: brokerServerName,
+	}
+	cfg.BrokerNginxDeployed = true
+
+	// Certbot
+	setupCertbot, err := c.TUI.NewPrompt("Setup SSL certificate with certbot?", true)
+	if err != nil {
+		return err
+	}
 	if setupCertbot {
-		fmt.Println(styles.ItalicText.Render("Setting up certbot for broker server..."))
-
-		sshConn, err := c.CreateSSHConn(
-			brokerIpAddr,
-			c.DefaultClusterUserName,
-			c.SshKeyPath,
-		)
-		if err != nil {
-			return err
+		emailForCertbot := cfg.CertbotEmail
+		if emailForCertbot == "" {
+			fmt.Println("Enter email for certbot:")
+			emailForCertbot, err = c.TUI.NewInput(components.TextInputOptPlaceholder("admin@example.com"))
+			if err != nil {
+				return err
+			}
+			cfg.CertbotEmail = emailForCertbot
 		}
 
-		out, err := c.certbotNginxSetup(sshConn, password, emailForCertbot, []string{brokerServerName})
-		fmt.Println(string(out))
-
+		fmt.Printf("  Issuing cert for %s...\n", brokerServerName)
+		cmd := fmt.Sprintf("echo '%s' | sudo -S certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", password, brokerServerName, emailForCertbot)
+		out, err := sshConn.ExecCommand(cmd)
 		if err != nil {
-			restart, err2 := c.TUI.NewPrompt("Certbot setup failed, do you want to restart the broker-nginx setup?", true)
-			if err2 != nil {
-				return err2
-			}
-			if restart {
-				return c.BrokerServerNginxCertbotSetup(ctx)
-			}
-			return err
+			fmt.Printf("  %s certbot failed: %s\n", notok, strings.TrimSpace(string(out)))
 		} else {
-			fmt.Println(styles.SuccessText.Render("Broker server certificates setup done!"))
-
-			// Update config
-			if val, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
-				val.UsesHTTPS = true
-				cfg.Services[configs.D8XServiceBrokerServer] = val
-			}
-
-			// Update state
-			cfg.BrokerCertbotDeployed = true
+			fmt.Printf("  %s %s\n", ok, brokerServerName)
 		}
+
+		sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer")
+		if val, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+			val.UsesHTTPS = true
+			cfg.Services[configs.D8XServiceBrokerServer] = val
+		}
+		cfg.BrokerCertbotDeployed = true
+		fmt.Println(styles.SuccessText.Render("Broker SSL setup done!"))
 	}
 
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
