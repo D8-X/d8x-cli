@@ -40,6 +40,9 @@ type Container struct {
 	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
+	// Currently selected environment
+	SelectedEnv string
+
 	// Directory to the terraform files. Defaults to ./terraform but can be
 	// overriden by --tf-dir flag
 	ProvisioningTfDir string

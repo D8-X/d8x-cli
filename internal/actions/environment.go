@@ -15,6 +15,11 @@ import (
 // EnsureEnvironment selects an environment, fetches hosts.cfg from the GitHub
 // repo, and configures SSH key and password for the selected environment.
 func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
+	if c.SelectedEnv != "" {
+		fmt.Printf("Environment: %s\n", c.SelectedEnv)
+		return c.SelectedEnv, nil
+	}
+
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
 		return "", fmt.Errorf("GITHUB_TOKEN is required in .env file")
@@ -89,6 +94,7 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		c.UserPassword = pwd
 	}
 
+	c.SelectedEnv = env
 	return env, nil
 }
 
