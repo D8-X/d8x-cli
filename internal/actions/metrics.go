@@ -121,7 +121,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 			return err
 		}
 
-		pwd, err := c.GetPassword(ctx)
+		pwd, err := c.ResolvePassword(ctx)
 		if err != nil {
 			return fmt.Errorf("getting sudo password: %w", err)
 		}
