@@ -6,7 +6,8 @@ CLI tool for provisioning, deploying, and managing D8X trader backend, broker se
 
 **Option A: Download from [releases](https://github.com/D8-X/d8x-cli/releases)**
 ```bash
-tar -xzf d8x-linux-amd64.tar.gz
+tar -xzf d8x-macos-arm64.tar.gz    # or d8x-linux-amd64.tar.gz for intel
+xattr -d com.apple.quarantine d8x  # macOS only
 ./d8x help
 ```
 

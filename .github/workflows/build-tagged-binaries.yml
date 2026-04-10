@@ -44,6 +44,9 @@ jobs:
           GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -o d8x \
             -ldflags='-X "github.com/D8-X/d8x-cli/internal/version.commit=${{ github.sha }}" -X "github.com/D8-X/d8x-cli/internal/version.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)"' \
             main.go
+      - name: Sign binary (macOS)
+        if: startsWith(matrix.goos, 'darwin')
+        run: codesign -s - d8x
       - name: Package
         run: tar -czvf ${{ matrix.name }}.tar.gz d8x
       - uses: actions/upload-artifact@v4

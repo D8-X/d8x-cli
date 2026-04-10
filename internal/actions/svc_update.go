@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -95,7 +96,14 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 			brokerPrivateKey = pk
 		}
 
-		if !cfg.BrokerDeployed {
+		if c.SelectedEnv != "" {
+			envKey := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
+			if pw := os.Getenv(envKey); pw != "" {
+				brokerRedisPassword = pw
+			}
+		}
+
+		if !cfg.BrokerDeployed && brokerRedisPassword == "" {
 			fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
 			fmt.Println("Enter your broker redis password:")
 			pwd, err := c.TUI.NewInput(
@@ -121,8 +129,12 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 				return err
 			}
 		} else {
-			brokerRedisPassword = cfg.BrokerServerConfig.RedisPassword
-			brokerFeeTBPS = cfg.BrokerServerConfig.FeeTBPS
+			if brokerRedisPassword == "" {
+				brokerRedisPassword = cfg.BrokerServerConfig.RedisPassword
+			}
+			if brokerFeeTBPS == "" {
+				brokerFeeTBPS = cfg.BrokerServerConfig.FeeTBPS
+			}
 		}
 	}
 
