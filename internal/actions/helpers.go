@@ -46,6 +46,13 @@ func defaultPasswordGetter(ctx *cli.Context) (string, error) {
 	return "", fmt.Errorf("password not found")
 }
 
+func (c *Container) ResolvePassword(ctx *cli.Context) (string, error) {
+	if c.UserPassword != "" {
+		return c.UserPassword, nil
+	}
+	return c.GetPassword(ctx)
+}
+
 // TrimHttpsPrefix removes http:// or https:// prefix from the url
 func TrimHttpsPrefix(url string) string {
 	return strings.TrimSpace(strings.TrimPrefix(
