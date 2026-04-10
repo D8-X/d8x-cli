@@ -37,6 +37,8 @@ type InputCollector struct {
 
 	// Default ssh key path
 	SSHKeyPath string
+	// Selected environment name
+	SelectedEnv string
 	// Whenever ssh key hash changes - this will be set to true. SSH key change
 	// implies that all servers will be reprovisioned.
 	sshKeyChanged bool
@@ -1118,16 +1120,12 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 		if err != nil {
 			return fmt.Errorf("reading private key: %w", err)
 		}
-		if os.Getenv("BW_SESSION") != "" {
-			fmt.Println("Enter environment name for this SSH key (e.g. TESTNET, MAINNET):")
-			envName, err := c.TUI.NewInput(components.TextInputOptPlaceholder("TESTNET"))
-			if err == nil && envName != "" {
-				fieldName := "SSH_KEY_" + strings.ToUpper(envName)
-				if err := SaveSecretToBitwarden(fieldName, string(privateKey)); err != nil {
-					fmt.Printf("  %s Could not save SSH key to Bitwarden: %s\n", notok, err)
-				} else {
-					fmt.Printf("  %s SSH key saved to Bitwarden as %s\n", ok, fieldName)
-				}
+		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+			fieldName := "SSH_KEY_" + strings.ToUpper(c.SelectedEnv)
+			if err := SaveSecretToBitwarden(fieldName, string(privateKey)); err != nil {
+				fmt.Printf("  %s Could not save SSH key to Bitwarden: %s\n", notok, err)
+			} else {
+				fmt.Printf("  %s SSH key saved to Bitwarden as %s\n", ok, fieldName)
 			}
 		}
 

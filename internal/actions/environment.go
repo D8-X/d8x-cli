@@ -123,6 +123,9 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	}
 
 	c.SelectedEnv = env
+	if c.Input != nil {
+		c.Input.SelectedEnv = env
+	}
 	return env, nil
 }
 

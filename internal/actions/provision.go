@@ -2,11 +2,13 @@ package actions
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -70,6 +72,25 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Update the input
 	if err := c.Input.PostProvisioningHook(); err != nil {
 		return err
+	}
+
+	// Push hosts.cfg to infra repo if environment is selected
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" && c.SelectedEnv != "" {
+		hostsContent, err := os.ReadFile(configs.DEFAULT_HOSTS_FILE)
+		if err == nil {
+			path := c.SelectedEnv + "/hosts.cfg"
+			existing, _ := ghReadFile(token, path)
+			sha := ""
+			if existing != nil {
+				sha = existing.SHA
+			}
+			_, err := ghWriteFile(token, path, string(hostsContent), sha)
+			if err != nil {
+				fmt.Printf("  %s Could not push hosts.cfg to GitHub: %s\n", notok, err)
+			} else {
+				fmt.Printf("  %s hosts.cfg pushed to GitHub (%s)\n", ok, path)
+			}
+		}
 	}
 
 	return nil
