@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/files"
@@ -66,6 +67,14 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	fmt.Println(
 		styles.SuccessText.Render("Password was stored in ./password.txt file"),
 	)
+	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+		fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
+		if err := SaveSecretToBitwarden(fieldName, c.UserPassword); err != nil {
+			fmt.Printf("  %s Could not save password to Bitwarden: %s\n", notok, err)
+		} else {
+			fmt.Printf("  %s Password saved to Bitwarden as %s\n", ok, fieldName)
+		}
+	}
 
 	configureUser := cfg.GetAnsibleUser()
 
