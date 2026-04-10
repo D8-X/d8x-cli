@@ -51,7 +51,9 @@ Secrets can also be passed via a `.env` file in the current working directory or
 
 ## Infrastructure
 
-All infrastructure configs are in [D8-X/backend-nginx-infra-config](https://github.com/D8-X/backend-nginx-infra-config). Each folder is an environment (testnet, mainnet, etc.) containing nginx configs, terraform variables, hosts inventory, and auth settings. The CLI reads and writes to this repo via the GitHub API.
+The CLI reads and writes infrastructure configs from a GitHub repo via the API. Default repo is [D8-X/backend-nginx-infra-config](https://github.com/D8-X/backend-nginx-infra-config). To use a different repo, set `INFRA_REPO=your-org/your-repo` in `.env` or Bitwarden. If the repo is not accessible, the CLI will prompt for a different one.
+
+See [docs/infra-repo.md](docs/infra-repo.md) for the repo structure and how to set up your own.
 
 ## New Deployment
 
