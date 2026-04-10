@@ -55,7 +55,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 		return fmt.Errorf("creating ssh connection to manager: %w", err)
 	}
 
-	pwd, err := c.GetPassword(ctx)
+	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
