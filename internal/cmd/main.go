@@ -110,6 +110,7 @@ func RunD8XCli() {
 					}
 
 					subcommands := []string{
+						"new-env",
 						"provision",
 						"configure",
 						"broker-deploy",
@@ -134,6 +135,11 @@ func RunD8XCli() {
 				},
 				Flags: []cli.Flag{provisionTfDirFlag},
 				Subcommands: []*cli.Command{
+					{
+						Name:   "new-env",
+						Usage:  "Create a new environment in the infra repo",
+						Action: container.NewEnvironment,
+					},
 					{
 						Name:        "provision",
 						Usage:       "Provision server resources with terraform",
