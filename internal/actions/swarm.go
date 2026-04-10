@@ -248,7 +248,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
 	}
 
-	pwd, err := c.GetPassword(ctx)
+	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
@@ -514,7 +514,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return fmt.Errorf("NGINX_API_KEY is required in .env file")
 	}
 
-	password, err := c.GetPassword(ctx)
+	password, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
