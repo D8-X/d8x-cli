@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
-	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
@@ -31,19 +30,11 @@ func (c *Container) DisplayPasswordAlert() {
 	fmt.Printf("Password: %s\n", c.UserPassword)
 }
 
-// Get password gets the password with the following precedence:
-// 1. Container.UserPassword (set by EnsureEnvironment from SERVER_PASSWORD_{ENV})
-// 2. --password flag
-// 3. ./password.txt file in cwd
-// 4. Prompt the user
 func defaultPasswordGetter(ctx *cli.Context) (string, error) {
 	if pwd := ctx.String(flags.Password); pwd != "" {
 		return pwd, nil
 	}
-	if pwd, err := os.ReadFile(configs.DEFAULT_PASSWORD_FILE); err == nil && len(strings.TrimSpace(string(pwd))) > 0 {
-		return strings.TrimSpace(string(pwd)), nil
-	}
-	return "", fmt.Errorf("password not found")
+	return "", fmt.Errorf("password not found — set SERVER_PASSWORD_{ENV} in Bitwarden or use --password flag")
 }
 
 func (c *Container) ResolvePassword(ctx *cli.Context) (string, error) {

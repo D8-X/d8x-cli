@@ -58,21 +58,13 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		c.UserPassword = password
 	}
 
-	// Prompt to save password
-	c.DisplayPasswordAlert()
-	// Legacy functionality to store password in txt
-	if err := c.FS.WriteFile("./password.txt", []byte(c.UserPassword)); err != nil {
-		return fmt.Errorf("storing password in ./password.txt file: %w", err)
-	}
-	fmt.Println(
-		styles.SuccessText.Render("Password was stored in ./password.txt file"),
-	)
+	fmt.Printf("  Server password: %s\n", c.UserPassword)
 	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 		fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
 		if err := SaveSecretToBitwarden(fieldName, c.UserPassword); err != nil {
-			fmt.Printf("  %s Could not save password to Bitwarden: %s\n", notok, err)
+			fmt.Printf("  %s Could not save to Bitwarden: %s\n", notok, err)
 		} else {
-			fmt.Printf("  %s Password saved to Bitwarden as %s\n", ok, fieldName)
+			fmt.Printf("  %s Saved to Bitwarden as %s\n", ok, fieldName)
 		}
 	}
 

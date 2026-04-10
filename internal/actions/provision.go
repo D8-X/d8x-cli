@@ -26,6 +26,14 @@ const TF_FILES_DIR = "./terraform"
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
 
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+
 	if err := c.Input.CollectProvisioningData(ctx); err != nil {
 		return err
 	}
@@ -84,7 +92,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 			if existing != nil {
 				sha = existing.SHA
 			}
-			_, err := ghWriteFile(token, path, string(hostsContent), sha)
+			_, err := ghWriteFile(token, path, string(hostsContent), sha, "update "+path+" - d8x setup provision")
 			if err != nil {
 				fmt.Printf("  %s Could not push hosts.cfg to GitHub: %s\n", notok, err)
 			} else {

@@ -6,13 +6,13 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/jackc/pgx/v5"
 )
@@ -32,25 +32,30 @@ type awsConfigurer struct {
 }
 
 func (c *Container) CopyAWSTFFiles() error {
-	err := c.EmbedCopier.Copy(configs.EmbededConfigs,
-		files.EmbedCopierOp{
-			Src:       "embedded/trader-backend/tf-aws",
-			Dst:       c.ProvisioningTfDir,
-			Dir:       true,
-			Overwrite: true,
-		},
-		files.EmbedCopierOp{
-			Src:       "embedded/trader-backend/tf-aws/swarm",
-			Dst:       c.ProvisioningTfDir + "/swarm",
-			Dir:       true,
-			Overwrite: true,
-		},
-	)
-	if err != nil {
-		return fmt.Errorf("generating terraform directory: %w", err)
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN is required")
 	}
+	if c.SelectedEnv == "" {
+		return fmt.Errorf("no environment selected")
+	}
+
+	fmt.Println(styles.ItalicText.Render("Fetching Terraform configs from GitHub..."))
+	if err := ghFetchDir(token, "terraform/aws", c.ProvisioningTfDir); err != nil {
+		return fmt.Errorf("fetching terraform/aws from GitHub: %w", err)
+	}
+
+	tfvars, err := ghReadFile(token, c.SelectedEnv+"/terraform.tfvars")
+	if err != nil {
+		return fmt.Errorf("fetching %s/terraform.tfvars from GitHub: %w", c.SelectedEnv, err)
+	}
+	if err := os.WriteFile(filepath.Join(c.ProvisioningTfDir, "env.auto.tfvars"), []byte(tfvars.Content), 0644); err != nil {
+		return fmt.Errorf("writing env.auto.tfvars: %w", err)
+	}
+
 	return nil
 }
+
 
 func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 	if err := c.CopyAWSTFFiles(); err != nil {
@@ -145,26 +150,45 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	// Check for swarm deployment
 	awsCfg.DeploySwarm = c.setup.deploySwarm
 
-	fmt.Println("Enter your AWS Access Key: ")
-	accessKey, err := c.TUI.NewInput(
-		components.TextInputOptValue(awsKey),
-		components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
-	)
-	if err != nil {
-		return awsCfg, err
+
+	accessKey := os.Getenv("AWS_ACCESS_KEY")
+	if accessKey == "" {
+		accessKey = awsKey
+	}
+	if accessKey == "" {
+		fmt.Println("Enter your AWS Access Key: ")
+		var err error
+		accessKey, err = c.TUI.NewInput(
+			components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
+		)
+		if err != nil {
+			return awsCfg, err
+		}
 	}
 	awsCfg.AccesKey = accessKey
+	if os.Getenv("BW_SESSION") != "" {
+		SaveSecretToBitwarden("AWS_ACCESS_KEY", accessKey)
+	}
 
-	fmt.Println("Enter your AWS Secret Key: ")
-	secretKey, err := c.TUI.NewInput(
-		components.TextInputOptValue(awsSecret),
-		components.TextInputOptMasked(),
-		components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
-	)
-	if err != nil {
-		return awsCfg, err
+	secretKey := os.Getenv("AWS_SECRET_KEY")
+	if secretKey == "" {
+		secretKey = awsSecret
+	}
+	if secretKey == "" {
+		fmt.Println("Enter your AWS Secret Key: ")
+		var err error
+		secretKey, err = c.TUI.NewInput(
+			components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
+			components.TextInputOptMasked(),
+		)
+		if err != nil {
+			return awsCfg, err
+		}
 	}
 	awsCfg.SecretKey = secretKey
+	if os.Getenv("BW_SESSION") != "" {
+		SaveSecretToBitwarden("AWS_SECRET_KEY", secretKey)
+	}
 
 	fmt.Println("Enter your AWS cluster region: ")
 

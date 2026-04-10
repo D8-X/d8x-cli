@@ -135,7 +135,7 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 				oldContent = stagingFile.Content
 			}
 			if stagingContent != oldContent {
-				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA)
+				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath+" - d8x setup staging-origins")
 				if err != nil {
 					return fmt.Errorf("pushing to GitHub: %w", err)
 				}
@@ -259,11 +259,11 @@ func ghReadFile(token, path string) (*ghFileResponse, error) {
 	return &file, nil
 }
 
-func ghWriteFile(token, path, content, sha string) (string, error) {
+func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", ghRepo, path)
 
 	payload := map[string]string{
-		"message": "update staging origins - committed by d8x-cli",
+		"message": commitMsg,
 		"content": base64.StdEncoding.EncodeToString([]byte(content)),
 	}
 	if sha != "" {

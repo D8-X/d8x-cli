@@ -520,6 +520,14 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 				return fmt.Errorf("generating password for redis: %w", err)
 			}
 			cfg.SwarmRedisPassword = pwd
+			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
+				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
+				if err := SaveSecretToBitwarden(fieldName, pwd); err != nil {
+					fmt.Printf("  %s Could not save swarm Redis password to Bitwarden: %s\n", notok, err)
+				} else {
+					fmt.Printf("  %s Swarm Redis password saved to Bitwarden as %s\n", ok, fieldName)
+				}
+			}
 		}
 
 		// Collect broker http endpoint

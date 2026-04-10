@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
@@ -48,14 +48,28 @@ type linodeConfigurer struct {
 }
 
 func (c *Container) CopyLinodeTFFiles() error {
-	return c.EmbedCopier.Copy(configs.EmbededConfigs,
-		files.EmbedCopierOp{
-			Src:       "embedded/trader-backend/tf-linode",
-			Dst:       c.ProvisioningTfDir,
-			Dir:       true,
-			Overwrite: true,
-		},
-	)
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN is required")
+	}
+	if c.SelectedEnv == "" {
+		return fmt.Errorf("no environment selected")
+	}
+
+	fmt.Println(styles.ItalicText.Render("Fetching Terraform configs from GitHub..."))
+	if err := ghFetchDir(token, "terraform/linode", c.ProvisioningTfDir); err != nil {
+		return fmt.Errorf("fetching terraform/linode from GitHub: %w", err)
+	}
+
+	tfvars, err := ghReadFile(token, c.SelectedEnv+"/terraform.tfvars")
+	if err != nil {
+		return fmt.Errorf("fetching %s/terraform.tfvars from GitHub: %w", c.SelectedEnv, err)
+	}
+	if err := os.WriteFile(filepath.Join(c.ProvisioningTfDir, "env.auto.tfvars"), []byte(tfvars.Content), 0644); err != nil {
+		return fmt.Errorf("writing env.auto.tfvars: %w", err)
+	}
+
+	return nil
 }
 
 // BuildTerraformCMD builds terraform configuration for linode cluster creation.
@@ -162,17 +176,30 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 		defaultRegionItem = getRegionItemByRegionId(defaultRegion)
 	}
 
-	// Token
-	fmt.Println("Enter your Linode API token")
-	token, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
-		components.TextInputOptValue(defaultToken),
-		components.TextInputOptMasked(),
-	)
-	if err != nil {
-		return l, err
+	
+	token := os.Getenv("LINODE_TOKEN")
+	if token == "" {
+		token = defaultToken
+	}
+	if token == "" {
+		fmt.Println("Enter your Linode API token")
+		var err error
+		token, err = c.TUI.NewInput(
+			components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
+			components.TextInputOptMasked(),
+		)
+		if err != nil {
+			return l, err
+		}
 	}
 	l.Token = token
+	if os.Getenv("BW_SESSION") != "" {
+		if err := SaveSecretToBitwarden("LINODE_TOKEN", token); err != nil {
+			fmt.Printf("  %s Could not save Linode token to Bitwarden: %s\n", notok, err)
+		} else {
+			fmt.Printf("  %s Linode token saved to Bitwarden\n", ok)
+		}
+	}
 
 	// DB for swarm
 	if c.setup.deploySwarm {

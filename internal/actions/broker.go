@@ -15,7 +15,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const BROKER_SERVER_REDIS_PWD_FILE = "./redis_broker_password.txt"
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
@@ -97,23 +96,18 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 			styles.AlertImportant.Render(absChainConfig+"\n"+absRpcConfig),
 	)
 
-	// Generate and display broker-server redis password file
+	// Generate broker-server redis password
 	redisPw, err := generatePassword(16)
 	if err != nil {
 		return fmt.Errorf("generating redis password: %w", err)
 	}
-	if err := c.FS.WriteFile(BROKER_SERVER_REDIS_PWD_FILE, []byte(redisPw)); err != nil {
-		return fmt.Errorf("storing password in %s file: %w", BROKER_SERVER_REDIS_PWD_FILE, err)
-	}
-	fmt.Println(
-		styles.SuccessText.Render("REDIS Password for broker-server was stored in " + BROKER_SERVER_REDIS_PWD_FILE + " file"),
-	)
+	fmt.Printf("  Broker Redis password: %s\n", redisPw)
 	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 		fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
 		if err := SaveSecretToBitwarden(fieldName, redisPw); err != nil {
-			fmt.Printf("  %s Could not save Redis password to Bitwarden: %s\n", notok, err)
+			fmt.Printf("  %s Could not save to Bitwarden: %s\n", notok, err)
 		} else {
-			fmt.Printf("  %s Redis password saved to Bitwarden as %s\n", ok, fieldName)
+			fmt.Printf("  %s Saved to Bitwarden as %s\n", ok, fieldName)
 		}
 	}
 
