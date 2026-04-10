@@ -24,7 +24,7 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 		return err
 	}
 
-	pwd, err := c.GetPassword(ctx)
+	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
