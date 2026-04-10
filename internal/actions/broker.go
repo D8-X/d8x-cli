@@ -108,6 +108,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	fmt.Println(
 		styles.SuccessText.Render("REDIS Password for broker-server was stored in " + BROKER_SERVER_REDIS_PWD_FILE + " file"),
 	)
+	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+		fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
+		if err := SaveSecretToBitwarden(fieldName, redisPw); err != nil {
+			fmt.Printf("  %s Could not save Redis password to Bitwarden: %s\n", notok, err)
+		} else {
+			fmt.Printf("  %s Redis password saved to Bitwarden as %s\n", ok, fieldName)
+		}
+	}
 
 	// Retrieve required information from user input
 	pk := c.Input.brokerDeployInput.privateKey
@@ -196,7 +204,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return fmt.Errorf("GITHUB_TOKEN is required in .env file")
 	}
 
-	password, err := c.GetPassword(ctx)
+	password, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
