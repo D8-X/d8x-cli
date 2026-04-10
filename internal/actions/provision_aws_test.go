@@ -28,7 +28,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 			expect: func(e *expecter) {
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("", assert.AnError)
 			},
@@ -39,14 +38,12 @@ func TestAWSServerConfigurer(t *testing.T) {
 			expect: func(e *expecter) {
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("aws-access-key", nil)
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
+						components.TextInputOptMasked(),
 					).Return("", assert.AnError)
 			},
 			wantErr: assert.AnError.Error(),
@@ -56,14 +53,12 @@ func TestAWSServerConfigurer(t *testing.T) {
 			expect: func(e *expecter) {
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("aws-access-key", nil)
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
+						components.TextInputOptMasked(),
 					).Return("aws-access-secret", nil)
 				e.Components.EXPECT().
 					NewInput(
