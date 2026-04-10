@@ -69,7 +69,9 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 
 	if envConfigs[idx].ChainID > 0 {
 		cfg.ChainId = envConfigs[idx].ChainID
-		c.ConfigRWriter.Write(cfg)
+		if err := c.ConfigRWriter.Write(cfg); err != nil {
+			return "", fmt.Errorf("writing config: %w", err)
+		}
 	}
 
 	// Fetch hosts.cfg from GitHub
@@ -84,9 +86,13 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	}
 	c.HostsCfg = files.NewFSHostsFileInteractor(hostsPath)
 
-	// SSH key from .env or prompt
-	envKey := "SSH_KEY_PATH_" + strings.ToUpper(env)
-	sshKey := os.Getenv(envKey)
+	// SSH key: check SSH_KEY_{ENV} (from Bitwarden) then SSH_KEY_PATH_{ENV} (from .env)
+	upperEnv := strings.ToUpper(env)
+	sshKey := os.Getenv("SSH_KEY_" + upperEnv)
+	if sshKey == "" {
+		sshKey = os.Getenv("SSH_KEY_PATH_" + upperEnv)
+	}
+	envKey := "SSH_KEY_PATH_" + upperEnv
 	if sshKey == "" {
 		fmt.Printf("%s not found in .env. Enter SSH key path for %s:\n", envKey, env)
 		sshKey, err = c.TUI.NewInput(components.TextInputOptValue("./id_ed25519"))
