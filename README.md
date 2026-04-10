@@ -554,7 +554,11 @@ brew install bitwarden-cli
 bw login
 ```
 
-The CLI will prompt for your Bitwarden master password on each run and load secrets from the shared `d8x-cli` note in the quantena vault.
+The CLI will prompt for your Bitwarden master password on each run and load secrets from the shared `d8x-cli` note in the quantena org  vault. To avoid re-entering it, unlock once per session:
+
+```bash
+export BW_SESSION=$(bw unlock --raw)
+```
 
 Alternatively, create a `.env` file in the working directory. And copy the secrets from the Bitwarden note into the `.env` file in the format `KEY=VALUE`, for example:
 
