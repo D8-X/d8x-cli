@@ -15,7 +15,14 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const ghRepo = "D8-X/backend-nginx-infra-config"
+const defaultGhRepo = "D8-X/backend-nginx-infra-config"
+
+func getGhRepo() string {
+	if repo := os.Getenv("INFRA_REPO"); repo != "" {
+		return repo
+	}
+	return defaultGhRepo
+}
 
 type ghFileResponse struct {
 	Content string `json:"content"`
@@ -190,7 +197,7 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 }
 
 func ghListDirs(token string) ([]string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/", ghRepo)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/", getGhRepo())
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -227,7 +234,7 @@ func ghListDirs(token string) ([]string, error) {
 }
 
 func ghReadFile(token, path string) (*ghFileResponse, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", ghRepo, path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -260,7 +267,7 @@ func ghReadFile(token, path string) (*ghFileResponse, error) {
 }
 
 func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", ghRepo, path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
 
 	payload := map[string]string{
 		"message": commitMsg,

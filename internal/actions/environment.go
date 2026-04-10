@@ -29,7 +29,17 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	// List environments from GitHub and let user pick
 	allDirs, err := ghListDirs(token)
 	if err != nil {
-		return "", fmt.Errorf("listing environments from GitHub: %w", err)
+		fmt.Printf("%s Cannot access repo '%s'. Check your GITHUB_TOKEN has access to it.\n", notok, getGhRepo())
+		fmt.Println("Enter infra repo (owner/name) or press enter to retry:")
+		repo, inputErr := c.TUI.NewInput(components.TextInputOptValue(getGhRepo()))
+		if inputErr != nil {
+			return "", inputErr
+		}
+		os.Setenv("INFRA_REPO", repo)
+		allDirs, err = ghListDirs(token)
+		if err != nil {
+			return "", fmt.Errorf("cannot access repo '%s': %w", getGhRepo(), err)
+		}
 	}
 
 	type envConfig struct {
@@ -55,7 +65,7 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		labels = append(labels, label)
 	}
 	if len(environments) == 0 {
-		return "", fmt.Errorf("no environments found in %s repo", ghRepo)
+		return "", fmt.Errorf("no environments found in %s repo", getGhRepo())
 	}
 
 	fmt.Println(styles.ItalicText.Render("Select environment:"))

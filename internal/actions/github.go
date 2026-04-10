@@ -10,7 +10,7 @@ import (
 )
 
 func ghFetchDir(token, repoPath, localDir string) error {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", ghRepo, repoPath)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), repoPath)
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
