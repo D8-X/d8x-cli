@@ -1,22 +1,26 @@
 # D8X CLI
 
-CLI tool for provisioning, deploying, and managing D8X trader backend, broker server, and nginx infrastructure.
+CLI for provisioning, deploying, and managing D8X trader backend, broker server, and nginx infrastructure.
 
 ## Installation
 
-**Option A: Download from [releases](https://github.com/D8-X/d8x-cli/releases)**
+**Quick install** (macOS and Linux):
 ```bash
-tar -xzf d8x-macos-arm64.tar.gz    # or d8x-linux-amd64.tar.gz for intel
-xattr -d com.apple.quarantine d8x  # macOS only
-./d8x help
+curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash
 ```
 
-**Option B: Build from source** (requires Go 1.21+)
+**macOS (Homebrew):**
 ```bash
-git clone https://github.com/D8-X/d8x-cli.git
-cd d8x-cli
-go build -o d8x ./main.go
-./d8x help
+brew tap D8-X/tap
+brew install d8x
+```
+
+Or download manually from [releases](https://github.com/D8-X/d8x-cli/releases).
+
+**Update:**
+```bash
+brew upgrade d8x                    # Homebrew
+curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash  # re-run installer
 ```
 
 **Dependencies:**
