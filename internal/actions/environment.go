@@ -43,7 +43,8 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	}
 
 	type envConfig struct {
-		ChainID uint `json:"chain_id"`
+		ChainID      uint   `json:"chain_id"`
+		CertbotEmail string `json:"certbot_email"`
 	}
 
 	var environments []string
@@ -84,6 +85,9 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	env := environments[idx]
 	fmt.Printf("Environment: %s\n", env)
 
+	if envConfigs[idx].CertbotEmail != "" {
+		cfg.CertbotEmail = envConfigs[idx].CertbotEmail
+	}
 	if envConfigs[idx].ChainID > 0 {
 		cfg.ChainId = envConfigs[idx].ChainID
 		if err := c.ConfigRWriter.Write(cfg); err != nil {
