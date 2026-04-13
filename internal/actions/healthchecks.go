@@ -119,12 +119,6 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 	if err == nil {
 		brokerConn, err := conn.NewSSHConnection(brokerIp, c.DefaultClusterUserName, c.SshKeyPath)
 		if err == nil {
-			brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
-			if err != nil || brokerPrivateIp == "" {
-				fmt.Printf("\n%s broker_private_ip not found in hosts.cfg\n", notok)
-				return nil
-			}
-
 			fmt.Printf("\nBroker services (docker compose):\n")
 			out, err := brokerConn.ExecCommand("docker ps --format '{{.Names}} {{.Status}}'")
 			if err == nil {
@@ -148,18 +142,39 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 				}
 			}
 
-			rpcURL := fmt.Sprintf("http://%s:8090/health", brokerPrivateIp)
-			out, err = brokerConn.ExecCommand(fmt.Sprintf("curl -s -o /dev/null -w '%%{http_code}' %s", rpcURL))
-			code := strings.TrimSpace(string(out))
-			icon := notok
-			codeDisplay := styles.ErrorText.Render("unreachable")
-			if err == nil && code == "200" {
-				icon = ok
-				codeDisplay = styles.SuccessText.Render(code)
-			} else if err == nil {
-				codeDisplay = styles.ErrorText.Render(code)
+			brokerHostname := ""
+			if svc, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				brokerHostname = svc.HostName
 			}
-			fmt.Printf("  %s %-20s %s  %s\n", icon, "rpc-proxy /health", codeDisplay, rpcURL)
+			if brokerHostname == "" {
+				// Try from infra repo
+				token := os.Getenv("GITHUB_TOKEN")
+				if token != "" && c.SelectedEnv != "" {
+					brokerNginx, err := ghReadFile(token, c.SelectedEnv+"/broker-nginx.conf")
+					if err == nil {
+						names := extractAllServerNames(brokerNginx.Content)
+						if len(names) > 0 {
+							brokerHostname = names[0]
+						}
+					}
+				}
+			}
+			if brokerHostname != "" {
+				apiKey := os.Getenv("NGINX_API_KEY")
+				rpcURL := fmt.Sprintf("https://%s/rpc", brokerHostname)
+				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' -X POST -H 'Content-Type: application/json' -H 'X-Api-Key: %s' -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' %s`, apiKey, rpcURL)
+				out, err = brokerConn.ExecCommand(curlCmd)
+				code := strings.TrimSpace(string(out))
+				icon := notok
+				codeDisplay := styles.ErrorText.Render("unreachable")
+				if err == nil && code == "200" {
+					icon = ok
+					codeDisplay = styles.SuccessText.Render(code)
+				} else if err == nil {
+					codeDisplay = styles.ErrorText.Render(code)
+				}
+				fmt.Printf("  %s %-20s %s  %s\n", icon, "rpc-proxy", codeDisplay, rpcURL)
+			}
 		}
 	}
 

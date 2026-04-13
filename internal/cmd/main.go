@@ -46,7 +46,7 @@ func loadDotEnv(path string) {
 	}
 }
 
-const D8XASCII = `        D8X CLI        `
+const D8XASCII = `            D8X CLI            `
 
 // CmdName defines the name of cli tool
 const CmdName = "d8x"
@@ -251,45 +251,42 @@ func RunD8XCli() {
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name: flags.ConfigDir,
-				// Set the defaul path to configuration directory on user's home
-				// dir
+				Name:        flags.ConfigDir,
 				Value:       "./.d8x-config",
 				Destination: &container.ConfigDir,
-				Usage:       "Configs and secrets directory",
+				Hidden:      true,
 			},
 			&cli.StringFlag{
 				Name:        flags.PrivateKeyPath,
-				Value:       "./id_ed25519",
 				EnvVars:     []string{"SSH_KEY_PATH"},
 				Destination: &container.SshKeyPath,
-				Usage:       "Default ssh key path used to access servers",
+				Usage:       "SSH key path (loaded from Bitwarden as SSH_KEY_{ENV})",
 			},
 			&cli.StringFlag{
 				Name:        flags.User,
 				Value:       configs.DEFAULT_USER_NAME,
 				Destination: &container.DefaultClusterUserName,
-				Usage:       "User which will be created on each server during provisioning and configuration. Also used ssh'ing into servers.",
+				Usage:       "SSH user on servers",
 			},
 			&cli.StringFlag{
 				Name:        flags.Password,
 				EnvVars:     []string{"SERVER_PASSWORD"},
 				Destination: &container.UserPassword,
-				Usage:       "User's password used for tasks requiring elevated permissions, if not provided, default password file will be read.",
+				Usage:       "Server sudo password (loaded from Bitwarden as SERVER_PASSWORD_{ENV})",
 			},
 			&cli.StringFlag{
 				Name:    flags.GithubToken,
 				EnvVars: []string{"GITHUB_TOKEN"},
-				Usage:   "GitHub token for accessing backend-nginx-infra-config repo",
+				Usage:   "GitHub token (loaded from Bitwarden)",
 			},
 			&cli.StringFlag{
 				Name:    flags.NginxApiKey,
 				EnvVars: []string{"NGINX_API_KEY"},
-				Usage:   "API key for nginx auth_check.conf",
+				Usage:   "Nginx API key (loaded from Bitwarden)",
 			},
 			&cli.StringFlag{
 				Name:  "chdir",
-				Usage: "Change directory to provided one before executing anything",
+				Usage: "Change working directory before executing",
 			},
 			&cli.BoolFlag{
 				Name:    "quiet",
