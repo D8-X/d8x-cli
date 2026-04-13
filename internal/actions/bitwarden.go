@@ -13,6 +13,7 @@ import (
 )
 
 const bwItemName = "d8x-cli"
+const bwPersonalItemName = "d8x-cli-personal"
 
 type bwItem struct {
 	Fields []struct {
@@ -62,37 +63,37 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		os.Setenv("BW_SESSION", session)
 	}
 
-	out, err := exec.Command("bw", "get", "item", bwItemName, "--session", session).Output()
-	if err != nil {
-		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden: item '%s' not found.", bwItemName)))
-		return nil
-	}
-
-	var item bwItem
-	if err := json.Unmarshal(out, &item); err != nil {
-		return nil
-	}
-
 	count := 0
-	for _, field := range item.Fields {
-		if field.Name == "" || field.Value == "" || os.Getenv(field.Name) != "" {
+	for _, itemName := range []string{bwPersonalItemName, bwItemName} {
+		out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
+		if err != nil {
 			continue
 		}
 
-		// SSH keys: write content to temp file, set env var to file path
-		if strings.HasPrefix(field.Name, "SSH_KEY_") {
-			keyPath, err := writeSSHKeyToTempFile(field.Name, field.Value)
-			if err != nil {
-				fmt.Printf("  %s failed to write SSH key %s: %s\n", notok, field.Name, err)
+		var item bwItem
+		if err := json.Unmarshal(out, &item); err != nil {
+			continue
+		}
+
+		for _, field := range item.Fields {
+			if field.Name == "" || field.Value == "" || os.Getenv(field.Name) != "" {
 				continue
 			}
-			os.Setenv(field.Name, keyPath)
-			count++
-			continue
-		}
 
-		os.Setenv(field.Name, field.Value)
-		count++
+			if strings.HasPrefix(field.Name, "SSH_KEY_") {
+				keyPath, err := writeSSHKeyToTempFile(field.Name, field.Value)
+				if err != nil {
+					fmt.Printf("  %s failed to write SSH key %s: %s\n", notok, field.Name, err)
+					continue
+				}
+				os.Setenv(field.Name, keyPath)
+				count++
+				continue
+			}
+
+			os.Setenv(field.Name, field.Value)
+			count++
+		}
 	}
 
 	if count > 0 {
