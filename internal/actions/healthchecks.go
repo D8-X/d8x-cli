@@ -32,13 +32,13 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 		return err
 	}
 
-	if len(cfg.Services) == 0 {
-		token := os.Getenv("GITHUB_TOKEN")
-		if token != "" && c.SelectedEnv != "" {
-			sites, err := ghReadFile(token, c.SelectedEnv+"/sites.conf")
-			if err == nil {
-				for _, host := range extractAllServerNames(sites.Content) {
-					name := strings.Split(host, ".")[0]
+	token := os.Getenv("GITHUB_TOKEN")
+	if token != "" && c.SelectedEnv != "" {
+		sites, err := ghReadFile(token, c.SelectedEnv+"/sites.conf")
+		if err == nil {
+			for _, host := range extractAllServerNames(sites.Content) {
+				name := strings.Split(host, ".")[0]
+				if _, exists := cfg.Services[configs.D8XServiceName(name)]; !exists {
 					cfg.Services[configs.D8XServiceName(name)] = configs.D8XService{
 						Name:      configs.D8XServiceName(name),
 						HostName:  host,
