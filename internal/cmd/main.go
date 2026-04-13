@@ -46,12 +46,12 @@ func loadDotEnv(path string) {
 	}
 }
 
-const D8XASCII = `            D8X CLI            `
+const D8XASCII = `                          D8X CLI                          `
 
 // CmdName defines the name of cli tool
 const CmdName = "d8x"
 
-const CmdUsage = "D8X Backend management CLI tool"
+const CmdUsage = ""
 
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
