@@ -257,6 +257,10 @@ server {
 
     limit_req zone=primary_zone burst=20 nodelay;
 
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
     location / {
         proxy_pass http://127.0.0.1:3002;
 
@@ -349,21 +353,41 @@ server {
     listen 80;
     server_name %s;
 
+    # RPC proxy — restricted to allowed origins and API key
     location /rpc {
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '$http_origin' always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
+            add_header 'Access-Control-Max-Age' 86400;
+            return 204;
+        }
+
+        set $rpc_allowed 0;
+
+        # Allowed origins
+        if ($http_origin = 'https://app.predictex.io') { set $rpc_allowed 1; }
+        if ($http_origin = 'https://predictex.io') { set $rpc_allowed 1; }
+        if ($http_origin = 'https://app.predictex.com') { set $rpc_allowed 1; }
+        if ($http_origin = 'https://predictex.com') { set $rpc_allowed 1; }
+        if ($http_origin ~* '^https?://localhost(:\d+)?$') { set $rpc_allowed 1; }
+        if ($http_origin ~* '\.d8x-based-predictex-frontend\.pages\.dev$') { set $rpc_allowed 1; }
+
+        # API key
+        if ($http_x_api_key = 'API_KEY_HERE') { set $rpc_allowed 1; }
+
+        if ($rpc_allowed = 0) { return 403; }
+
         proxy_pass http://BROKER_PRIVATE_IP_HERE:8090/rpc;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Origin' '$http_origin' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
         add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
-
-        if ($request_method = 'OPTIONS') {
-            return 204;
-        }
     }
 
     location /ws {
