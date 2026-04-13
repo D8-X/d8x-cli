@@ -253,7 +253,7 @@ func (c *Container) updateSwarmServices(_ *cli.Context, selectedSwarmServicesToU
 		done := make(chan struct{})
 		go func() {
 			err := sshConn.ExecCommandPiped(
-				fmt.Sprintf(`docker service update --image %s %s`, imgToUse, svcStackName),
+				fmt.Sprintf(`docker service update --force --image %s %s`, imgToUse, svcStackName),
 			)
 			if err != nil {
 				fmt.Println(
