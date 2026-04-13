@@ -46,12 +46,7 @@ func loadDotEnv(path string) {
 	}
 }
 
-const D8XASCII = ` ____     ___   __  __
-|  _ \   ( _ )  \ \/ /
-| | | |  / _ \   \  / 
-| |_| | | (_) |  /  \ 
-|____/   \___/  /_/\_\
-`
+const D8XASCII = `D8X CLI`
 
 // CmdName defines the name of cli tool
 const CmdName = "d8x"
@@ -355,10 +350,6 @@ func RunD8XCli() {
 				)
 			}
 
-			// Create config directory if it does not exist already
-			if err := container.MakeConfigDir(); err != nil {
-				return fmt.Errorf("could not create config directory: %w", err)
-			}
 
 			return nil
 		},

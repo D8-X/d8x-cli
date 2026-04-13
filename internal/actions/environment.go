@@ -56,11 +56,18 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		}
 		var ec envConfig
 		json.Unmarshal([]byte(cfgFile.Content), &ec)
+
+		_, hostsErr := ghReadFile(token, e+"/hosts.cfg")
+		provisioned := hostsErr == nil
+
 		environments = append(environments, e)
 		envConfigs = append(envConfigs, ec)
 		label := e
 		if ec.ChainID > 0 {
 			label = fmt.Sprintf("%s  (chain %d)", e, ec.ChainID)
+		}
+		if !provisioned {
+			label += "  [not provisioned]"
 		}
 		labels = append(labels, label)
 	}

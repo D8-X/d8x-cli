@@ -1,19 +1,9 @@
 package cmd
 
 // MainDescription is the description text for d8x cli tool
-const MainDescription = `D8X Perpetual Exchange broker backend setup and management CLI tool 
+const MainDescription = `CLI for provisioning, deploying, and managing D8X trader backend infrastructure.
 
-Running d8x without any subcommands or init command will perform initalization
-of ./.d8x-config directory (--config-directory), as well as prompt you to
-install any missing dependencies such as ansible or terraform.
-
-D8X CLI relies on the following external tools: terraform, ansible. You can
-manually install them or let the cli attempt to perform the installation of
-these dependencies automatically. Note that for automatic installation you will
-need to have python3 and pip installed on your system
-
-For cluster provisioning and configuration, see the setup command and its 
-subcommands. Run d8x setup --help for more information.
+Run d8x setup --help for available setup subcommands.
 `
 
 const SetupDescription = `Command setup performs D8X cluster setup.

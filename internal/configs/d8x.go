@@ -4,8 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-
-	"github.com/D8-X/d8x-cli/internal/styles"
+	"path/filepath"
 )
 
 //go:generate mockgen -package mocks -destination ../mocks/configs.go . D8XConfigReadWriter
@@ -238,22 +237,12 @@ func (d *d8xConfigFileReadWriter) GetPath() string {
 
 func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
 	cfg := NewD8XConfig()
-	if contents, err := os.ReadFile(d.filePath); err != nil {
-		// Print error message to indicate empty config when not intended. Only
-		// once in current session!
-		if !d.warningShown {
-			fmt.Println(
-				styles.ErrorText.Render(
-					fmt.Sprintf("Config file was not found: %s", d.filePath),
-				),
-			)
-			d.warningShown = true
-		}
+	contents, err := os.ReadFile(d.filePath)
+	if err != nil {
 		return cfg, nil
-	} else {
-		if err := json.Unmarshal(contents, cfg); err != nil {
-			return nil, err
-		}
+	}
+	if err := json.Unmarshal(contents, cfg); err != nil {
+		return nil, err
 	}
 
 	// Make sure we initialize nil-able fields
@@ -271,14 +260,12 @@ func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
 }
 
 func (d *d8xConfigFileReadWriter) Write(cfg *D8XConfig) error {
-	if buf, err := json.MarshalIndent(cfg, "", "\t"); err != nil {
+	os.MkdirAll(filepath.Dir(d.filePath), 0755)
+	buf, err := json.MarshalIndent(cfg, "", "\t")
+	if err != nil {
 		return err
-	} else {
-		if err := os.WriteFile(d.filePath, buf, 0666); err != nil {
-			return err
-		}
 	}
-	return nil
+	return os.WriteFile(d.filePath, buf, 0666)
 }
 
 func (d *d8xConfigFileReadWriter) WriteTo(filePath string, cfg *D8XConfig) error {

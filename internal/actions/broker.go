@@ -225,8 +225,11 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return fmt.Errorf("reading broker-nginx.conf: %w", err)
 	}
 
-	// Substitute private IP placeholder
 	brokerNginxContent := strings.ReplaceAll(brokerNginx.Content, "BROKER_PRIVATE_IP_HERE", brokerPrivateIp)
+	managerPrivateIp, _ := c.HostsCfg.GetMangerPrivateIp()
+	if managerPrivateIp != "" {
+		brokerNginxContent = strings.ReplaceAll(brokerNginxContent, "MANAGER_PRIVATE_IP_HERE", managerPrivateIp)
+	}
 
 	// Extract server_name for DNS instructions
 	allNames := extractAllServerNames(brokerNginxContent)
