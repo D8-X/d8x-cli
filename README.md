@@ -38,7 +38,7 @@ Or download manually from [releases](https://github.com/D8-X/d8x-cli/releases).
 
 **Update:**
 ```bash
-brew upgrade d8x                    # Homebrew
+brew update && brew upgrade d8x     # Homebrew
 curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash  # re-run installer
 ```
 
@@ -74,11 +74,29 @@ See [docs/maintenance.md](docs/maintenance.md) for updates, health checks, SSH a
 
 ## Quick Reference
 
+**Setup commands:**
+
+| Command | Alias | Description |
+|---------|-------|-------------|
+| `d8x setup new-env` | | Create a new environment in the infra repo |
+| `d8x setup provision` | `prov` | Provision servers with Terraform |
+| `d8x setup configure` | `config` | Configure servers with Ansible |
+| | | |
+| `d8x setup swarm-deploy` | `sd` | Deploy trader backend swarm |
+| `d8x setup swarm-nginx` | `sn` | Deploy nginx + SSL for swarm |
+| | | |
+| `d8x setup broker-deploy` | | Deploy broker server |
+| `d8x setup broker-nginx` | | Deploy nginx + SSL for broker |
+| | | |
+| `d8x setup metrics-deploy` | | Deploy Prometheus + Grafana |
+| `d8x setup staging-origins` | `so` | Manage nginx origin whitelist |
+
+**Operations:**
+
 | Command | Description |
 |---------|-------------|
 | `d8x update` | Update Docker service images |
 | `d8x health` | Check all services and endpoints |
-| `d8x setup staging-origins` | Manage nginx origin whitelist |
 | `d8x ssh manager\|broker\|worker-N` | SSH into a server |
 | `d8x db-tunnel` | Create SSH tunnel to the database |
 | `d8x backup-db` | Backup the database via SSH |

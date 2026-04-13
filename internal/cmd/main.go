@@ -46,7 +46,7 @@ func loadDotEnv(path string) {
 	}
 }
 
-const D8XASCII = `D8X CLI`
+const D8XASCII = `        D8X CLI        `
 
 // CmdName defines the name of cli tool
 const CmdName = "d8x"
@@ -105,15 +105,14 @@ func RunD8XCli() {
 
 					subcommands := []string{
 						"new-env",
-						"provision",
-						"configure",
+						"provision", "prov",
+						"configure", "config",
 						"broker-deploy",
 						"broker-nginx",
-						"swarm-deploy",
-						"swarm-nginx",
+						"swarm-deploy", "sd",
+						"swarm-nginx", "sn",
 						"metrics-deploy",
-						"staging-origins",
-						"so",
+						"staging-origins", "so",
 
 						// Help is always included
 						"help",
@@ -130,12 +129,13 @@ func RunD8XCli() {
 				Flags: []cli.Flag{provisionTfDirFlag},
 				Subcommands: []*cli.Command{
 					{
-						Name:   "new-env",
-						Usage:  "Create a new environment in the infra repo",
-						Action: container.NewEnvironment,
+						Name: "new-env",
+						Usage:   "Create a new environment in the infra repo",
+						Action:  container.NewEnvironment,
 					},
 					{
 						Name:        "provision",
+						Aliases:     []string{"prov"},
 						Usage:       "Provision server resources with terraform",
 						Action:      container.Provision,
 						Description: ProvisionDescription,
@@ -143,28 +143,31 @@ func RunD8XCli() {
 					},
 					{
 						Name:        "configure",
+						Aliases:     []string{"config"},
 						Usage:       "Configure servers with ansible",
 						Action:      container.Configure,
 						Description: ConfigureDescription,
 					},
 					{
-						Name:   "broker-deploy",
-						Usage:  "Deploy and configure broker-server deployment",
+						Name: "broker-deploy",
+						Usage:   "Deploy and configure broker-server deployment",
 						Action: container.BrokerDeploy,
 					},
 					{
-						Name:   "broker-nginx",
-						Usage:  "Configure and setup nginx + certbot for broker server deployment",
+						Name: "broker-nginx",
+						Usage:   "Configure and setup nginx + certbot for broker server deployment",
 						Action: container.BrokerServerNginxCertbotSetup,
 					},
 					{
 						Name:        "swarm-deploy",
+						Aliases:     []string{"sd"},
 						Usage:       "Deploy and configure d8x-trader-backend swarm cluster",
 						Action:      container.SwarmDeploy,
 						Description: SwarmDeployDescription,
 					},
 					{
 						Name:        "swarm-nginx",
+						Aliases:     []string{"sn"},
 						Usage:       "Configure and setup nginx + certbot for d8x-trader swarm deployment",
 						Action:      container.SwarmNginx,
 						Description: SwarmNginxDescription,
