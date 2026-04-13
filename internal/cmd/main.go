@@ -301,9 +301,9 @@ func RunD8XCli() {
 			},
 		},
 		Action: func(ctx *cli.Context) error {
-			// Disallow running d8x with incorrect subcommands
 			if ctx.Args().Len() == 0 {
-				return container.Init(ctx)
+				cli.ShowAppHelp(ctx)
+				return nil
 			}
 			return fmt.Errorf("unknown command %s, check --help for more info about available commands", ctx.Args().First())
 		},
