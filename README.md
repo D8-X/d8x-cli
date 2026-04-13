@@ -37,8 +37,12 @@ brew install d8x
 Or download manually from [releases](https://github.com/D8-X/d8x-cli/releases).
 
 **Update:**
+On macOS with Homebrew:
 ```bash
 brew update && brew upgrade d8x     # Homebrew
+```
+For manual install or Linux:
+```bash
 curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash  # re-run installer
 ```
 
