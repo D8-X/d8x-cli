@@ -312,7 +312,10 @@ func RunD8XCli() {
 			// Load .env file if present
 			loadDotEnv(".env")
 
-			container.LoadSecretsFromBitwarden()
+			arg := ctx.Args().First()
+			if arg != "help" && arg != "" && !ctx.Bool("help") && !ctx.Bool("version") {
+				container.LoadSecretsFromBitwarden()
+			}
 
 			// Cached ChainJson information
 			chainJsonData, err := container.LoadChainJson()
