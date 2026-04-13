@@ -36,7 +36,7 @@ Secrets can also be passed via a `.env` file in the current working directory or
 
 **Quick install** (macOS and Linux):
 ```bash
-curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/nginx-config/install.sh | bash
 ```
 
 **macOS (Homebrew):**
@@ -54,10 +54,16 @@ brew update && brew upgrade d8x     # Homebrew
 ```
 For manual install or Linux:
 ```bash
-curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash  # re-run installer
+curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/nginx-config/install.sh | bash  # re-run installer
 ```
 
 
+
+**Uninstall:**
+```bash
+brew uninstall d8x && brew untap D8-X/tap   # Homebrew
+sudo rm /usr/local/bin/d8x                   # manual/curl install
+```
 
 ## Infrastructure
 
