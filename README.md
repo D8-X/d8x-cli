@@ -2,6 +2,25 @@
 
 CLI for provisioning, deploying, and managing D8X trader backend, broker server, and nginx infrastructure.
 
+## Dependencies
+
+macOS:
+```bash
+brew install ansible terraform bitwarden-cli
+```
+
+Linux (Ubuntu/Debian):
+```bash
+sudo apt install ansible
+sudo snap install terraform --classic
+sudo snap install bw
+```
+
+Then log in to Bitwarden:
+```bash
+bw login
+```
+
 ## Installation
 
 **Quick install** (macOS and Linux):
@@ -21,20 +40,6 @@ Or download manually from [releases](https://github.com/D8-X/d8x-cli/releases).
 ```bash
 brew upgrade d8x                    # Homebrew
 curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash  # re-run installer
-```
-
-**Dependencies:**
-
-macOS:
-```bash
-brew install ansible terraform bitwarden-cli
-```
-
-Linux (Ubuntu/Debian):
-```bash
-sudo apt install ansible
-sudo snap install terraform --classic
-sudo snap install bw
 ```
 
 ## Secrets
