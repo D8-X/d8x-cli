@@ -225,11 +225,12 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return fmt.Errorf("reading broker-nginx.conf: %w", err)
 	}
 
-	brokerNginxContent := strings.ReplaceAll(brokerNginx.Content, "BROKER_PRIVATE_IP_HERE", brokerPrivateIp)
-	managerPrivateIp, _ := c.HostsCfg.GetMangerPrivateIp()
-	if managerPrivateIp != "" {
-		brokerNginxContent = strings.ReplaceAll(brokerNginxContent, "MANAGER_PRIVATE_IP_HERE", managerPrivateIp)
+	apiKey := os.Getenv("NGINX_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("NGINX_API_KEY is required in .env or Bitwarden")
 	}
+	brokerNginxContent := strings.ReplaceAll(brokerNginx.Content, "BROKER_PRIVATE_IP_HERE", brokerPrivateIp)
+	brokerNginxContent = strings.ReplaceAll(brokerNginxContent, "API_KEY_HERE", apiKey)
 
 	// Extract server_name for DNS instructions
 	allNames := extractAllServerNames(brokerNginxContent)
