@@ -16,10 +16,21 @@ sudo snap install terraform --classic
 sudo snap install bw
 ```
 
-Then log in to Bitwarden:
+### Secrets
+
+Secrets are stored in a shared Bitwarden note named `d8x-cli`. The CLI loads them automatically on each run.
+
 ```bash
-bw login
+bw login                                  # once
 ```
+
+The CLI will prompt for the master password. To avoid re-entering it on every command, unlock once per terminal session:
+
+```bash
+export BW_SESSION=$(bw unlock --raw)
+```
+
+Secrets can also be passed via a `.env` file in the current working directory or CLI flags.
 
 ## Installation
 
@@ -46,21 +57,7 @@ For manual install or Linux:
 curl -sL https://raw.githubusercontent.com/D8-X/d8x-cli/main/install.sh | bash  # re-run installer
 ```
 
-## Secrets
 
-Secrets are stored in a shared Bitwarden note named `d8x-cli`. The CLI loads them automatically on each run.
-
-```bash
-bw login                                  # once
-```
-
-The CLI will prompt for the master password. To avoid re-entering it on every command, unlock once per terminal session:
-
-```bash
-export BW_SESSION=$(bw unlock --raw)
-```
-
-Secrets can also be passed via a `.env` file in the current working directory or CLI flags.
 
 ## Infrastructure
 
