@@ -119,9 +119,15 @@ func SaveSecretToBitwarden(fieldName, fieldValue string) error {
 		return err
 	}
 
-	fields, _ := raw["fields"].([]interface{})
+	fields, ok := raw["fields"].([]interface{})
+	if !ok {
+		fields = []interface{}{}
+	}
 	for _, f := range fields {
-		field, _ := f.(map[string]interface{})
+		field, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
 		if field["name"] == fieldName {
 			existing, _ := field["value"].(string)
 			if existing != "" {
@@ -142,7 +148,10 @@ func SaveSecretToBitwarden(fieldName, fieldValue string) error {
 		return err
 	}
 
-	itemID, _ := raw["id"].(string)
+	itemID, ok := raw["id"].(string)
+	if !ok || itemID == "" {
+		return fmt.Errorf("bitwarden item has no ID")
+	}
 	cmd := exec.Command("bw", "encode")
 	cmd.Stdin = strings.NewReader(string(encoded))
 	encodedOut, err := cmd.Output()

@@ -20,7 +20,10 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		return fmt.Errorf("GITHUB_TOKEN is required in .env file")
 	}
 
-	existing, _ := ghListDirs(token)
+	existing, err := ghListDirs(token)
+	if err != nil {
+		return fmt.Errorf("cannot list environments from GitHub: %w", err)
+	}
 
 	fmt.Println("Enter environment name (e.g. arbitrum):")
 	envName, err := c.TUI.NewInput(components.TextInputOptPlaceholder("my-new-env"))

@@ -105,7 +105,6 @@ func RunD8XCli() {
 						pwd, err := container.GetPassword(ctx)
 						if err == nil && len(pwd) > 0 {
 							container.UserPassword = pwd
-							fmt.Printf("User password retrieved from %s\n", configs.DEFAULT_PASSWORD_FILE)
 						}
 					}
 
