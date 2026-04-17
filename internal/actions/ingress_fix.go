@@ -69,7 +69,7 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 		fmt.Println(styles.SuccessText.Render("Successfully restarted docker on manager"))
 	}
 
-	workerIps, err := c.HostsCfg.GetWorkerIps()
+	workerIps, err := c.HostsCfg.GetWorkerPrivateIps()
 	if err != nil {
 		return err
 	}
