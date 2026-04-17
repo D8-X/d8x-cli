@@ -481,18 +481,29 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		return err
 	}
 
-	guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
+	cfg, err := input.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
-	input.swarmDeployInput.guideConfig = guideUser
-	if guideUser {
 
-		cfg, err := input.ConfigRWriter.Read()
+	chainIdStr := strconv.Itoa(int(cfg.ChainId))
+	existingConfig := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRedisPassword != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
+	if existingConfig {
+		fmt.Println(styles.ItalicText.Render("Found existing swarm deploy configuration."))
+		keepExisting, err := input.TUI.NewPrompt("Do you want to keep this configuration and only collect missing values?", true)
 		if err != nil {
 			return err
 		}
+		input.swarmDeployInput.guideConfig = !keepExisting
+	} else {
+		guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
+		if err != nil {
+			return err
+		}
+		input.swarmDeployInput.guideConfig = guideUser
+	}
 
+	if input.swarmDeployInput.guideConfig {
 		chainId, err := input.GetChainId(cfg, ctx)
 		if err != nil {
 			return err
@@ -604,6 +615,90 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		input.swarmDeployInput.priceServiceHttpEndpoints = priceServiceHttpEndpoints
 
 		// Update the config
+		if err := input.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
+	} else {
+		if cfg.ChainId == 0 {
+			chainId, err := input.GetChainId(cfg, ctx)
+			if err != nil {
+				return err
+			}
+			cfg.ChainId = chainId
+		}
+
+		chainIdStr := strconv.Itoa(int(cfg.ChainId))
+		if len(cfg.HttpRpcList[chainIdStr]) == 0 {
+			if err := input.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
+				return err
+			}
+		}
+		if len(cfg.WsRpcList[chainIdStr]) == 0 {
+			if err := input.CollectWebsocketRPCUrls(cfg, chainIdStr); err != nil {
+				return err
+			}
+		}
+		if cfg.DatabaseDSN == "" {
+			if err := input.CollectDatabaseDSN(cfg); err != nil {
+				return err
+			}
+		}
+		if cfg.SwarmRedisPassword == "" {
+			pwd, err := generatePassword(20)
+			if err != nil {
+				return fmt.Errorf("generating password for redis: %w", err)
+			}
+			cfg.SwarmRedisPassword = pwd
+			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
+				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
+				if err := SaveSecretToBitwarden(fieldName, pwd); err != nil {
+					fmt.Printf("  %s Could not save swarm Redis password to Bitwarden: %s\n", notok, err)
+				} else {
+					fmt.Printf("  %s Swarm Redis password saved to Bitwarden as %s\n", ok, fieldName)
+				}
+			}
+		}
+		if cfg.SwarmRemoteBrokerHTTPUrl == "" {
+			value := cfg.SwarmRemoteBrokerHTTPUrl
+			if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				value = v.HostName
+			}
+			if value == "" && input.brokerNginxInput.domainName != "" {
+				value = input.brokerNginxInput.domainName
+			}
+			value = EnsureHttpsPrefixExists(value)
+
+			fmt.Println("Enter remote broker http url:")
+			brokerUrl, err := input.TUI.NewInput(
+				components.TextInputOptPlaceholder("https://your-broker-domain.com"),
+				components.TextInputOptValue(value),
+				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValidation(ValidateHttp, "url must start with http:// or https://"),
+			)
+			if err != nil {
+				return err
+			}
+			cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
+		}
+		if len(cfg.UserSuppliedPriceFeedEndpoints) == 0 {
+			dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+			if err != nil {
+				return err
+			}
+			if !dontAddAnotherPythEndpoint {
+				fmt.Println("Enter additional Pyth priceServiceHTTPEndpoints entry")
+				additionalEndpoint, err := input.TUI.NewInput(
+					components.TextInputOptPlaceholder("https://hermes.pyth.network"),
+					components.TextInputOptDenyEmpty(),
+				)
+				additionalEndpoint = strings.TrimSpace(additionalEndpoint)
+				if err != nil {
+					return err
+				}
+				cfg.UserSuppliedPriceFeedEndpoints = []string{additionalEndpoint}
+			}
+		}
+		input.swarmDeployInput.priceServiceHttpEndpoints = cfg.UserSuppliedPriceFeedEndpoints
 		if err := input.ConfigRWriter.Write(cfg); err != nil {
 			return err
 		}
