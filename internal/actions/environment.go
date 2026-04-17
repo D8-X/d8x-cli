@@ -148,41 +148,47 @@ func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 		return
 	}
 
+	if remoteCfg.SwarmRedisPassword != "" || remoteCfg.DatabaseDSN != "" || remoteCfg.BrokerServerConfig.RedisPassword != "" {
+		fmt.Printf("%s remote config.json contains secret fields - ignoring them. Keep secrets in Bitwarden or local .env.\n", notok)
+	}
+
+	var merged []string
+
 	if remoteCfg.ServerProvider != "" {
 		cfg.ServerProvider = remoteCfg.ServerProvider
+		merged = append(merged, "server_provider")
 	}
 	if remoteCfg.LinodeConfig != nil {
 		cfg.LinodeConfig = remoteCfg.LinodeConfig
+		merged = append(merged, "linode_config")
 	}
 	if remoteCfg.AWSConfig != nil {
 		cfg.AWSConfig = remoteCfg.AWSConfig
+		merged = append(merged, "aws_config")
 	}
 	if remoteCfg.ChainId != 0 {
 		cfg.ChainId = remoteCfg.ChainId
+		merged = append(merged, "chain_id")
 	}
 	if remoteCfg.CertbotEmail != "" {
 		cfg.CertbotEmail = remoteCfg.CertbotEmail
-	}
-	if remoteCfg.SwarmRedisPassword != "" {
-		cfg.SwarmRedisPassword = remoteCfg.SwarmRedisPassword
+		merged = append(merged, "certbot_email")
 	}
 	if remoteCfg.SwarmRemoteBrokerHTTPUrl != "" {
 		cfg.SwarmRemoteBrokerHTTPUrl = remoteCfg.SwarmRemoteBrokerHTTPUrl
-	}
-	if remoteCfg.DatabaseDSN != "" {
-		cfg.DatabaseDSN = remoteCfg.DatabaseDSN
+		merged = append(merged, "swarm_remote_broker_http_url")
 	}
 	if len(remoteCfg.UserSuppliedPriceFeedEndpoints) > 0 {
 		cfg.UserSuppliedPriceFeedEndpoints = remoteCfg.UserSuppliedPriceFeedEndpoints
+		merged = append(merged, "user_supplied_price_feed_endpoints")
 	}
 	if remoteCfg.BrokerServerConfig.FeeTBPS != "" {
 		cfg.BrokerServerConfig.FeeTBPS = remoteCfg.BrokerServerConfig.FeeTBPS
+		merged = append(merged, "broker_server_config.fee_tbps")
 	}
 	if remoteCfg.BrokerServerConfig.FeeInputPercent != "" {
 		cfg.BrokerServerConfig.FeeInputPercent = remoteCfg.BrokerServerConfig.FeeInputPercent
-	}
-	if remoteCfg.BrokerServerConfig.RedisPassword != "" {
-		cfg.BrokerServerConfig.RedisPassword = remoteCfg.BrokerServerConfig.RedisPassword
+		merged = append(merged, "broker_server_config.fee_input_percent")
 	}
 
 	if cfg.Services == nil {
@@ -191,6 +197,9 @@ func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 	for name, service := range remoteCfg.Services {
 		cfg.Services[name] = service
 	}
+	if len(remoteCfg.Services) > 0 {
+		merged = append(merged, "services")
+	}
 
 	if cfg.HttpRpcList == nil {
 		cfg.HttpRpcList = make(map[string][]string)
@@ -198,12 +207,22 @@ func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 	for chainID, rpcs := range remoteCfg.HttpRpcList {
 		cfg.HttpRpcList[chainID] = rpcs
 	}
+	if len(remoteCfg.HttpRpcList) > 0 {
+		merged = append(merged, "http_rpc_list")
+	}
 
 	if cfg.WsRpcList == nil {
 		cfg.WsRpcList = make(map[string][]string)
 	}
 	for chainID, rpcs := range remoteCfg.WsRpcList {
 		cfg.WsRpcList[chainID] = rpcs
+	}
+	if len(remoteCfg.WsRpcList) > 0 {
+		merged = append(merged, "ws_rpc_list")
+	}
+
+	if len(merged) > 0 {
+		fmt.Printf("%s merged fields from remote config.json: %s\n", ok, strings.Join(merged, ", "))
 	}
 }
 
