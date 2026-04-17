@@ -61,6 +61,9 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 
 	// Process the env file and append collected .env values
 	for env, value := range findReplaceOrCreateEnvs {
+		if value == "" {
+			continue
+		}
 		envFound := false
 		envVal := env + "=" + value
 		fmt.Printf("Setting %s \n", envVal)
@@ -115,6 +118,131 @@ func (c *Container) CopySwarmDeployConfigs() error {
 	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, swarmDeployConfigFilesToCopy...); err != nil {
 		return fmt.Errorf("copying configs to local file system: %w", err)
 	}
+	return nil
+}
+
+func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp string) error {
+	remoteCfg, err := c.fetchRemoteSwarmDeployConfig(managerIp)
+	if err != nil {
+		return err
+	}
+	if remoteCfg == nil {
+		return nil
+	}
+
+	if c.Input == nil {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Found existing deployed swarm config on manager."))
+	keep, err := c.TUI.NewPrompt("Load remote swarm config from manager and keep it as baseline?", true)
+	if err != nil {
+		return err
+	}
+	if !keep {
+		return nil
+	}
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	mergeRemoteConfig(cfg, remoteCfg)
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+	fmt.Println(styles.SuccessText.Render("Remote swarm config loaded and merged into local config."))
+	return nil
+}
+
+func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8XConfig, error) {
+	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return nil, nil
+	}
+
+	envOut, err := sshConn.ExecCommand(`if [ -f ./trader-backend/.env ]; then cat ./trader-backend/.env; fi`)
+	if err != nil {
+		return nil, nil
+	}
+	remoteEnv := strings.TrimSpace(string(envOut))
+	if remoteEnv == "" {
+		return nil, nil
+	}
+
+	cfg := &configs.D8XConfig{}
+	for _, line := range strings.Split(remoteEnv, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(strings.Trim(value, `"'`))
+		switch key {
+		case "CHAIN_ID":
+			chainId, _ := strconv.Atoi(value)
+			cfg.ChainId = uint(chainId)
+		case "DATABASE_DSN":
+			cfg.DatabaseDSN = value
+		case "REMOTE_BROKER_HTTP":
+			cfg.SwarmRemoteBrokerHTTPUrl = value
+		case "REDIS_PASSWORD":
+			cfg.SwarmRedisPassword = value
+		}
+	}
+
+	for _, fname := range []string{"./trader-backend/rpc.main.json", "./trader-backend/rpc.history.json"} {
+		rpcOut, err := sshConn.ExecCommand(fmt.Sprintf(`if [ -f %s ]; then cat %s; fi`, fname, fname))
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(rpcOut)) == "" {
+			continue
+		}
+		if err := c.populateRemoteRpcConfig(cfg, rpcOut); err != nil {
+			continue
+		}
+	}
+
+	if cfg.ChainId == 0 && len(cfg.HttpRpcList) == 0 && len(cfg.WsRpcList) == 0 && cfg.DatabaseDSN == "" && cfg.SwarmRemoteBrokerHTTPUrl == "" && cfg.SwarmRedisPassword == "" {
+		return nil, nil
+	}
+	return cfg, nil
+}
+
+func (c *Container) populateRemoteRpcConfig(cfg *configs.D8XConfig, content []byte) error {
+	entries := []RPCConfigEntry{}
+	if err := json.Unmarshal(content, &entries); err != nil {
+		return err
+	}
+	if cfg.HttpRpcList == nil {
+		cfg.HttpRpcList = make(map[string][]string)
+	}
+	if cfg.WsRpcList == nil {
+		cfg.WsRpcList = make(map[string][]string)
+	}
+
+	for _, entry := range entries {
+		chainIdStr := strconv.Itoa(int(entry.ChainId))
+		if len(entry.HttpRpcs) > 0 {
+			cfg.HttpRpcList[chainIdStr] = append(cfg.HttpRpcList[chainIdStr], entry.HttpRpcs...)
+		}
+		if entry.WsRpcs != nil {
+			cfg.WsRpcList[chainIdStr] = append(cfg.WsRpcList[chainIdStr], *entry.WsRpcs...)
+		}
+	}
+
+	for chainID, rpcs := range cfg.HttpRpcList {
+		cfg.HttpRpcList[chainID] = slices.Compact(rpcs)
+	}
+	for chainID, rpcs := range cfg.WsRpcList {
+		cfg.WsRpcList[chainID] = slices.Compact(rpcs)
+	}
+
 	return nil
 }
 
@@ -176,6 +304,10 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return fmt.Errorf("finding manager ip address: %w", err)
 	}
 
+	if err := c.importRemoteSwarmDeployConfig(ctx, managerIp); err != nil {
+		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not load remote swarm config: %v", err)))
+	}
+
 	if err := c.Input.CollectSwarmDeployInputs(ctx); err != nil {
 		return err
 	}
@@ -190,38 +322,38 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 
-	if c.Input.swarmDeployInput.guideConfig {
-		// Update .env file
+	chainIdStr := strconv.Itoa(int(cfg.ChainId))
+	shouldUpdateConfigs := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || cfg.SwarmRedisPassword != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
+
+	if c.Input.swarmDeployInput.guideConfig || shouldUpdateConfigs {
 		if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
 			return fmt.Errorf("editing .env file: %w", err)
 		}
 
-		// Update rpcconfigs
-		for i, rpconfigFilePath := range []string{
-			"./trader-backend/rpc.main.json",
-			"./trader-backend/rpc.history.json",
-		} {
-			httpRpcs, wsRpcs := DistributeRpcs(
-				i,
-				strconv.Itoa(int(cfg.ChainId)),
-				cfg,
-			)
-
-			fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-
-			if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
-				fmt.Println(
-					styles.ErrorText.Render(
-						fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
-					),
+		if len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 {
+			for i, rpconfigFilePath := range []string{
+				"./trader-backend/rpc.main.json",
+				"./trader-backend/rpc.history.json",
+			} {
+				httpRpcs, wsRpcs := DistributeRpcs(
+					i,
+					strconv.Itoa(int(cfg.ChainId)),
+					cfg,
 				)
+
+				fmt.Printf("Updating %s config...\n", rpconfigFilePath)
+
+				if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
+					fmt.Println(
+						styles.ErrorText.Render(
+							fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
+						),
+					)
+				}
 			}
 		}
 
-		// Update price configs with provided pyth https endpoints. Remove any
-		// duplicates and ensure that the default pyth endpoint is appended
-		// last.
-		userProvidedHttpEndpoints := c.Input.swarmDeployInput.priceServiceHttpEndpoints
+		userProvidedHttpEndpoints := cfg.UserSuppliedPriceFeedEndpoints
 		slices.Sort(userProvidedHttpEndpoints)
 		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
 		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))
@@ -229,13 +361,14 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
 			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
 		}
-		priceServiceHTTPSEndpoints = slices.Compact(priceServiceHTTPSEndpoints)
 
-		if err := UpdateConfig(
-			"./candles/prices.config.json",
-			UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints),
-		); err != nil {
-			return err
+		if len(priceServiceHTTPSEndpoints) > 0 {
+			if err := UpdateConfig(
+				"./candles/prices.config.json",
+				UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints),
+			); err != nil {
+				return fmt.Errorf("updating candles prices config: %w", err)
+			}
 		}
 	}
 
@@ -380,7 +513,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		if cfg.ServerProvider == configs.D8XServerProviderAWS {
 			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
-				ipWorkers[k],
+				ip,
 				c.DefaultClusterUserName,
 				c.SshKeyPath,
 			)
@@ -436,7 +569,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		pwd,
 		ipMgrPriv,
 	)
-	for _, ip := range ipWorkers {
+	for k, ip := range ipWorkers {
 		var (
 			sshConnWorker conn.SSHConnection
 			err           error
@@ -444,7 +577,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		if cfg.ServerProvider == configs.D8XServerProviderAWS {
 			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
-				ip,
+				ipWorkersPriv[k],
 				c.DefaultClusterUserName,
 				c.SshKeyPath,
 			)
