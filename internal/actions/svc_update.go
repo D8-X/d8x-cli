@@ -223,7 +223,7 @@ func (c *Container) updateSwarmServices(_ *cli.Context, selectedSwarmServicesToU
 		selectedImageReferenceForUpdate[svcToUpdate] = imgToUse
 	}
 
-	workerIps, err := c.HostsCfg.GetWorkerIps()
+	workerIps, err := c.HostsCfg.GetWorkerPrivateIps()
 	if err != nil {
 		return err
 	}
