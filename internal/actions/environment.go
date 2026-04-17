@@ -42,21 +42,18 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		}
 	}
 
-	type envConfig struct {
-		ChainID      uint   `json:"chain_id"`
-		CertbotEmail string `json:"certbot_email"`
-	}
-
 	var environments []string
 	var labels []string
-	var envConfigs []envConfig
+	var envConfigs []configs.D8XConfig
 	for _, e := range allDirs {
 		cfgFile, err := ghReadFile(token, e+"/config.json")
 		if err != nil {
 			continue
 		}
-		var ec envConfig
-		json.Unmarshal([]byte(cfgFile.Content), &ec)
+		var ec configs.D8XConfig
+		if err := json.Unmarshal([]byte(cfgFile.Content), &ec); err != nil {
+			continue
+		}
 
 		_, hostsErr := ghReadFile(token, e+"/hosts.cfg")
 		provisioned := hostsErr == nil
@@ -64,8 +61,8 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		environments = append(environments, e)
 		envConfigs = append(envConfigs, ec)
 		label := e
-		if ec.ChainID > 0 {
-			label = fmt.Sprintf("%s  (chain %d)", e, ec.ChainID)
+		if ec.ChainId > 0 {
+			label = fmt.Sprintf("%s  (chain %d)", e, ec.ChainId)
 		}
 		if !provisioned {
 			label += "  [not provisioned]"
@@ -85,14 +82,10 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	env := environments[idx]
 	fmt.Printf("Environment: %s\n", env)
 
-	if envConfigs[idx].CertbotEmail != "" {
-		cfg.CertbotEmail = envConfigs[idx].CertbotEmail
-	}
-	if envConfigs[idx].ChainID > 0 {
-		cfg.ChainId = envConfigs[idx].ChainID
-		if err := c.ConfigRWriter.Write(cfg); err != nil {
-			return "", fmt.Errorf("writing config: %w", err)
-		}
+	remoteCfg := &envConfigs[idx]
+	mergeRemoteConfig(cfg, remoteCfg)
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return "", fmt.Errorf("writing config: %w", err)
 	}
 
 	// Fetch hosts.cfg from GitHub
@@ -148,6 +141,70 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		c.Input.SelectedEnv = env
 	}
 	return env, nil
+}
+
+func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
+	if remoteCfg == nil {
+		return
+	}
+
+	if remoteCfg.ServerProvider != "" {
+		cfg.ServerProvider = remoteCfg.ServerProvider
+	}
+	if remoteCfg.LinodeConfig != nil {
+		cfg.LinodeConfig = remoteCfg.LinodeConfig
+	}
+	if remoteCfg.AWSConfig != nil {
+		cfg.AWSConfig = remoteCfg.AWSConfig
+	}
+	if remoteCfg.ChainId != 0 {
+		cfg.ChainId = remoteCfg.ChainId
+	}
+	if remoteCfg.CertbotEmail != "" {
+		cfg.CertbotEmail = remoteCfg.CertbotEmail
+	}
+	if remoteCfg.SwarmRedisPassword != "" {
+		cfg.SwarmRedisPassword = remoteCfg.SwarmRedisPassword
+	}
+	if remoteCfg.SwarmRemoteBrokerHTTPUrl != "" {
+		cfg.SwarmRemoteBrokerHTTPUrl = remoteCfg.SwarmRemoteBrokerHTTPUrl
+	}
+	if remoteCfg.DatabaseDSN != "" {
+		cfg.DatabaseDSN = remoteCfg.DatabaseDSN
+	}
+	if len(remoteCfg.UserSuppliedPriceFeedEndpoints) > 0 {
+		cfg.UserSuppliedPriceFeedEndpoints = remoteCfg.UserSuppliedPriceFeedEndpoints
+	}
+	if remoteCfg.BrokerServerConfig.FeeTBPS != "" {
+		cfg.BrokerServerConfig.FeeTBPS = remoteCfg.BrokerServerConfig.FeeTBPS
+	}
+	if remoteCfg.BrokerServerConfig.FeeInputPercent != "" {
+		cfg.BrokerServerConfig.FeeInputPercent = remoteCfg.BrokerServerConfig.FeeInputPercent
+	}
+	if remoteCfg.BrokerServerConfig.RedisPassword != "" {
+		cfg.BrokerServerConfig.RedisPassword = remoteCfg.BrokerServerConfig.RedisPassword
+	}
+
+	if cfg.Services == nil {
+		cfg.Services = make(map[configs.D8XServiceName]configs.D8XService)
+	}
+	for name, service := range remoteCfg.Services {
+		cfg.Services[name] = service
+	}
+
+	if cfg.HttpRpcList == nil {
+		cfg.HttpRpcList = make(map[string][]string)
+	}
+	for chainID, rpcs := range remoteCfg.HttpRpcList {
+		cfg.HttpRpcList[chainID] = rpcs
+	}
+
+	if cfg.WsRpcList == nil {
+		cfg.WsRpcList = make(map[string][]string)
+	}
+	for chainID, rpcs := range remoteCfg.WsRpcList {
+		cfg.WsRpcList[chainID] = rpcs
+	}
 }
 
 func indexOf(list []string, item string) int {
