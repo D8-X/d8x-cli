@@ -22,6 +22,9 @@ type HostsFileInteractor interface {
 
 	// WriteLines writes the provided lines to hosts file
 	WriteLines([]string) error
+
+	// GetPath returns the absolute file path backing this interactor
+	GetPath() string
 }
 
 func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
@@ -109,6 +112,10 @@ func (f *fsHostFileInteractor) GetLines() ([]string, error) {
 	}
 
 	return f.cached.lines, nil
+}
+
+func (f *fsHostFileInteractor) GetPath() string {
+	return f.filePath
 }
 
 func (f *fsHostFileInteractor) WriteLines(lines []string) error {

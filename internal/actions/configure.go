@@ -85,7 +85,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"--extra-vars", fmt.Sprintf(`user_public_key='%s'`, pubKey),
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
 		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, hashedPassword),
-		"-i", "./hosts.cfg",
+		"-i", c.HostsCfg.GetPath(),
 		"-u", configureUser,
 		"./playbooks/setup.ansible.yaml",
 	}

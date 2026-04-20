@@ -318,6 +318,13 @@ func RunD8XCli() {
 
 			return nil
 		},
+		After: func(ctx *cli.Context) error {
+			dir := filepath.Join(os.TempDir(), "d8x-cli")
+			if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("warning: failed to clean up temp dir %s: %s\n", dir, err)
+			}
+			return nil
+		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
