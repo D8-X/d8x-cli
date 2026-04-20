@@ -964,10 +964,11 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	}
 
 	if os.Getenv("BW_SESSION") != "" && cfg.DatabaseDSN != "" {
-		if err := SaveSecretToBitwarden("DATABASE_DSN", cfg.DatabaseDSN); err != nil {
+		fieldName := "DATABASE_DSN_" + strings.ToUpper(c.SelectedEnv)
+		if err := SaveSecretToBitwarden(fieldName, cfg.DatabaseDSN); err != nil {
 			fmt.Printf("  %s Could not save DSN to Bitwarden: %s\n", notok, err)
 		} else {
-			fmt.Printf("  %s Database DSN saved to Bitwarden\n", ok)
+			fmt.Printf("  %s Database DSN saved to Bitwarden as %s\n", ok, fieldName)
 		}
 	}
 

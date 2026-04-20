@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -148,10 +149,186 @@ func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp st
 		return err
 	}
 	mergeRemoteConfig(cfg, remoteCfg)
+	if err := c.reconcileSecretsWithBitwarden(cfg, remoteCfg); err != nil {
+		return err
+	}
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return err
 	}
 	fmt.Println(styles.SuccessText.Render("Remote swarm config loaded and merged into local config."))
+	return nil
+}
+
+func (c *Container) printDeploySummary(envPath string, cfg *configs.D8XConfig, managerIp string) {
+	fmt.Println(styles.ItalicText.Render("Deployment summary:"))
+	fmt.Printf("  environment       : %s\n", c.SelectedEnv)
+	fmt.Printf("  manager IP        : %s\n", managerIp)
+	fmt.Printf("  chain id          : %d\n", cfg.ChainId)
+	fmt.Printf("  remote broker http: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
+	keys := []string{
+		"CHAIN_ID",
+		"SDK_CONFIG_NAME",
+		"REMOTE_BROKER_HTTP",
+		"DATABASE_DSN",
+		"REDIS_PASSWORD",
+		"WS_SPORTSLINEINDEX",
+		"NODE_AUTH_TOKEN",
+	}
+	values := parseEnvFile(envPath)
+	fmt.Println(styles.ItalicText.Render("Values that will be written to " + envPath + ":"))
+	for _, k := range keys {
+		v, ok := values[k]
+		if !ok {
+			continue
+		}
+		fmt.Printf("  %-20s = %s\n", k, redactSecret(k, v))
+	}
+}
+
+func parseEnvFile(path string) map[string]string {
+	out := make(map[string]string)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		out[strings.TrimSpace(k)] = strings.TrimSpace(v)
+	}
+	return out
+}
+
+func redactSecret(key, value string) string {
+	upper := strings.ToUpper(key)
+	if value == "" {
+		return "(empty)"
+	}
+	if strings.Contains(upper, "PASSWORD") || strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") {
+		return redactValue(value)
+	}
+	if upper == "DATABASE_DSN" {
+		return redactDSN(value)
+	}
+	return value
+}
+
+func redactValue(v string) string {
+	if len(v) <= 4 {
+		return "****"
+	}
+	return v[:2] + strings.Repeat("*", len(v)-4) + v[len(v)-2:]
+}
+
+func redactDSN(dsn string) string {
+	at := strings.LastIndex(dsn, "@")
+	if at < 0 {
+		return redactValue(dsn)
+	}
+	prefix := dsn[:at]
+	suffix := dsn[at:]
+	colon := strings.LastIndex(prefix, ":")
+	if colon < 0 {
+		return prefix + suffix
+	}
+	return prefix[:colon] + ":****" + suffix
+}
+
+func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remoteCfg *configs.D8XConfig) error {
+	upperEnv := strings.ToUpper(c.SelectedEnv)
+	checks := []struct {
+		displayName string
+		bwField     string
+		remoteVal   string
+		target      *string
+	}{
+		{"DATABASE_DSN", "DATABASE_DSN_" + upperEnv, remoteCfg.DatabaseDSN, &cfg.DatabaseDSN},
+		{"REDIS_PASSWORD", "SWARM_REDIS_PW_" + upperEnv, remoteCfg.SwarmRedisPassword, &cfg.SwarmRedisPassword},
+	}
+	for _, chk := range checks {
+		bwVal := ""
+		if c.BitwardenFields != nil {
+			bwVal = c.BitwardenFields[chk.bwField]
+		}
+		if bwVal == "" && chk.remoteVal == "" {
+			continue
+		}
+		if bwVal != "" && chk.remoteVal == "" {
+			if *chk.target != "" && *chk.target != bwVal {
+				fmt.Printf("%s %s in local config differs from Bitwarden (%s). Using Bitwarden value.\n", notok, chk.displayName, chk.bwField)
+			}
+			*chk.target = bwVal
+			continue
+		}
+		if bwVal == "" && chk.remoteVal != "" {
+			fmt.Printf("%s %s is set on the manager but missing in Bitwarden (%s).\n", notok, chk.displayName, chk.bwField)
+			keep, err := c.TUI.NewPrompt(fmt.Sprintf("Keep manager value for %s and save it to Bitwarden as %s?", chk.displayName, chk.bwField), true)
+			if err != nil {
+				return err
+			}
+			if !keep {
+				return fmt.Errorf("aborted: missing Bitwarden secret %s", chk.bwField)
+			}
+			*chk.target = chk.remoteVal
+			if os.Getenv("BW_SESSION") != "" {
+				if err := SaveSecretToBitwarden(chk.bwField, chk.remoteVal); err != nil {
+					fmt.Printf("  %s could not save %s to Bitwarden: %s\n", notok, chk.bwField, err)
+				} else {
+					fmt.Printf("  %s %s saved to Bitwarden\n", ok, chk.bwField)
+					if c.BitwardenFields == nil {
+						c.BitwardenFields = make(map[string]string)
+					}
+					c.BitwardenFields[chk.bwField] = chk.remoteVal
+				}
+			}
+			continue
+		}
+		if bwVal == chk.remoteVal {
+			*chk.target = bwVal
+			continue
+		}
+		fmt.Printf("%s %s MISMATCH between manager .env and Bitwarden (%s).\n", notok, chk.displayName, chk.bwField)
+		choice, err := c.TUI.NewSelection(
+			[]string{
+				fmt.Sprintf("Use Bitwarden value for %s", chk.displayName),
+				fmt.Sprintf("Use manager value for %s (and overwrite Bitwarden %s)", chk.displayName, chk.bwField),
+				"Abort deployment",
+			},
+			components.SelectionOptAllowOnlySingleItem(),
+			components.SelectionOptRequireSelection(),
+		)
+		if err != nil {
+			return err
+		}
+		if len(choice) == 0 {
+			return fmt.Errorf("aborted: no choice made for %s reconciliation", chk.displayName)
+		}
+		switch {
+		case strings.HasPrefix(choice[0], "Use Bitwarden"):
+			*chk.target = bwVal
+		case strings.HasPrefix(choice[0], "Use manager"):
+			*chk.target = chk.remoteVal
+			if os.Getenv("BW_SESSION") != "" {
+				if err := SaveSecretToBitwarden(chk.bwField, chk.remoteVal); err != nil {
+					fmt.Printf("  %s could not save %s to Bitwarden: %s\n", notok, chk.bwField, err)
+				} else {
+					fmt.Printf("  %s %s overwritten in Bitwarden\n", ok, chk.bwField)
+					if c.BitwardenFields == nil {
+						c.BitwardenFields = make(map[string]string)
+					}
+					c.BitwardenFields[chk.bwField] = chk.remoteVal
+				}
+			}
+		default:
+			return fmt.Errorf("aborted: %s reconciliation", chk.displayName)
+		}
+	}
 	return nil
 }
 
@@ -168,6 +345,14 @@ func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8X
 	remoteEnv := strings.TrimSpace(string(envOut))
 	if remoteEnv == "" {
 		return nil, nil
+	}
+
+	backupPath := fmt.Sprintf("./trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405"))
+	if err := c.FS.WriteFile(backupPath, []byte(remoteEnv)); err != nil {
+		fmt.Printf("%s failed to write remote .env backup to %s: %s\n", notok, backupPath, err)
+	} else {
+		fmt.Printf("%s saved remote .env backup to %s\n", ok, backupPath)
+		c.LastEnvBackupPath = backupPath
 	}
 
 	cfg := &configs.D8XConfig{}
@@ -248,6 +433,16 @@ func (c *Container) populateRemoteRpcConfig(cfg *configs.D8XConfig, content []by
 
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
+
+	defer func() {
+		if c.LastEnvBackupPath == "" {
+			return
+		}
+		if err := os.Remove(c.LastEnvBackupPath); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("%s failed to remove .env backup %s: %s\n", notok, c.LastEnvBackupPath, err)
+		}
+		c.LastEnvBackupPath = ""
+	}()
 
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
@@ -373,12 +568,19 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	}
 
 	if showConfigConfirmation {
-		fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
-		fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
+		fmt.Println(styles.AlertImportant.Render("Review the configuration below before deploying."))
+		c.printDeploySummary("./trader-backend/.env", cfg, managerIp)
+		fmt.Println("The following configuration files will be copied to the 'manager node':")
 		for _, f := range swarmDeployConfigFilesToCopy {
-			fmt.Println(f.Dst)
+			fmt.Println("  " + f.Dst)
 		}
-		c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
+		proceed, err := c.TUI.NewPrompt("Proceed with deployment using the values above?", false)
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			return fmt.Errorf("aborted: deployment declined at confirmation step")
+		}
 	}
 
 	pwd, err := c.ResolvePassword(ctx)

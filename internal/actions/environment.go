@@ -148,10 +148,6 @@ func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 		return
 	}
 
-	if remoteCfg.SwarmRedisPassword != "" || remoteCfg.DatabaseDSN != "" || remoteCfg.BrokerServerConfig.RedisPassword != "" {
-		fmt.Printf("%s remote config.json contains secret fields - ignoring them. Keep secrets in Bitwarden or local .env.\n", notok)
-	}
-
 	var merged []string
 
 	if remoteCfg.ServerProvider != "" {

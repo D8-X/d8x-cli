@@ -63,6 +63,9 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		os.Setenv("BW_SESSION", session)
 	}
 
+	if c.BitwardenFields == nil {
+		c.BitwardenFields = make(map[string]string)
+	}
 	count := 0
 	for _, itemName := range []string{bwPersonalItemName, bwItemName} {
 		out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
@@ -76,7 +79,14 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 
 		for _, field := range item.Fields {
-			if field.Name == "" || field.Value == "" || os.Getenv(field.Name) != "" {
+			if field.Name == "" || field.Value == "" {
+				continue
+			}
+			if _, exists := c.BitwardenFields[field.Name]; !exists {
+				c.BitwardenFields[field.Name] = field.Value
+			}
+
+			if os.Getenv(field.Name) != "" {
 				continue
 			}
 

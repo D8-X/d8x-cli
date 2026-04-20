@@ -79,6 +79,10 @@ type Container struct {
 
 	// Global input state
 	Input *InputCollector
+
+	BitwardenFields map[string]string
+
+	LastEnvBackupPath string
 }
 
 func NewDefaultContainer() (*Container, error) {

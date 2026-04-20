@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/actions"
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -17,34 +15,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/urfave/cli/v2"
 )
-
-// loadDotEnv reads a .env file and sets env vars that are not already set.
-func loadDotEnv(path string) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		k, v, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		k = strings.TrimSpace(k)
-		v = strings.TrimSpace(v)
-		v = strings.Trim(v, "\"'")
-		// Don't override existing env vars
-		if os.Getenv(k) == "" {
-			os.Setenv(k, v)
-		}
-	}
-}
 
 const D8XASCII = `                          D8X CLI                          `
 
@@ -303,9 +273,6 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
-			// Load .env file if present
-			loadDotEnv(".env")
-
 			arg := ctx.Args().First()
 			if arg != "help" && arg != "" && !ctx.Bool("help") && !ctx.Bool("version") {
 				container.LoadSecretsFromBitwarden()
