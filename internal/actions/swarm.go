@@ -335,12 +335,12 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8XConfig, error) {
 	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("SSH to manager %s failed: %w", managerIp, err)
 	}
 
 	envOut, err := sshConn.ExecCommand(`if [ -f ./trader-backend/.env ]; then cat ./trader-backend/.env; fi`)
 	if err != nil {
-		return nil, nil
+		return nil, fmt.Errorf("reading remote ./trader-backend/.env on %s: %w", managerIp, err)
 	}
 	remoteEnv := strings.TrimSpace(string(envOut))
 	if remoteEnv == "" {
@@ -501,6 +501,13 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	if err := c.importRemoteSwarmDeployConfig(ctx, managerIp); err != nil {
 		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not load remote swarm config: %v", err)))
+		cont, perr := c.TUI.NewPrompt("Proceed without remote config? (this will deploy as if it were a fresh cluster and may overwrite live values)", false)
+		if perr != nil {
+			return perr
+		}
+		if !cont {
+			return fmt.Errorf("aborted: remote config unreachable")
+		}
 	}
 
 	if err := c.Input.CollectSwarmDeployInputs(ctx); err != nil {
