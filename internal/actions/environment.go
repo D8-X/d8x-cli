@@ -21,10 +21,10 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		return c.SelectedEnv, nil
 	}
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		return "", fmt.Errorf("GITHUB_TOKEN is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
+	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
+		return "", err
 	}
+	token := os.Getenv("GITHUB_TOKEN")
 
 	// List environments from GitHub and let user pick
 	allDirs, err := ghListDirs(token)
@@ -48,7 +48,9 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	for _, e := range allDirs {
 		cfgFile, err := ghReadFile(token, e+"/config.json")
 		if err != nil {
-			fmt.Printf("%s environment '%s' skipped: config.json unreadable (%s)\n", notok, e, err)
+			if !strings.Contains(err.Error(), "404") {
+				fmt.Printf("%s environment '%s' skipped: config.json unreadable (%s)\n", notok, e, err)
+			}
 			continue
 		}
 		var ec configs.D8XConfig
@@ -110,7 +112,7 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	}
 	envKey := "SSH_KEY_PATH_" + upperEnv
 	if sshKey == "" {
-		fmt.Printf("%s not found in .env. Enter SSH key path for %s:\n", envKey, env)
+		fmt.Printf("%s not found in Bitwarden (field SSH_KEY_%s). Enter SSH key path for %s:\n", envKey, upperEnv, env)
 		sshKey, err = c.TUI.NewInput(components.TextInputOptValue("./id_ed25519"))
 		if err != nil {
 			return "", err

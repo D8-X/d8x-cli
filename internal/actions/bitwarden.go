@@ -24,6 +24,7 @@ type bwItem struct {
 
 func (c *Container) LoadSecretsFromBitwarden() error {
 	if _, err := exec.LookPath("bw"); err != nil {
+		c.BitwardenStatus = "bw CLI not found in PATH (install with 'brew install bitwarden-cli')"
 		fmt.Println(styles.ErrorText.Render("Bitwarden CLI ('bw') not found in PATH. Install it with 'brew install bitwarden-cli' so secrets can load automatically."))
 		return nil
 	}
@@ -42,6 +43,7 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	if needUnlock {
 		out, err := exec.Command("bw", "status").Output()
 		if err != nil {
+			c.BitwardenStatus = fmt.Sprintf("bw status check failed: %s", err)
 			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden status check failed: %s. Run 'bw login' or 'bw unlock' manually.", err)))
 			return nil
 		}
@@ -51,6 +53,7 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		json.Unmarshal(out, &status)
 
 		if status.Status == "unauthenticated" {
+			c.BitwardenStatus = "bw vault is not logged in (run 'bw login')"
 			fmt.Println(styles.ErrorText.Render("Bitwarden: not logged in. Run 'bw login' first."))
 			return nil
 		}
@@ -61,6 +64,7 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 			components.TextInputOptMasked(),
 		)
 		if err != nil || masterPwd == "" {
+			c.BitwardenStatus = "master password prompt cancelled or empty"
 			fmt.Println(styles.ErrorText.Render("No master password entered; Bitwarden secrets will NOT be loaded."))
 			return nil
 		}
@@ -69,6 +73,7 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		unlockOut, err := exec.Command("bw", "unlock", "--raw", "--passwordenv", "BW_TMP_PWD").CombinedOutput()
 		os.Unsetenv("BW_TMP_PWD")
 		if err != nil {
+			c.BitwardenStatus = fmt.Sprintf("bw unlock failed: %s", err)
 			fmt.Println(styles.ErrorText.Render("Bitwarden unlock failed. Check your master password."))
 			return nil
 		}
@@ -81,10 +86,12 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	}
 	count := 0
 	itemsSeen := 0
+	var fetchErr error
 	for _, itemName := range []string{bwPersonalItemName, bwItemName} {
 		out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
 		if err != nil {
 			if itemName == bwItemName {
+				fetchErr = err
 				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden: could not fetch shared item '%s'. Error: %s", itemName, err)))
 			}
 			continue
@@ -126,9 +133,19 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	}
 
 	if itemsSeen == 0 {
+		if fetchErr != nil {
+			c.BitwardenStatus = fmt.Sprintf("could not fetch d8x-cli item (%s)", fetchErr)
+		} else {
+			c.BitwardenStatus = "no d8x-cli items found in vault"
+		}
 		fmt.Println(styles.ErrorText.Render("Bitwarden: no d8x-cli items could be loaded. Secrets will not be available."))
-	} else if count > 0 {
-		fmt.Printf("%s Loaded %d secret(s) from Bitwarden\n", ok, count)
+	} else {
+		c.BitwardenStatus = fmt.Sprintf("loaded %d field(s) from %d item(s)", len(c.BitwardenFields), itemsSeen)
+		if count > 0 {
+			fmt.Printf("%s Loaded %d secret(s) from Bitwarden\n", ok, count)
+		} else {
+			fmt.Printf("%s Bitwarden items loaded; %d field(s) already matched existing env vars\n", ok, len(c.BitwardenFields))
+		}
 	}
 
 	return nil
@@ -234,6 +251,23 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	}
 
 	return BwSaved, existingValue, nil
+}
+
+func (c *Container) RequireBitwardenField(fieldName string) error {
+	if v := os.Getenv(fieldName); v != "" {
+		return nil
+	}
+	if c.BitwardenFields != nil {
+		if v := c.BitwardenFields[fieldName]; v != "" {
+			os.Setenv(fieldName, v)
+			return nil
+		}
+	}
+	status := c.BitwardenStatus
+	if status == "" {
+		status = "Bitwarden was not consulted"
+	}
+	return fmt.Errorf("%s is missing. Bitwarden status: %s. Add a '%s' field to the d8x-cli Bitwarden item (or its d8x-cli-personal counterpart) and re-run", fieldName, status, fieldName)
 }
 
 func saveAndReport(fieldName, value string) error {

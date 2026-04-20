@@ -32,20 +32,20 @@ type ghFileResponse struct {
 func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Manage whitelisted origins")
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		return fmt.Errorf("GITHUB_TOKEN is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
+	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
+		return err
 	}
+	token := os.Getenv("GITHUB_TOKEN")
 
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		cfg = &configs.D8XConfig{}
 	}
 
-	apiKey := os.Getenv("NGINX_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("NGINX_API_KEY is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
+	if err := c.RequireBitwardenField("NGINX_API_KEY"); err != nil {
+		return err
 	}
+	apiKey := os.Getenv("NGINX_API_KEY")
 
 	env, err := c.EnsureEnvironment(cfg)
 	if err != nil {

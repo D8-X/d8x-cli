@@ -206,10 +206,10 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return err
 	}
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		return fmt.Errorf("GITHUB_TOKEN is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
+	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
+		return err
 	}
+	token := os.Getenv("GITHUB_TOKEN")
 
 	password, err := c.ResolvePassword(ctx)
 	if err != nil {
@@ -238,10 +238,10 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		return fmt.Errorf("reading broker-nginx.conf: %w", err)
 	}
 
-	apiKey := os.Getenv("NGINX_API_KEY")
-	if apiKey == "" {
-		return fmt.Errorf("NGINX_API_KEY is required in .env or Bitwarden")
+	if err := c.RequireBitwardenField("NGINX_API_KEY"); err != nil {
+		return err
 	}
+	apiKey := os.Getenv("NGINX_API_KEY")
 	brokerNginxContent := strings.ReplaceAll(brokerNginx.Content, "BROKER_PRIVATE_IP_HERE", brokerPrivateIp)
 	brokerNginxContent = strings.ReplaceAll(brokerNginxContent, "API_KEY_HERE", apiKey)
 

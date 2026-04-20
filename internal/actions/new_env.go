@@ -15,10 +15,10 @@ import (
 func (c *Container) NewEnvironment(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Create new environment...")
 
-	token := os.Getenv("GITHUB_TOKEN")
-	if token == "" {
-		return fmt.Errorf("GITHUB_TOKEN is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
+	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
+		return err
 	}
+	token := os.Getenv("GITHUB_TOKEN")
 
 	existing, err := ghListDirs(token)
 	if err != nil {

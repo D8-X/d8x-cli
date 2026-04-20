@@ -82,6 +82,8 @@ type Container struct {
 
 	BitwardenFields map[string]string
 
+	BitwardenStatus string
+
 	LastEnvBackupPath string
 }
 
