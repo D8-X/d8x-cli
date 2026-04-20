@@ -309,5 +309,10 @@ func writeSSHKeyToTempFile(name, content string) (string, error) {
 	if err := os.WriteFile(keyPath, []byte(content), 0600); err != nil {
 		return "", err
 	}
+	if out, err := exec.Command("ssh-keygen", "-y", "-f", keyPath).Output(); err == nil {
+		_ = os.WriteFile(keyPath+".pub", out, 0644)
+	} else {
+		fmt.Printf("  %s could not derive public key for %s: %s\n", notok, name, err)
+	}
 	return keyPath, nil
 }
