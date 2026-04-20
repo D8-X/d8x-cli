@@ -846,11 +846,11 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
-		return fmt.Errorf("GITHUB_TOKEN is required in .env file")
+		return fmt.Errorf("GITHUB_TOKEN is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
 	}
 	apiKey := os.Getenv("NGINX_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("NGINX_API_KEY is required in .env file")
+		return fmt.Errorf("NGINX_API_KEY is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
 	}
 
 	password, err := c.ResolvePassword(ctx)

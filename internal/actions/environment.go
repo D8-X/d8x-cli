@@ -23,7 +23,7 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 
 	token := os.Getenv("GITHUB_TOKEN")
 	if token == "" {
-		return "", fmt.Errorf("GITHUB_TOKEN is required in .env file")
+		return "", fmt.Errorf("GITHUB_TOKEN is required (add it to your Bitwarden d8x-cli item, export it, or set it in .env)")
 	}
 
 	// List environments from GitHub and let user pick

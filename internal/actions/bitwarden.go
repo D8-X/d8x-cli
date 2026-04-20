@@ -24,13 +24,25 @@ type bwItem struct {
 
 func (c *Container) LoadSecretsFromBitwarden() error {
 	if _, err := exec.LookPath("bw"); err != nil {
+		fmt.Println(styles.ErrorText.Render("Bitwarden CLI ('bw') not found in PATH. Install it with 'brew install bitwarden-cli' so secrets can load automatically."))
 		return nil
 	}
 
 	session := os.Getenv("BW_SESSION")
-	if session == "" {
+	needUnlock := session == ""
+	if !needUnlock {
+		probe, err := exec.Command("bw", "get", "item", bwItemName, "--session", session).CombinedOutput()
+		if err != nil {
+			fmt.Println(styles.ItalicText.Render("Existing BW_SESSION appears stale; re-authenticating..."))
+			_ = probe
+			needUnlock = true
+			session = ""
+		}
+	}
+	if needUnlock {
 		out, err := exec.Command("bw", "status").Output()
 		if err != nil {
+			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden status check failed: %s. Run 'bw login' or 'bw unlock' manually.", err)))
 			return nil
 		}
 		var status struct {
@@ -39,7 +51,7 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		json.Unmarshal(out, &status)
 
 		if status.Status == "unauthenticated" {
-			fmt.Println(styles.ItalicText.Render("Bitwarden: not logged in. Run 'bw login' first."))
+			fmt.Println(styles.ErrorText.Render("Bitwarden: not logged in. Run 'bw login' first."))
 			return nil
 		}
 
@@ -49,17 +61,18 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 			components.TextInputOptMasked(),
 		)
 		if err != nil || masterPwd == "" {
+			fmt.Println(styles.ErrorText.Render("No master password entered; Bitwarden secrets will NOT be loaded."))
 			return nil
 		}
 
 		os.Setenv("BW_TMP_PWD", masterPwd)
-		out, err = exec.Command("bw", "unlock", "--raw", "--passwordenv", "BW_TMP_PWD").CombinedOutput()
+		unlockOut, err := exec.Command("bw", "unlock", "--raw", "--passwordenv", "BW_TMP_PWD").CombinedOutput()
 		os.Unsetenv("BW_TMP_PWD")
 		if err != nil {
 			fmt.Println(styles.ErrorText.Render("Bitwarden unlock failed. Check your master password."))
 			return nil
 		}
-		session = strings.TrimSpace(string(out))
+		session = strings.TrimSpace(string(unlockOut))
 		os.Setenv("BW_SESSION", session)
 	}
 
@@ -67,11 +80,16 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		c.BitwardenFields = make(map[string]string)
 	}
 	count := 0
+	itemsSeen := 0
 	for _, itemName := range []string{bwPersonalItemName, bwItemName} {
 		out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
 		if err != nil {
+			if itemName == bwItemName {
+				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden: could not fetch shared item '%s'. Error: %s", itemName, err)))
+			}
 			continue
 		}
+		itemsSeen++
 
 		var item bwItem
 		if err := json.Unmarshal(out, &item); err != nil {
@@ -106,7 +124,9 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 	}
 
-	if count > 0 {
+	if itemsSeen == 0 {
+		fmt.Println(styles.ErrorText.Render("Bitwarden: no d8x-cli items could be loaded. Secrets will not be available."))
+	} else if count > 0 {
 		fmt.Printf("%s Loaded %d secret(s) from Bitwarden\n", ok, count)
 	}
 
