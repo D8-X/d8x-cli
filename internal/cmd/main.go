@@ -65,10 +65,13 @@ func RunD8XCli() {
 				Description: SetupDescription,
 				Action:      container.Setup,
 				Before: func(ctx *cli.Context) error {
-					// Retrieve the user password whenever possible
 					if container.UserPassword == "" {
 						pwd, err := container.GetPassword(ctx)
-						if err == nil && len(pwd) > 0 {
+						if err != nil {
+							fmt.Printf("warning: could not retrieve server password: %s. Destructive steps may fail.\n", err)
+						} else if len(pwd) == 0 {
+							fmt.Println("warning: no server password found (pass --password, set SERVER_PASSWORD_{ENV} in Bitwarden, or put it in ./password.txt). Destructive steps may fail.")
+						} else {
 							container.UserPassword = pwd
 						}
 					}

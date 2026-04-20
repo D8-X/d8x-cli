@@ -66,12 +66,15 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 }
 
 func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
-	// Attempt to update known_hosts with manager's host key
-	managerIp, _ := c.HostsCfg.GetMangerPublicIp()
+	managerIp, err := c.HostsCfg.GetMangerPublicIp()
+	if err != nil {
+		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("could not read manager public IP from hosts.cfg: %v. Skipping known_hosts update; subsequent SSH operations may prompt for host key confirmation.", err)))
+		return nil
+	}
 	if err := a.putManagerToKnownHosts(managerIp); err != nil {
 		fmt.Println(
 			styles.ErrorText.Render(
-				fmt.Sprintf("could not update ~/.ssh/known_hosts with manager ip address: %v", err),
+				fmt.Sprintf("could not update ~/.ssh/known_hosts for manager %s: %v. You may need to accept the host key manually on first SSH (e.g., `ssh %s` and type 'yes').", managerIp, err, managerIp),
 			),
 		)
 	}

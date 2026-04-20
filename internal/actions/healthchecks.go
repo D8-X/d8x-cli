@@ -35,7 +35,9 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 	token := os.Getenv("GITHUB_TOKEN")
 	if token != "" && c.SelectedEnv != "" {
 		sites, err := ghReadFile(token, c.SelectedEnv+"/sites.conf")
-		if err == nil {
+		if err != nil {
+			fmt.Printf("%s could not fetch %s/sites.conf (%s); health checks will run only against locally configured services\n", notok, c.SelectedEnv, err)
+		} else {
 			for _, host := range extractAllServerNames(sites.Content) {
 				name := strings.Split(host, ".")[0]
 				if _, exists := cfg.Services[configs.D8XServiceName(name)]; !exists {

@@ -277,12 +277,19 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 			}
 			*chk.target = chk.remoteVal
 			if os.Getenv("BW_SESSION") != "" {
-				if err := saveAndReport(chk.bwField, chk.remoteVal); err == nil {
-					if c.BitwardenFields == nil {
-						c.BitwardenFields = make(map[string]string)
+				if err := saveAndReport(chk.bwField, chk.remoteVal); err != nil {
+					cont, perr := c.TUI.NewPrompt(fmt.Sprintf("Bitwarden save of %s failed. Proceed with deployment using the manager value (leaving Bitwarden unchanged)?", chk.bwField), false)
+					if perr != nil {
+						return perr
 					}
-					c.BitwardenFields[chk.bwField] = chk.remoteVal
+					if !cont {
+						return fmt.Errorf("aborted: %s could not be persisted to Bitwarden", chk.bwField)
+					}
 				}
+				if c.BitwardenFields == nil {
+					c.BitwardenFields = make(map[string]string)
+				}
+				c.BitwardenFields[chk.bwField] = chk.remoteVal
 			}
 			continue
 		}
@@ -314,13 +321,20 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 			if os.Getenv("BW_SESSION") != "" {
 				if _, _, saveErr := ForceOverwriteBitwarden(chk.bwField, chk.remoteVal); saveErr != nil {
 					fmt.Printf("  %s could not overwrite %s in Bitwarden: %s\n", notok, chk.bwField, saveErr)
+					cont, perr := c.TUI.NewPrompt(fmt.Sprintf("Bitwarden overwrite of %s failed. Proceed with deployment anyway (Bitwarden will remain out of sync)?", chk.bwField), false)
+					if perr != nil {
+						return perr
+					}
+					if !cont {
+						return fmt.Errorf("aborted: %s could not be overwritten in Bitwarden", chk.bwField)
+					}
 				} else {
 					fmt.Printf("  %s %s overwritten in Bitwarden\n", ok, chk.bwField)
-					if c.BitwardenFields == nil {
-						c.BitwardenFields = make(map[string]string)
-					}
-					c.BitwardenFields[chk.bwField] = chk.remoteVal
 				}
+				if c.BitwardenFields == nil {
+					c.BitwardenFields = make(map[string]string)
+				}
+				c.BitwardenFields[chk.bwField] = chk.remoteVal
 			}
 		default:
 			return fmt.Errorf("aborted: %s reconciliation", chk.displayName)
@@ -341,12 +355,20 @@ func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8X
 	}
 	remoteEnv := strings.TrimSpace(string(envOut))
 	if remoteEnv == "" {
+		fmt.Println(styles.ItalicText.Render("No existing ./trader-backend/.env on manager; treating as a fresh deployment."))
 		return nil, nil
 	}
 
 	backupPath := fmt.Sprintf("./trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405"))
 	if err := c.FS.WriteFile(backupPath, []byte(remoteEnv)); err != nil {
 		fmt.Printf("%s failed to write remote .env backup to %s: %s\n", notok, backupPath, err)
+		cont, perr := c.TUI.NewPrompt("Remote .env backup could not be written locally. Proceed without a safety copy?", false)
+		if perr != nil {
+			return nil, perr
+		}
+		if !cont {
+			return nil, fmt.Errorf("aborted: no local backup of remote .env could be written")
+		}
 	} else {
 		fmt.Printf("%s saved remote .env backup to %s\n", ok, backupPath)
 		c.LastEnvBackupPath = backupPath
@@ -380,17 +402,21 @@ func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8X
 	for _, fname := range []string{"./trader-backend/rpc.main.json", "./trader-backend/rpc.history.json"} {
 		rpcOut, err := sshConn.ExecCommand(fmt.Sprintf(`if [ -f %s ]; then cat %s; fi`, fname, fname))
 		if err != nil {
+			fmt.Printf("%s remote %s could not be read (%s); skipping\n", notok, fname, err)
 			continue
 		}
 		if strings.TrimSpace(string(rpcOut)) == "" {
+			fmt.Printf("%s remote %s is empty or missing; skipping\n", notok, fname)
 			continue
 		}
 		if err := c.populateRemoteRpcConfig(cfg, rpcOut); err != nil {
+			fmt.Printf("%s remote %s parse failed (%s); skipping\n", notok, fname, err)
 			continue
 		}
 	}
 
 	if cfg.ChainId == 0 && len(cfg.HttpRpcList) == 0 && len(cfg.WsRpcList) == 0 && cfg.DatabaseDSN == "" && cfg.SwarmRemoteBrokerHTTPUrl == "" && cfg.SwarmRedisPassword == "" {
+		fmt.Println(styles.ItalicText.Render("Remote ./trader-backend/.env was parsed but contains no recognised fields; treating as a fresh deployment."))
 		return nil, nil
 	}
 	return cfg, nil
@@ -1040,7 +1066,7 @@ func enableSectionsInNginxFile(nginxCfgPath string, enableSections []NginxConfig
 	for _, enableSection := range enableSections {
 		nginxConfUpdated, err := processNginxConfigComments(cfgBuf, enableSection)
 		if err != nil {
-			return err
+			return fmt.Errorf("nginx config: failed to enable section %q: %w", enableSection, err)
 		}
 		cfgBuf = bytes.NewBuffer(nginxConfUpdated)
 	}

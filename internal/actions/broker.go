@@ -112,7 +112,15 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		}
 		fmt.Printf("  Broker Redis password (newly generated): %s\n", redisPw)
 		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
-			saveAndReport(fieldName, redisPw)
+			if err := saveAndReport(fieldName, redisPw); err != nil {
+				keep, perr := c.TUI.NewPrompt(fmt.Sprintf("Bitwarden save for %s failed. Continue broker deploy with an unsaved password?", fieldName), false)
+				if perr != nil {
+					return perr
+				}
+				if !keep {
+					return fmt.Errorf("aborted: broker redis password was not persisted to Bitwarden")
+				}
+			}
 		}
 	}
 

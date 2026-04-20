@@ -48,10 +48,12 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	for _, e := range allDirs {
 		cfgFile, err := ghReadFile(token, e+"/config.json")
 		if err != nil {
+			fmt.Printf("%s environment '%s' skipped: config.json unreadable (%s)\n", notok, e, err)
 			continue
 		}
 		var ec configs.D8XConfig
 		if err := json.Unmarshal([]byte(cfgFile.Content), &ec); err != nil {
+			fmt.Printf("%s environment '%s' skipped: config.json is not valid JSON (%s)\n", notok, e, err)
 			continue
 		}
 

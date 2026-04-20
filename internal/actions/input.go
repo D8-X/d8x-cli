@@ -532,7 +532,9 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				saveAndReport(fieldName, pwd)
+				if err := saveAndReport(fieldName, pwd); err != nil {
+					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
+				}
 			}
 		}
 
@@ -646,7 +648,9 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				saveAndReport(fieldName, pwd)
+				if err := saveAndReport(fieldName, pwd); err != nil {
+					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
+				}
 			}
 		}
 		if cfg.SwarmRemoteBrokerHTTPUrl == "" {
