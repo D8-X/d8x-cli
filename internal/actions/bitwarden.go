@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -96,11 +97,16 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 			}
 			continue
 		}
+		if len(bytes.TrimSpace(out)) == 0 {
+			continue
+		}
 		itemsSeen++
 
 		var item bwItem
 		if err := json.Unmarshal(out, &item); err != nil {
-			fmt.Printf("%s Bitwarden item '%s' returned unparseable JSON (%s); skipping\n", notok, itemName, err)
+			if itemName == bwItemName {
+				fmt.Printf("%s Bitwarden item '%s' returned unparseable JSON (%s); skipping\n", notok, itemName, err)
+			}
 			continue
 		}
 
