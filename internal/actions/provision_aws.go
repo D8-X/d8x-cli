@@ -167,9 +167,7 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.AccesKey = accessKey
 	if os.Getenv("BW_SESSION") != "" {
-		if err := SaveSecretToBitwarden("AWS_ACCESS_KEY", accessKey); err != nil {
-			fmt.Printf("  %s Could not save AWS access key to Bitwarden: %s\n", notok, err)
-		}
+		saveAndReportPersonal("AWS_ACCESS_KEY", accessKey)
 	}
 
 	secretKey := os.Getenv("AWS_SECRET_KEY")
@@ -189,9 +187,7 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.SecretKey = secretKey
 	if os.Getenv("BW_SESSION") != "" {
-		if err := SaveSecretToBitwarden("AWS_SECRET_KEY", secretKey); err != nil {
-			fmt.Printf("  %s Could not save AWS secret key to Bitwarden: %s\n", notok, err)
-		}
+		saveAndReportPersonal("AWS_SECRET_KEY", secretKey)
 	}
 
 	fmt.Println("Enter your AWS cluster region: ")

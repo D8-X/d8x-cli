@@ -96,18 +96,23 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 			styles.AlertImportant.Render(absChainConfig+"\n"+absRpcConfig),
 	)
 
-	// Generate broker-server redis password
-	redisPw, err := generatePassword(16)
-	if err != nil {
-		return fmt.Errorf("generating redis password: %w", err)
+	fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
+	var redisPw string
+	if c.BitwardenFields != nil {
+		if existing, ok := c.BitwardenFields[fieldName]; ok && existing != "" {
+			redisPw = existing
+			fmt.Printf("  %s Reusing %s from Bitwarden for broker redis password\n", styles.SuccessText.Render("✓"), fieldName)
+		}
 	}
-	fmt.Printf("  Broker Redis password: %s\n", redisPw)
-	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
-		fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
-		if err := SaveSecretToBitwarden(fieldName, redisPw); err != nil {
-			fmt.Printf("  %s Could not save to Bitwarden: %s\n", notok, err)
-		} else {
-			fmt.Printf("  %s Saved to Bitwarden as %s\n", ok, fieldName)
+	if redisPw == "" {
+		var err error
+		redisPw, err = generatePassword(16)
+		if err != nil {
+			return fmt.Errorf("generating redis password: %w", err)
+		}
+		fmt.Printf("  Broker Redis password (newly generated): %s\n", redisPw)
+		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+			saveAndReport(fieldName, redisPw)
 		}
 	}
 

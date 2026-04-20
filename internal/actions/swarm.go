@@ -277,10 +277,7 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 			}
 			*chk.target = chk.remoteVal
 			if os.Getenv("BW_SESSION") != "" {
-				if err := SaveSecretToBitwarden(chk.bwField, chk.remoteVal); err != nil {
-					fmt.Printf("  %s could not save %s to Bitwarden: %s\n", notok, chk.bwField, err)
-				} else {
-					fmt.Printf("  %s %s saved to Bitwarden\n", ok, chk.bwField)
+				if err := saveAndReport(chk.bwField, chk.remoteVal); err == nil {
 					if c.BitwardenFields == nil {
 						c.BitwardenFields = make(map[string]string)
 					}
@@ -315,8 +312,8 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 		case strings.HasPrefix(choice[0], "Use manager"):
 			*chk.target = chk.remoteVal
 			if os.Getenv("BW_SESSION") != "" {
-				if err := SaveSecretToBitwarden(chk.bwField, chk.remoteVal); err != nil {
-					fmt.Printf("  %s could not save %s to Bitwarden: %s\n", notok, chk.bwField, err)
+				if _, _, saveErr := ForceOverwriteBitwarden(chk.bwField, chk.remoteVal); saveErr != nil {
+					fmt.Printf("  %s could not overwrite %s in Bitwarden: %s\n", notok, chk.bwField, saveErr)
 				} else {
 					fmt.Printf("  %s %s overwritten in Bitwarden\n", ok, chk.bwField)
 					if c.BitwardenFields == nil {

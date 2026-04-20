@@ -524,7 +524,6 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			return err
 		}
 
-		// Generate redis password
 		if cfg.SwarmRedisPassword == "" {
 			pwd, err := generatePassword(20)
 			if err != nil {
@@ -533,11 +532,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				if err := SaveSecretToBitwarden(fieldName, pwd); err != nil {
-					fmt.Printf("  %s Could not save swarm Redis password to Bitwarden: %s\n", notok, err)
-				} else {
-					fmt.Printf("  %s Swarm Redis password saved to Bitwarden as %s\n", ok, fieldName)
-				}
+				saveAndReport(fieldName, pwd)
 			}
 		}
 
@@ -651,11 +646,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				if err := SaveSecretToBitwarden(fieldName, pwd); err != nil {
-					fmt.Printf("  %s Could not save swarm Redis password to Bitwarden: %s\n", notok, err)
-				} else {
-					fmt.Printf("  %s Swarm Redis password saved to Bitwarden as %s\n", ok, fieldName)
-				}
+				saveAndReport(fieldName, pwd)
 			}
 		}
 		if cfg.SwarmRemoteBrokerHTTPUrl == "" {
@@ -965,11 +956,7 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 
 	if os.Getenv("BW_SESSION") != "" && cfg.DatabaseDSN != "" {
 		fieldName := "DATABASE_DSN_" + strings.ToUpper(c.SelectedEnv)
-		if err := SaveSecretToBitwarden(fieldName, cfg.DatabaseDSN); err != nil {
-			fmt.Printf("  %s Could not save DSN to Bitwarden: %s\n", notok, err)
-		} else {
-			fmt.Printf("  %s Database DSN saved to Bitwarden as %s\n", ok, fieldName)
-		}
+		saveAndReport(fieldName, cfg.DatabaseDSN)
 	}
 
 	return c.ConfigRWriter.Write(cfg)
@@ -1226,11 +1213,7 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 		}
 		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 			fieldName := "SSH_KEY_" + strings.ToUpper(c.SelectedEnv)
-			if err := SaveSecretToBitwarden(fieldName, string(privateKey)); err != nil {
-				fmt.Printf("  %s Could not save SSH key to Bitwarden: %s\n", notok, err)
-			} else {
-				fmt.Printf("  %s SSH key saved to Bitwarden as %s\n", ok, fieldName)
-			}
+			saveAndReport(fieldName, string(privateKey))
 		}
 
 		// Update md5 hash of private key

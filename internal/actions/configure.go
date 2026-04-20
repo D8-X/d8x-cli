@@ -61,11 +61,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	fmt.Printf("  Server password: %s\n", c.UserPassword)
 	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 		fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
-		if err := SaveSecretToBitwarden(fieldName, c.UserPassword); err != nil {
-			fmt.Printf("  %s Could not save to Bitwarden: %s\n", notok, err)
-		} else {
-			fmt.Printf("  %s Saved to Bitwarden as %s\n", ok, fieldName)
-		}
+		saveAndReport(fieldName, c.UserPassword)
 	}
 
 	configureUser := cfg.GetAnsibleUser()

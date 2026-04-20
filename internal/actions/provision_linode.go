@@ -194,11 +194,7 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 	}
 	l.Token = token
 	if os.Getenv("BW_SESSION") != "" {
-		if err := SaveSecretToBitwarden("LINODE_TOKEN", token); err != nil {
-			fmt.Printf("  %s Could not save Linode token to Bitwarden: %s\n", notok, err)
-		} else {
-			fmt.Printf("  %s Linode token saved to Bitwarden\n", ok)
-		}
+		saveAndReport("LINODE_TOKEN", token)
 	}
 
 	// DB for swarm
