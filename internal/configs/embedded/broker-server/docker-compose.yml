@@ -18,7 +18,6 @@ services:
       REDIS_PW: "${REDIS_PW}"
       BROKER_FEE_TBPS: "${BROKER_FEE_TBPS}"
       CONFIG_PATH: /chain_config
-      CONFIG_RPC_PATH: /rpc_config
       KEYFILE_PATH: /keyfile/
     logging:
       options:
@@ -26,7 +25,6 @@ services:
         max-file: "10"
     configs:
       - chain_config
-      - rpc_config
     volumes:
       - keyvol:/keyfile
     env_file:
