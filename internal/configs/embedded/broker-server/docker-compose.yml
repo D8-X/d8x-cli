@@ -72,6 +72,7 @@ services:
     environment:
       CHAIN_ID: "${CHAIN_ID}"
       RPC_CONFIG_FILE: /rpc_config
+      PRIVY_APP_ID: "${PRIVY_APP_ID}"
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: "${REDIS_PW}"
     logging:

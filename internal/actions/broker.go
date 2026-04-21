@@ -170,9 +170,16 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 	}
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s docker compose up -d"
+	privyAppId := ""
+	if c.BitwardenFields != nil {
+		privyAppId = c.BitwardenFields["PRIVY_APP_ID_"+strings.ToUpper(c.SelectedEnv)]
+	}
+	if privyAppId == "" {
+		fmt.Printf("  %s PRIVY_APP_ID_%s not in Bitwarden; rpc-proxy will start with an empty value\n", notok, strings.ToUpper(c.SelectedEnv))
+	}
+	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s PRIVY_APP_ID=%s docker compose up -d"
 	out, err = sshClient.ExecCommand(
-		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw, cfg.ChainId, brokerPrivateIp),
+		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw, cfg.ChainId, brokerPrivateIp, privyAppId),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
