@@ -188,6 +188,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return err
 	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
+	}
 
 	fmt.Println(styles.SuccessText.Render("Broker server deployment done!"))
 
@@ -319,6 +322,9 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return fmt.Errorf("could not update config: %w", err)
+	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
 	}
 
 	return nil

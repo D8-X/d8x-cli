@@ -226,6 +226,51 @@ func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 	}
 }
 
+func (c *Container) PublishRemoteConfig(cfg *configs.D8XConfig) error {
+	if c.SelectedEnv == "" {
+		return nil
+	}
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN missing, cannot publish remote config")
+	}
+
+	public := *cfg
+	public.SwarmRedisPassword = ""
+	public.DatabaseDSN = ""
+	public.BrokerServerConfig.RedisPassword = ""
+	public.HttpRpcList = nil
+	public.WsRpcList = nil
+	public.UserSuppliedPriceFeedEndpoints = nil
+	if public.LinodeConfig != nil {
+		lc := *public.LinodeConfig
+		lc.Token = ""
+		public.LinodeConfig = &lc
+	}
+	if public.AWSConfig != nil {
+		aws := *public.AWSConfig
+		aws.AccesKey = ""
+		aws.SecretKey = ""
+		aws.RDSCredentialsFilePath = ""
+		public.AWSConfig = &aws
+	}
+
+	data, err := json.MarshalIndent(public, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling public config: %w", err)
+	}
+	path := c.SelectedEnv + "/config.json"
+	sha := ""
+	if existing, err := ghReadFile(token, path); err == nil {
+		sha = existing.SHA
+	}
+	if _, err := ghWriteFile(token, path, string(data), sha, "update "+path+" - d8x config sync"); err != nil {
+		return fmt.Errorf("pushing %s to infra repo: %w", path, err)
+	}
+	fmt.Printf("%s pushed sanitized config to infra repo (%s)\n", ok, path)
+	return nil
+}
+
 func indexOf(list []string, item string) int {
 	for i, v := range list {
 		if v == item {

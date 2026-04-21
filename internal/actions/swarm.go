@@ -855,7 +855,13 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	// Update config
 	cfg.SwarmDeployed = true
-	return c.ConfigRWriter.Write(cfg)
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
+	}
+	return nil
 }
 
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
@@ -949,6 +955,9 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	cfg.SwarmNginxDeployed = true
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return fmt.Errorf("could not update config: %w", err)
+	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
 	}
 
 	fmt.Println(styles.SuccessText.Render("Nginx deployment complete."))

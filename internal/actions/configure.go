@@ -124,7 +124,13 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		}
 	}
 
-	return c.ConfigRWriter.Write(cfg)
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
+	}
+	return nil
 }
 
 func generatePassword(n int) (string, error) {

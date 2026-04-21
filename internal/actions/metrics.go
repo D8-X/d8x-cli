@@ -165,7 +165,13 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	// Update cfg
 	cfg.MetricsDeployed = true
 
-	return c.ConfigRWriter.Write(cfg)
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
+	}
+	return nil
 }
 
 func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []string) ([]byte, error) {
