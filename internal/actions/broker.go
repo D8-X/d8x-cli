@@ -170,16 +170,35 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 	}
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
+	envSuffix := strings.ToUpper(c.SelectedEnv)
 	privyAppId := ""
+	rateLimit := ""
+	enforceMode := ""
 	if c.BitwardenFields != nil {
-		privyAppId = c.BitwardenFields["PRIVY_APP_ID_"+strings.ToUpper(c.SelectedEnv)]
+		privyAppId = c.BitwardenFields["PRIVY_APP_ID_"+envSuffix]
+		rateLimit = c.BitwardenFields["RATE_LIMIT_"+envSuffix]
+		enforceMode = c.BitwardenFields["ENFORCE_MODE_"+envSuffix]
 	}
 	if privyAppId == "" {
-		fmt.Printf("  %s PRIVY_APP_ID_%s not in Bitwarden; rpc-proxy will start with an empty value\n", notok, strings.ToUpper(c.SelectedEnv))
+		fmt.Printf("  %s PRIVY_APP_ID_%s not in Bitwarden; rpc-proxy will start with an empty value\n", notok, envSuffix)
 	}
-	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s PRIVY_APP_ID=%s docker compose up -d"
+	if rateLimit == "" {
+		rateLimit = "200"
+		fmt.Printf("  %s RATE_LIMIT_%s not in Bitwarden; defaulting to %s and saving\n", notok, envSuffix, rateLimit)
+		if err := saveAndReport("RATE_LIMIT_"+envSuffix, rateLimit); err != nil {
+			return err
+		}
+	}
+	if enforceMode == "" {
+		enforceMode = "1"
+		fmt.Printf("  %s ENFORCE_MODE_%s not in Bitwarden; defaulting to %s and saving\n", notok, envSuffix, enforceMode)
+		if err := saveAndReport("ENFORCE_MODE_"+envSuffix, enforceMode); err != nil {
+			return err
+		}
+	}
+	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s PRIVY_APP_ID=%s RATE_LIMIT=%s ENFORCE_MODE=%s docker compose up -d"
 	out, err = sshClient.ExecCommand(
-		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw, cfg.ChainId, brokerPrivateIp, privyAppId),
+		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw, cfg.ChainId, brokerPrivateIp, privyAppId, rateLimit, enforceMode),
 	)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
