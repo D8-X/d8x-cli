@@ -92,15 +92,18 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		return "", fmt.Errorf("writing config: %w", err)
 	}
 
-	// Fetch hosts.cfg from GitHub
 	hostsPath := filepath.Join(c.ConfigDir, env+"-hosts.cfg")
-	hostsFile, err := ghReadFile(token, env+"/hosts.cfg")
-	if err != nil {
-		return "", fmt.Errorf("could not fetch hosts.cfg for %s from GitHub: %w", env, err)
-	}
 	os.MkdirAll(filepath.Dir(hostsPath), 0755)
-	if err := os.WriteFile(hostsPath, []byte(hostsFile.Content), 0644); err != nil {
-		return "", fmt.Errorf("writing hosts.cfg: %w", err)
+	hostsFile, err := ghReadFile(token, env+"/hosts.cfg")
+	switch {
+	case err == nil:
+		if werr := os.WriteFile(hostsPath, []byte(hostsFile.Content), 0644); werr != nil {
+			return "", fmt.Errorf("writing hosts.cfg: %w", werr)
+		}
+	case strings.Contains(err.Error(), "404"):
+		fmt.Printf("%s no remote hosts.cfg for '%s' yet — assuming first provision\n", notok, env)
+	default:
+		return "", fmt.Errorf("could not fetch hosts.cfg for %s from GitHub: %w", env, err)
 	}
 	c.HostsCfg = files.NewFSHostsFileInteractor(hostsPath)
 
