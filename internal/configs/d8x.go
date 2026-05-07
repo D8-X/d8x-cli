@@ -76,9 +76,6 @@ type D8XConfig struct {
 	SwarmNginxDeployed   bool `json:"swarm_nginx_deployed"`
 	SwarmCertbotDeployed bool `json:"swarm_certbot_deployed"`
 
-	// MD5 hash of last created ssh private key, empty string initially
-	SSHKeyMD5 string `json:"ssh_key_hash"`
-
 	// Ansible related configuration details
 	ConfigDetails ConfigurationDetails `json:"configuration_details"`
 
@@ -221,6 +218,65 @@ type D8XConfigReadWriter interface {
 
 func NewFileBasedD8XConfigRW(filePath string) D8XConfigReadWriter {
 	return &d8xConfigFileReadWriter{filePath: filePath}
+}
+
+// NewInMemoryD8XConfigRW returns a read-writer that holds D8XConfig entirely
+// in memory. The optional `initial` seeds state from a legacy on-disk file.
+func NewInMemoryD8XConfigRW(initial *D8XConfig) D8XConfigReadWriter {
+	if initial == nil {
+		initial = NewD8XConfig()
+	}
+	if initial.Services == nil {
+		initial.Services = make(map[D8XServiceName]D8XService)
+	}
+	if initial.HttpRpcList == nil {
+		initial.HttpRpcList = make(map[string][]string)
+	}
+	if initial.WsRpcList == nil {
+		initial.WsRpcList = make(map[string][]string)
+	}
+	return &d8xConfigMemReadWriter{cfg: initial}
+}
+
+type d8xConfigMemReadWriter struct {
+	cfg *D8XConfig
+}
+
+func (m *d8xConfigMemReadWriter) GetPath() string { return "<memory>" }
+
+func (m *d8xConfigMemReadWriter) Read() (*D8XConfig, error) {
+	// Deep-copy so concurrent read/mutate/write callers don't observe each other.
+	data, err := json.Marshal(m.cfg)
+	if err != nil {
+		return nil, err
+	}
+	out := NewD8XConfig()
+	if err := json.Unmarshal(data, out); err != nil {
+		return nil, err
+	}
+	if out.Services == nil {
+		out.Services = make(map[D8XServiceName]D8XService)
+	}
+	if out.HttpRpcList == nil {
+		out.HttpRpcList = make(map[string][]string)
+	}
+	if out.WsRpcList == nil {
+		out.WsRpcList = make(map[string][]string)
+	}
+	return out, nil
+}
+
+func (m *d8xConfigMemReadWriter) Write(cfg *D8XConfig) error {
+	m.cfg = cfg
+	return nil
+}
+
+func (m *d8xConfigMemReadWriter) WriteTo(filePath string, cfg *D8XConfig) error {
+	buf, err := json.MarshalIndent(cfg, "", "\t")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filePath, buf, 0666)
 }
 
 var _ (D8XConfigReadWriter) = (*d8xConfigFileReadWriter)(nil)

@@ -87,25 +87,34 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	fmt.Printf("Environment: %s\n", env)
 
 	remoteCfg := &envConfigs[idx]
-	mergeRemoteConfig(cfg, remoteCfg)
+	loadRemoteConfig(cfg, remoteCfg)
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return "", fmt.Errorf("writing config: %w", err)
 	}
 
-	hostsPath := filepath.Join(c.ConfigDir, env+"-hosts.cfg")
-	os.MkdirAll(filepath.Dir(hostsPath), 0755)
+	var hostsContent []byte
+	var hostsSHA string
 	hostsFile, err := ghReadFile(token, env+"/hosts.cfg")
 	switch {
 	case err == nil:
-		if werr := os.WriteFile(hostsPath, []byte(hostsFile.Content), 0644); werr != nil {
-			return "", fmt.Errorf("writing hosts.cfg: %w", werr)
-		}
+		hostsContent = []byte(hostsFile.Content)
+		hostsSHA = hostsFile.SHA
 	case strings.Contains(err.Error(), "404"):
 		fmt.Printf("%s no remote hosts.cfg for '%s' yet — assuming first provision\n", notok, env)
 	default:
 		return "", fmt.Errorf("could not fetch hosts.cfg for %s from GitHub: %w", env, err)
 	}
-	c.HostsCfg = files.NewFSHostsFileInteractor(hostsPath)
+	hostsRemotePath := env + "/hosts.cfg"
+	c.HostsCfg = files.NewMemHostsFileInteractor(hostsContent, func(content string) error {
+		fmt.Printf("%s overwriting %s in infra repo\n", warning, hostsRemotePath)
+		newSHA, werr := ghWriteFile(token, hostsRemotePath, content, hostsSHA, "update "+hostsRemotePath+" - d8x hosts update")
+		if werr != nil {
+			return fmt.Errorf("pushing hosts.cfg to infra repo: %w", werr)
+		}
+		hostsSHA = newSHA
+		fmt.Printf("%s pushed %s to infra repo\n", ok, hostsRemotePath)
+		return nil
+	})
 
 	// SSH key: check SSH_KEY_{ENV} (from Bitwarden) then SSH_KEY_PATH_{ENV} (from .env)
 	upperEnv := strings.ToUpper(env)
@@ -150,82 +159,96 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	return env, nil
 }
 
-func mergeRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
+func loadRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 	if remoteCfg == nil {
 		return
 	}
 
-	var merged []string
+	var (
+		linodeToken                    string
+		awsAccess, awsSecret, awsRDS   string
+		swarmRedisPw                   = cfg.SwarmRedisPassword
+		databaseDsn                    = cfg.DatabaseDSN
+		brokerRedisPw                  = cfg.BrokerServerConfig.RedisPassword
+		httpRpcList                    = cfg.HttpRpcList
+		wsRpcList                      = cfg.WsRpcList
+		userSuppliedPriceFeedEndpoints = cfg.UserSuppliedPriceFeedEndpoints
+	)
+	if cfg.LinodeConfig != nil {
+		linodeToken = cfg.LinodeConfig.Token
+	}
+	if cfg.AWSConfig != nil {
+		awsAccess = cfg.AWSConfig.AccesKey
+		awsSecret = cfg.AWSConfig.SecretKey
+		awsRDS = cfg.AWSConfig.RDSCredentialsFilePath
+	}
 
-	if remoteCfg.ServerProvider != "" {
-		cfg.ServerProvider = remoteCfg.ServerProvider
-		merged = append(merged, "server_provider")
+	remoteCopy, err := json.Marshal(remoteCfg)
+	if err == nil {
+		var clone configs.D8XConfig
+		if err := json.Unmarshal(remoteCopy, &clone); err == nil {
+			*cfg = clone
+		} else {
+			*cfg = *remoteCfg
+		}
+	} else {
+		*cfg = *remoteCfg
 	}
-	if remoteCfg.LinodeConfig != nil {
-		cfg.LinodeConfig = remoteCfg.LinodeConfig
-		merged = append(merged, "linode_config")
+
+	if cfg.LinodeConfig != nil && linodeToken != "" {
+		cfg.LinodeConfig.Token = linodeToken
 	}
-	if remoteCfg.AWSConfig != nil {
-		cfg.AWSConfig = remoteCfg.AWSConfig
-		merged = append(merged, "aws_config")
+	if cfg.AWSConfig != nil {
+		if awsAccess != "" {
+			cfg.AWSConfig.AccesKey = awsAccess
+		}
+		if awsSecret != "" {
+			cfg.AWSConfig.SecretKey = awsSecret
+		}
+		if awsRDS != "" {
+			cfg.AWSConfig.RDSCredentialsFilePath = awsRDS
+		}
 	}
-	if remoteCfg.ChainId != 0 {
-		cfg.ChainId = remoteCfg.ChainId
-		merged = append(merged, "chain_id")
+	cfg.SwarmRedisPassword = swarmRedisPw
+	cfg.DatabaseDSN = databaseDsn
+	cfg.BrokerServerConfig.RedisPassword = brokerRedisPw
+	if len(cfg.HttpRpcList) == 0 {
+		cfg.HttpRpcList = httpRpcList
 	}
-	if remoteCfg.CertbotEmail != "" {
-		cfg.CertbotEmail = remoteCfg.CertbotEmail
-		merged = append(merged, "certbot_email")
+	if len(cfg.WsRpcList) == 0 {
+		cfg.WsRpcList = wsRpcList
 	}
-	if remoteCfg.SwarmRemoteBrokerHTTPUrl != "" {
-		cfg.SwarmRemoteBrokerHTTPUrl = remoteCfg.SwarmRemoteBrokerHTTPUrl
-		merged = append(merged, "swarm_remote_broker_http_url")
-	}
-	if len(remoteCfg.UserSuppliedPriceFeedEndpoints) > 0 {
-		cfg.UserSuppliedPriceFeedEndpoints = remoteCfg.UserSuppliedPriceFeedEndpoints
-		merged = append(merged, "user_supplied_price_feed_endpoints")
-	}
-	if remoteCfg.BrokerServerConfig.FeeTBPS != "" {
-		cfg.BrokerServerConfig.FeeTBPS = remoteCfg.BrokerServerConfig.FeeTBPS
-		merged = append(merged, "broker_server_config.fee_tbps")
-	}
-	if remoteCfg.BrokerServerConfig.FeeInputPercent != "" {
-		cfg.BrokerServerConfig.FeeInputPercent = remoteCfg.BrokerServerConfig.FeeInputPercent
-		merged = append(merged, "broker_server_config.fee_input_percent")
+	if len(cfg.UserSuppliedPriceFeedEndpoints) == 0 {
+		cfg.UserSuppliedPriceFeedEndpoints = userSuppliedPriceFeedEndpoints
 	}
 
 	if cfg.Services == nil {
 		cfg.Services = make(map[configs.D8XServiceName]configs.D8XService)
 	}
-	for name, service := range remoteCfg.Services {
-		cfg.Services[name] = service
-	}
-	if len(remoteCfg.Services) > 0 {
-		merged = append(merged, "services")
-	}
-
 	if cfg.HttpRpcList == nil {
 		cfg.HttpRpcList = make(map[string][]string)
 	}
-	for chainID, rpcs := range remoteCfg.HttpRpcList {
-		cfg.HttpRpcList[chainID] = rpcs
-	}
-	if len(remoteCfg.HttpRpcList) > 0 {
-		merged = append(merged, "http_rpc_list")
-	}
-
 	if cfg.WsRpcList == nil {
 		cfg.WsRpcList = make(map[string][]string)
 	}
-	for chainID, rpcs := range remoteCfg.WsRpcList {
-		cfg.WsRpcList[chainID] = rpcs
-	}
-	if len(remoteCfg.WsRpcList) > 0 {
-		merged = append(merged, "ws_rpc_list")
-	}
 
-	if len(merged) > 0 {
-		fmt.Printf("%s merged fields from remote config.json: %s\n", ok, strings.Join(merged, ", "))
+	missing := []string{}
+	if cfg.ServerProvider == "" {
+		missing = append(missing, "server_provider")
+	}
+	if !cfg.SwarmDeployed {
+		missing = append(missing, "swarm_deployed")
+	}
+	if !cfg.BrokerDeployed {
+		missing = append(missing, "broker_deployed")
+	}
+	if cfg.ChainId == 0 {
+		fmt.Printf("%s loaded env config from infra repo (no chain_id set in remote)\n", warning)
+	} else {
+		fmt.Printf("%s loaded env config from infra repo: chain_id=%d\n", ok, cfg.ChainId)
+	}
+	if len(missing) > 0 {
+		fmt.Printf("%s remote config.json is missing or empty for: %s — run a deploy command to publish current state\n", warning, strings.Join(missing, ", "))
 	}
 }
 

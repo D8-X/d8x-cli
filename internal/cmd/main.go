@@ -81,6 +81,7 @@ func RunD8XCli() {
 						"swarm-nginx", "sn",
 						"metrics-deploy",
 						"staging-origins", "so",
+						"rpc",
 
 						// Help is always included
 						"help",
@@ -151,6 +152,11 @@ func RunD8XCli() {
 						Aliases: []string{"so"},
 						Usage:   "Update whitelisted staging origins",
 						Action:  container.UpdateStagingOrigins,
+					},
+					{
+						Name:   "rpc",
+						Usage:  "View, add, or remove RPC URLs on the live cluster",
+						Action: container.SetupRpc,
 					},
 				},
 			},
@@ -282,11 +288,21 @@ func RunD8XCli() {
 				return fmt.Errorf("loading chain json information: %w", err)
 			}
 
-			// Create d8x.conf.json config read writer. We can only do this here,
-			// because config directory is not know when initializing containter
-			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
-				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
-			)
+			legacyPath := filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME)
+			var initialCfg *configs.D8XConfig
+			if legacyReader := configs.NewFileBasedD8XConfigRW(legacyPath); legacyReader != nil {
+				if cfg, lerr := legacyReader.Read(); lerr == nil {
+					initialCfg = cfg
+				}
+			}
+			container.ConfigRWriter = configs.NewInMemoryD8XConfigRW(initialCfg)
+
+			isInteractive := arg != "help" && arg != "" && !ctx.Bool("help") && !ctx.Bool("version")
+			if isInteractive {
+				if err := container.MigrateLegacyConfig(legacyPath); err != nil {
+					fmt.Printf("legacy migration error (non-fatal): %s\n", err)
+				}
+			}
 
 			// Initialize the input collector
 			container.Input = &actions.InputCollector{

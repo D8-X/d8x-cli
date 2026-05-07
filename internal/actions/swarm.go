@@ -148,7 +148,7 @@ func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp st
 	if err != nil {
 		return err
 	}
-	mergeRemoteConfig(cfg, remoteCfg)
+	loadRemoteConfig(cfg, remoteCfg)
 	if err := c.reconcileSecretsWithBitwarden(cfg, remoteCfg); err != nil {
 		return err
 	}

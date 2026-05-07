@@ -1220,16 +1220,24 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 			saveAndReport(fieldName, string(privateKey))
 		}
 
-		// Update md5 hash of private key
 		h := md5.New()
 		if _, err := h.Write(privateKey); err != nil {
 			return err
 		}
 		md5Hash := fmt.Sprintf("%x", h.Sum(nil))
-		if md5Hash != cfg.SSHKeyMD5 {
+		previous := readEnvSecret(c.SelectedEnv, "SSH_KEY_MD5")
+		switch {
+		case previous == "":
+			fmt.Printf("%s no SSH_KEY_MD5_%s in Bitwarden yet — treating new key as a rotation (nginx/certbot will re-run)\n", warning, strings.ToUpper(c.SelectedEnv))
+			c.sshKeyChanged = true
+		case md5Hash != previous:
+			fmt.Printf("%s SSH key MD5 changed (was %s..., now %s...) — nginx/certbot will re-run\n", warning, previous[:8], md5Hash[:8])
 			c.sshKeyChanged = true
 		}
-		cfg.SSHKeyMD5 = md5Hash
+		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+			fieldName := envSuffixedField(c.SelectedEnv, "SSH_KEY_MD5")
+			saveAndReport(fieldName, md5Hash)
+		}
 	}
 	return nil
 }

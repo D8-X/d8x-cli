@@ -149,7 +149,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	// Attempt to load defaults from config
 	var (
-		defaultToken              = ""
 		defaultClusterLabelPrefix = "d8x-cluster"
 		defaultDbId               = ""
 		defaultRegion             = ""
@@ -160,7 +159,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	if cfg.ServerProvider == configs.D8XServerProviderLinode {
 		if cfg.LinodeConfig != nil {
-			defaultToken = cfg.LinodeConfig.Token
 			defaultDbId = cfg.LinodeConfig.DbId
 			defaultRegion = cfg.LinodeConfig.Region
 			defaultClusterLabelPrefix = cfg.LinodeConfig.LabelPrefix
@@ -176,11 +174,7 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 		defaultRegionItem = getRegionItemByRegionId(defaultRegion)
 	}
 
-	
-	token := os.Getenv("LINODE_TOKEN")
-	if token == "" {
-		token = defaultToken
-	}
+	token := readEnvSecret(c.SelectedEnv, "LINODE_TOKEN")
 	if token == "" {
 		fmt.Println("Enter your Linode API token")
 		var err error
@@ -194,7 +188,7 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 	}
 	l.Token = token
 	if os.Getenv("BW_SESSION") != "" {
-		saveAndReport("LINODE_TOKEN", token)
+		saveAndReport(envSuffixedField(c.SelectedEnv, "LINODE_TOKEN"), token)
 	}
 
 	// DB for swarm
@@ -285,9 +279,10 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	c.provisioning.collectedLinodeConfigurer = &l
 
-	// Update the cfg
 	cfg.ServerProvider = configs.D8XServerProviderLinode
-	cfg.LinodeConfig = &l.D8XLinodeConfig
+	cfgLinode := l.D8XLinodeConfig
+	cfgLinode.Token = ""
+	cfg.LinodeConfig = &cfgLinode
 
 	return l, nil
 }
