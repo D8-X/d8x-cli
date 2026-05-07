@@ -267,7 +267,26 @@ func (m *d8xConfigMemReadWriter) Read() (*D8XConfig, error) {
 }
 
 func (m *d8xConfigMemReadWriter) Write(cfg *D8XConfig) error {
-	m.cfg = cfg
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		m.cfg = cfg
+		return nil
+	}
+	clone := NewD8XConfig()
+	if err := json.Unmarshal(data, clone); err != nil {
+		m.cfg = cfg
+		return nil
+	}
+	if clone.Services == nil {
+		clone.Services = make(map[D8XServiceName]D8XService)
+	}
+	if clone.HttpRpcList == nil {
+		clone.HttpRpcList = make(map[string][]string)
+	}
+	if clone.WsRpcList == nil {
+		clone.WsRpcList = make(map[string][]string)
+	}
+	m.cfg = clone
 	return nil
 }
 

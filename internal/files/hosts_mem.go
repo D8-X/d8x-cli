@@ -4,8 +4,6 @@ import (
 	"strings"
 )
 
-// NewMemHostsFileInteractor returns an in-memory HostsFileInteractor. onWrite,
-// if non-nil, is invoked on every WriteLines so callers can persist remotely.
 func NewMemHostsFileInteractor(content []byte, onWrite func(content string) error) HostsFileInteractor {
 	return &memHostFileInteractor{
 		hosts:   parseHostsBytes(content),

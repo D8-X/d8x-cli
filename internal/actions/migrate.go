@@ -10,8 +10,6 @@ import (
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
-// MigrateLegacyConfig walks the user through a leftover on-disk d8x.conf.json,
-// pushes secrets to Bitwarden and removes the file. No-op if no file exists.
 func (c *Container) MigrateLegacyConfig(legacyPath string) error {
 	st, err := os.Stat(legacyPath)
 	if err != nil || st.IsDir() {
@@ -80,6 +78,12 @@ func legacyHasAnyData(cfg *configs.D8XConfig) bool {
 		return true
 	}
 	if len(cfg.HttpRpcList) > 0 || len(cfg.WsRpcList) > 0 {
+		return true
+	}
+	if len(cfg.Services) > 0 {
+		return true
+	}
+	if len(cfg.UserSuppliedPriceFeedEndpoints) > 0 {
 		return true
 	}
 	return false

@@ -184,7 +184,6 @@ func (c *Container) applyRemoteRpcChanges(
 ) error {
 	chainIdStr := strconv.Itoa(int(cfg.ChainId))
 
-	// Build a temporary cfg so DistributeRpcs can deal the pools out per service.
 	tmp := *cfg
 	tmp.HttpRpcList = map[string][]string{chainIdStr: httpPool}
 	tmp.WsRpcList = map[string][]string{chainIdStr: wsPool}
@@ -251,7 +250,6 @@ func (c *Container) applyRemoteRpcChanges(
 			}
 			fmt.Printf("  %s service %s now using %s\n", ok, stackSvc, newName)
 		}
-		// Recreate the canonical-named config so future swarm-deploy stays consistent.
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  refreshing canonical config %s for future swarm-deploy runs...", r.configName)))
 		_, _ = sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, r.configName))
 		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, r.configName, r.remotePath)); err != nil {
@@ -351,8 +349,6 @@ func unionRpcsForChain(chainId uint, files ...[]RPCConfigEntry) (httpUrls, wsUrl
 	return
 }
 
-// setRpcEntry returns entries with the chainId entry's HTTP/WS arrays replaced
-// (not appended). Other chainIds are left untouched.
 func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []string) []RPCConfigEntry {
 	found := false
 	for i, e := range entries {

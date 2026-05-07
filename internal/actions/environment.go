@@ -164,62 +164,16 @@ func loadRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 		return
 	}
 
-	var (
-		linodeToken                    string
-		awsAccess, awsSecret, awsRDS   string
-		swarmRedisPw                   = cfg.SwarmRedisPassword
-		databaseDsn                    = cfg.DatabaseDSN
-		brokerRedisPw                  = cfg.BrokerServerConfig.RedisPassword
-		httpRpcList                    = cfg.HttpRpcList
-		wsRpcList                      = cfg.WsRpcList
-		userSuppliedPriceFeedEndpoints = cfg.UserSuppliedPriceFeedEndpoints
-	)
-	if cfg.LinodeConfig != nil {
-		linodeToken = cfg.LinodeConfig.Token
-	}
-	if cfg.AWSConfig != nil {
-		awsAccess = cfg.AWSConfig.AccesKey
-		awsSecret = cfg.AWSConfig.SecretKey
-		awsRDS = cfg.AWSConfig.RDSCredentialsFilePath
-	}
-
-	remoteCopy, err := json.Marshal(remoteCfg)
-	if err == nil {
+	remoteCopy, mErr := json.Marshal(remoteCfg)
+	if mErr == nil {
 		var clone configs.D8XConfig
-		if err := json.Unmarshal(remoteCopy, &clone); err == nil {
+		if uErr := json.Unmarshal(remoteCopy, &clone); uErr == nil {
 			*cfg = clone
 		} else {
 			*cfg = *remoteCfg
 		}
 	} else {
 		*cfg = *remoteCfg
-	}
-
-	if cfg.LinodeConfig != nil && linodeToken != "" {
-		cfg.LinodeConfig.Token = linodeToken
-	}
-	if cfg.AWSConfig != nil {
-		if awsAccess != "" {
-			cfg.AWSConfig.AccesKey = awsAccess
-		}
-		if awsSecret != "" {
-			cfg.AWSConfig.SecretKey = awsSecret
-		}
-		if awsRDS != "" {
-			cfg.AWSConfig.RDSCredentialsFilePath = awsRDS
-		}
-	}
-	cfg.SwarmRedisPassword = swarmRedisPw
-	cfg.DatabaseDSN = databaseDsn
-	cfg.BrokerServerConfig.RedisPassword = brokerRedisPw
-	if len(cfg.HttpRpcList) == 0 {
-		cfg.HttpRpcList = httpRpcList
-	}
-	if len(cfg.WsRpcList) == 0 {
-		cfg.WsRpcList = wsRpcList
-	}
-	if len(cfg.UserSuppliedPriceFeedEndpoints) == 0 {
-		cfg.UserSuppliedPriceFeedEndpoints = userSuppliedPriceFeedEndpoints
 	}
 
 	if cfg.Services == nil {
