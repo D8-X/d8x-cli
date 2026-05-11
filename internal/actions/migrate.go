@@ -208,10 +208,8 @@ func (c *Container) runMigrationWalkthrough(cfg *configs.D8XConfig, legacyPath s
 		}
 		switch {
 		case strings.HasPrefix(action[0], "Save"):
-			if err := saveMigrationSecret(s.bwField, s.value, s.personal); err != nil {
+			if err := c.saveMigrationSecretWithConfirm(s.bwField, s.value, s.personal); err != nil {
 				fmt.Printf("  %s save failed: %s\n", notok, err)
-			} else {
-				fmt.Printf("  %s saved %s to Bitwarden\n", ok, s.bwField)
 			}
 		case strings.HasPrefix(action[0], "Edit"):
 			edited, err := c.TUI.NewInput(
@@ -221,10 +219,8 @@ func (c *Container) runMigrationWalkthrough(cfg *configs.D8XConfig, legacyPath s
 			if err != nil {
 				return err
 			}
-			if err := saveMigrationSecret(s.bwField, edited, s.personal); err != nil {
+			if err := c.saveMigrationSecretWithConfirm(s.bwField, edited, s.personal); err != nil {
 				fmt.Printf("  %s save failed: %s\n", notok, err)
-			} else {
-				fmt.Printf("  %s saved %s to Bitwarden\n", ok, s.bwField)
 			}
 		default:
 			fmt.Printf("  %s skipped\n", notok)
@@ -256,14 +252,48 @@ func vaultLabel(personal bool) string {
 	return "shared"
 }
 
-func saveMigrationSecret(field, value string, personal bool) error {
+func (c *Container) saveMigrationSecretWithConfirm(field, value string, personal bool) error {
 	if os.Getenv("BW_SESSION") == "" {
 		return fmt.Errorf("BW_SESSION not set; cannot save %s", field)
 	}
+	itemName := bwItemName
 	if personal {
-		return saveAndReportPersonal(field, value)
+		itemName = bwPersonalItemName
 	}
-	return saveAndReport(field, value)
+
+	result, existing, err := SaveSecretToBitwardenItem(itemName, field, value)
+	if err != nil {
+		return err
+	}
+	switch result {
+	case BwSaved:
+		fmt.Printf("  %s saved %s to Bitwarden item '%s'\n", ok, field, itemName)
+		return nil
+	case BwUnchanged:
+		fmt.Printf("  %s %s already up to date in Bitwarden item '%s'\n", ok, field, itemName)
+		return nil
+	case BwSkippedConflict:
+		fmt.Printf("  %s %s already exists in Bitwarden item '%s' with a different value.\n", warning, field, itemName)
+		fmt.Printf("    existing (masked): %s\n", maskedSecret(existing))
+		fmt.Printf("    new      (masked): %s\n", maskedSecret(value))
+		confirm, perr := c.TUI.NewPrompt("Overwrite the existing Bitwarden value?", false)
+		if perr != nil {
+			return perr
+		}
+		if !confirm {
+			fmt.Printf("  %s kept existing Bitwarden value for %s\n", notok, field)
+			return nil
+		}
+		newResult, _, ferr := saveBitwardenField(itemName, field, value, true)
+		if ferr != nil {
+			return ferr
+		}
+		if newResult == BwSaved {
+			fmt.Printf("  %s overwrote %s in Bitwarden item '%s'\n", ok, field, itemName)
+		}
+		return nil
+	}
+	return nil
 }
 
 func (c *Container) askMigrationEnv() (string, error) {
