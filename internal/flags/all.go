@@ -5,7 +5,6 @@ package flags
 const (
 	Password       = "password"
 	User           = "user"
-	ConfigDir      = "config-directory"
 	PrivateKeyPath = "ssh-key-path"
 	PgCertPath     = "pg-cert"
 	GithubToken    = "github-token"

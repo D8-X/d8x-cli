@@ -271,3 +271,130 @@ func TestDistributeRpcs(t *testing.T) {
 		})
 	}
 }
+
+func TestSetRpcEntry(t *testing.T) {
+	emptyWs := []string{}
+	someWs := []string{"wss://a", "wss://b"}
+
+	tests := []struct {
+		name         string
+		entries      []RPCConfigEntry
+		chainId      uint
+		httpRpcs     []string
+		wsRpcs       []string
+		wantLen      int
+		wantWsNil    bool
+		wantHttp     []string
+		wantWsValues []string
+	}{
+		{
+			name:      "creates entry when chain missing, no ws",
+			entries:   []RPCConfigEntry{{ChainId: 1, HttpRpcs: []string{"x"}}},
+			chainId:   42,
+			httpRpcs:  []string{"http://new"},
+			wsRpcs:    nil,
+			wantLen:   2,
+			wantWsNil: true,
+			wantHttp:  []string{"http://new"},
+		},
+		{
+			name:         "creates entry with ws when chain missing and ws non-empty",
+			entries:      []RPCConfigEntry{{ChainId: 1, HttpRpcs: []string{"x"}}},
+			chainId:      42,
+			httpRpcs:     []string{"http://new"},
+			wsRpcs:       someWs,
+			wantLen:      2,
+			wantWsNil:    false,
+			wantHttp:     []string{"http://new"},
+			wantWsValues: someWs,
+		},
+		{
+			name:         "updates existing entry that had nil ws, keeps nil when ws empty",
+			entries:      []RPCConfigEntry{{ChainId: 42, HttpRpcs: []string{"old"}}},
+			chainId:      42,
+			httpRpcs:     []string{"http://new"},
+			wsRpcs:       emptyWs,
+			wantLen:      1,
+			wantWsNil:    true,
+			wantHttp:     []string{"http://new"},
+			wantWsValues: nil,
+		},
+		{
+			name:         "updates existing entry that had ws, reflects new ws exactly",
+			entries:      []RPCConfigEntry{{ChainId: 42, HttpRpcs: []string{"old"}, WsRpcs: &someWs}},
+			chainId:      42,
+			httpRpcs:     []string{"http://new"},
+			wsRpcs:       emptyWs,
+			wantLen:      1,
+			wantWsNil:    false,
+			wantHttp:     []string{"http://new"},
+			wantWsValues: []string{},
+		},
+		{
+			name:         "promotes nil ws to slice when given non-empty ws",
+			entries:      []RPCConfigEntry{{ChainId: 42, HttpRpcs: []string{"old"}}},
+			chainId:      42,
+			httpRpcs:     []string{"http://new"},
+			wsRpcs:       someWs,
+			wantLen:      1,
+			wantWsNil:    false,
+			wantHttp:     []string{"http://new"},
+			wantWsValues: someWs,
+		},
+		{
+			name:      "leaves other chain entries untouched",
+			entries:   []RPCConfigEntry{{ChainId: 1, HttpRpcs: []string{"keep"}}, {ChainId: 42, HttpRpcs: []string{"old"}}},
+			chainId:   42,
+			httpRpcs:  []string{"new"},
+			wsRpcs:    nil,
+			wantLen:   2,
+			wantWsNil: true,
+			wantHttp:  []string{"new"},
+		},
+		{
+			name: "collapses duplicate chain entries into one",
+			entries: []RPCConfigEntry{
+				{ChainId: 1, HttpRpcs: []string{"keep1"}},
+				{ChainId: 42, HttpRpcs: []string{"old1"}, WsRpcs: &someWs},
+				{ChainId: 8, HttpRpcs: []string{"keep2"}},
+				{ChainId: 42, HttpRpcs: []string{"old2"}},
+			},
+			chainId:      42,
+			httpRpcs:     []string{"new"},
+			wsRpcs:       someWs,
+			wantLen:      3,
+			wantWsNil:    false,
+			wantHttp:     []string{"new"},
+			wantWsValues: someWs,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := setRpcEntry(tt.entries, tt.chainId, tt.httpRpcs, tt.wsRpcs)
+			assert.Equal(t, len(got), tt.wantLen)
+
+			var target *RPCConfigEntry
+			for i := range got {
+				if got[i].ChainId == tt.chainId {
+					target = &got[i]
+					break
+				}
+			}
+			if target == nil {
+				t.Fatalf("chain %d not found in result", tt.chainId)
+			}
+			assert.Equal(t, target.HttpRpcs, tt.wantHttp)
+			if tt.wantWsNil {
+				if target.WsRpcs != nil {
+					t.Fatalf("expected WsRpcs nil, got %v", *target.WsRpcs)
+				}
+			} else {
+				if target.WsRpcs == nil {
+					t.Fatalf("expected WsRpcs non-nil, got nil")
+				}
+				assert.Equal(t, *target.WsRpcs, tt.wantWsValues)
+			}
+		})
+	}
+}

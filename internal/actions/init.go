@@ -72,8 +72,6 @@ func (c *Container) Init(ctx *cli.Context) error {
 		}
 	}
 
-	c.MakeConfigDir()
-
 	return nil
 }
 
@@ -194,17 +192,3 @@ func (c *Container) installAnsible() error {
 	return nil
 }
 
-// MakeConfigDir creates configuration directory if it does not exist yet
-func (c *Container) MakeConfigDir() error {
-	_, err := os.Stat(c.ConfigDir)
-	if err != nil {
-		if err := os.MkdirAll(c.ConfigDir, 0776); err != nil {
-			return err
-		}
-		fmt.Println(styles.SuccessText.Render(
-			fmt.Sprintf("Configuration directory was created at %s\n", c.ConfigDir),
-		))
-	}
-
-	return nil
-}

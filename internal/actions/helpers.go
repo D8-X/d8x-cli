@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
@@ -60,6 +62,43 @@ func EnsureHttpsPrefixExists(url string) string {
 // ValidateHttp validates if given url starts with http:// or https://
 func ValidateHttp(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
+}
+
+
+func readEnvSecret(env, base string) string {
+	if env != "" {
+		if v := os.Getenv(base + "_" + strings.ToUpper(env)); v != "" {
+			return v
+		}
+	}
+	if v := os.Getenv(base); v != "" {
+		return v
+	}
+	return ""
+}
+
+
+func envSuffixedField(env, base string) string {
+	if env == "" {
+		return base
+	}
+	return base + "_" + strings.ToUpper(env)
+}
+
+func writeHostsToTempFile(h files.HostsFileInteractor) (string, error) {
+	lines, err := h.GetLines()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(os.TempDir(), "d8x-cli")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "hosts.cfg")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // CollectAndValidatePrivateKey prompts user to enter a private key, validates

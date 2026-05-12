@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -41,7 +42,10 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	}
 
 	if len(cfg.DatabaseDSN) == 0 {
-		return fmt.Errorf("database dsn is not set in config")
+		cfg.DatabaseDSN = readEnvSecret(c.SelectedEnv, "DATABASE_DSN")
+	}
+	if len(cfg.DatabaseDSN) == 0 {
+		return fmt.Errorf("DATABASE_DSN missing: set DATABASE_DSN_%s in Bitwarden or run swarm-deploy", strings.ToUpper(c.SelectedEnv))
 	}
 
 	// Parse the database dsn string

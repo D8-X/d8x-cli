@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -46,12 +47,29 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		awsConfigurer := &awsConfigurer{D8XAWSConfig: *a, authorizedKey: authorizedKey}
+		awsCfg := *a
+		if awsCfg.AccesKey == "" {
+			awsCfg.AccesKey = readEnvSecret(c.SelectedEnv, "AWS_ACCESS_KEY")
+		}
+		if awsCfg.SecretKey == "" {
+			awsCfg.SecretKey = readEnvSecret(c.SelectedEnv, "AWS_SECRET_KEY")
+		}
+		if awsCfg.AccesKey == "" || awsCfg.SecretKey == "" {
+			return fmt.Errorf("AWS credentials missing: set AWS_ACCESS_KEY_%s and AWS_SECRET_KEY_%s in Bitwarden", strings.ToUpper(c.SelectedEnv), strings.ToUpper(c.SelectedEnv))
+		}
+		awsConfigurer := &awsConfigurer{D8XAWSConfig: awsCfg, authorizedKey: authorizedKey}
 		args = append(args, awsConfigurer.generateVariables()...)
 
 	case configs.D8XServerProviderLinode:
 		args = append(args, "-var", `authorized_keys=[""]`)
-		env = append(env, fmt.Sprintf("LINODE_TOKEN=%s", cfg.LinodeConfig.Token))
+		token := readEnvSecret(c.SelectedEnv, "LINODE_TOKEN")
+		if token == "" && cfg.LinodeConfig != nil {
+			token = cfg.LinodeConfig.Token
+		}
+		if token == "" {
+			return fmt.Errorf("LINODE_TOKEN missing: set LINODE_TOKEN_%s in Bitwarden", strings.ToUpper(c.SelectedEnv))
+		}
+		env = append(env, fmt.Sprintf("LINODE_TOKEN=%s", token))
 	}
 
 	cmd := exec.Command("terraform", args...)

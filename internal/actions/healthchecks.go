@@ -364,6 +364,7 @@ const (
 	notok   = "❌"
 	ok      = "✅"
 	warning = "⚠️"
+	arrow   = "▶"
 )
 
 type serviceHostnameStatus struct {

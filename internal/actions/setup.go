@@ -41,16 +41,10 @@ func (c *Container) Setup(ctx *cli.Context) error {
 			if yes, err := c.TUI.NewPrompt("Are you sure you want to continue?", false); err != nil {
 				return err
 			} else if yes {
-				// Make a backup of the existing config just in case
-				backup := c.ConfigRWriter.GetPath() + ".backup-" + time.Now().Format("2006-01-02_15:04:05")
-				if err := c.ConfigRWriter.WriteTo(backup, cfg); err != nil {
-					return err
-				}
-				fmt.Printf("Backup of the existing configuration was saved to %s\n\n", backup)
-
 				if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
 					return err
 				}
+				fmt.Println(styles.ItalicText.Render("In-memory config cleared. Truthful state will be re-loaded from infra repo + Bitwarden on the next env selection."))
 			}
 		}
 	}

@@ -81,6 +81,7 @@ func RunD8XCli() {
 						"swarm-nginx", "sn",
 						"metrics-deploy",
 						"staging-origins", "so",
+						"rpc",
 
 						// Help is always included
 						"help",
@@ -152,6 +153,11 @@ func RunD8XCli() {
 						Usage:   "Update whitelisted staging origins",
 						Action:  container.UpdateStagingOrigins,
 					},
+					{
+						Name:   "rpc",
+						Usage:  "View, add, or remove RPC URLs on the live cluster",
+						Action: container.SetupRpc,
+					},
 				},
 			},
 			{
@@ -202,13 +208,13 @@ func RunD8XCli() {
 						Usage: "Backup directory path. Backup files will be saved in this directory.",
 					},
 				},
-				Description: "Backup database to local machine. Database credentials are read from d8x.conf.json file.",
+				Description: "Backup database to local machine. Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
 			},
 			{
 				Name:        "db-tunnel",
 				Action:      container.DbTunnel,
 				ArgsUsage:   "[local port 5432]",
-				Description: "Create a ssh tunnel to database server. Database credentials are read from d8x.conf.json file.",
+				Description: "Create a ssh tunnel to database server. Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
 			},
 			{
 				Name:   "fix-ingress",
@@ -218,12 +224,6 @@ func RunD8XCli() {
 		},
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:        flags.ConfigDir,
-				Value:       "./.d8x-config",
-				Destination: &container.ConfigDir,
-				Hidden:      true,
-			},
 			&cli.StringFlag{
 				Name:        flags.PrivateKeyPath,
 				EnvVars:     []string{"SSH_KEY_PATH"},
@@ -282,11 +282,7 @@ func RunD8XCli() {
 				return fmt.Errorf("loading chain json information: %w", err)
 			}
 
-			// Create d8x.conf.json config read writer. We can only do this here,
-			// because config directory is not know when initializing containter
-			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
-				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
-			)
+			container.ConfigRWriter = configs.NewInMemoryD8XConfigRW(nil)
 
 			// Initialize the input collector
 			container.Input = &actions.InputCollector{

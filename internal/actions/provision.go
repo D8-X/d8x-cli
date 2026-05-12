@@ -9,6 +9,7 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -72,6 +73,10 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Set the provisioning time
 	c.provisioningTime = time.Now()
 
+	if hostsContent, herr := os.ReadFile(configs.DEFAULT_HOSTS_FILE); herr == nil {
+		c.HostsCfg = files.NewMemHostsFileInteractor(hostsContent, hostsCfgGitHubPusher(c.SelectedEnv))
+	}
+
 	// Perform provider dependent actions
 	if err := providerConfigurer.PostProvisioningAction(c); err != nil {
 		return err
@@ -82,7 +87,6 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		return err
 	}
 
-	// Push hosts.cfg to infra repo if environment is selected
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" && c.SelectedEnv != "" {
 		hostsContent, err := os.ReadFile(configs.DEFAULT_HOSTS_FILE)
 		if err == nil {
@@ -102,6 +106,26 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+func hostsCfgGitHubPusher(env string) func(content string) error {
+	return func(content string) error {
+		token := os.Getenv("GITHUB_TOKEN")
+		if token == "" || env == "" {
+			return nil
+		}
+		path := env + "/hosts.cfg"
+		sha := ""
+		if existing, _ := ghReadFile(token, path); existing != nil {
+			sha = existing.SHA
+		}
+		fmt.Printf("%s overwriting %s in infra repo\n", warning, path)
+		if _, err := ghWriteFile(token, path, content, sha, "update "+path+" - d8x hosts update"); err != nil {
+			return fmt.Errorf("pushing hosts.cfg to infra repo: %w", err)
+		}
+		fmt.Printf("%s pushed %s to infra repo\n", ok, path)
+		return nil
+	}
 }
 
 // ServerProviderConfigurer

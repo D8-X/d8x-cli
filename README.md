@@ -97,6 +97,7 @@ See [docs/maintenance.md](docs/maintenance.md) for updates, health checks, SSH a
 | | | |
 | `d8x setup metrics-deploy` | | Deploy Prometheus + Grafana |
 | `d8x setup staging-origins` | `so` | Manage nginx origin whitelist |
+| `d8x setup rpc` | | Add/remove RPC URLs and roll `api`/`history` services |
 
 **Operations:**
 

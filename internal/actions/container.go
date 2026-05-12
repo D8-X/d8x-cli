@@ -24,9 +24,6 @@ type SSHConnectionMaker func()
 // Container is the cli container which provides all the command and subcommand
 // actions
 type Container struct {
-	// ConfigDir is the configuration directory path
-	ConfigDir string
-
 	// Default ssh key pathname. Defaults to ./id_ed25519 for private key. For
 	// public key same name is used + .pub
 	SshKeyPath string

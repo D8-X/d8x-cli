@@ -78,14 +78,18 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	hashedPassword := string(h)
 	fmt.Printf("hashed user password: %s\n", hashedPassword)
 
-	// Generate ansible-playbook args
+	inventoryPath, err := writeHostsToTempFile(c.HostsCfg)
+	if err != nil {
+		return fmt.Errorf("writing ansible inventory: %w", err)
+	}
+
 	args := []string{
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, privKeyPath),
 		"--extra-vars", "ansible_host_key_checking=false",
 		"--extra-vars", fmt.Sprintf(`user_public_key='%s'`, pubKey),
 		"--extra-vars", fmt.Sprintf(`default_user_name=%s`, c.DefaultClusterUserName),
 		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, hashedPassword),
-		"-i", c.HostsCfg.GetPath(),
+		"-i", inventoryPath,
 		"-u", configureUser,
 		"./playbooks/setup.ansible.yaml",
 	}

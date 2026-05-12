@@ -126,16 +126,12 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	awsCfg := awsConfigurer{}
 
 	// Default text field values
-	awsKey := ""
-	awsSecret := ""
 	awsRDSInstanceClass := "db.t4g.small"
 	awsServerLabelPrefix := "d8x-cluster"
 	awsDefaultNumberWorkers := "4"
 	awsDefaultRegion := "eu-central-1"
 
 	if cfg.AWSConfig != nil {
-		awsKey = cfg.AWSConfig.AccesKey
-		awsSecret = cfg.AWSConfig.SecretKey
 		if cfg.AWSConfig.RDSInstanceClass != "" {
 			awsRDSInstanceClass = cfg.AWSConfig.RDSInstanceClass
 		}
@@ -153,11 +149,7 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	// Check for swarm deployment
 	awsCfg.DeploySwarm = c.setup.deploySwarm
 
-
-	accessKey := os.Getenv("AWS_ACCESS_KEY")
-	if accessKey == "" {
-		accessKey = awsKey
-	}
+	accessKey := readEnvSecret(c.SelectedEnv, "AWS_ACCESS_KEY")
 	if accessKey == "" {
 		fmt.Println("Enter your AWS Access Key: ")
 		var err error
@@ -170,13 +162,10 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.AccesKey = accessKey
 	if os.Getenv("BW_SESSION") != "" {
-		saveAndReportPersonal("AWS_ACCESS_KEY", accessKey)
+		saveAndReportPersonal(envSuffixedField(c.SelectedEnv, "AWS_ACCESS_KEY"), accessKey)
 	}
 
-	secretKey := os.Getenv("AWS_SECRET_KEY")
-	if secretKey == "" {
-		secretKey = awsSecret
-	}
+	secretKey := readEnvSecret(c.SelectedEnv, "AWS_SECRET_KEY")
 	if secretKey == "" {
 		fmt.Println("Enter your AWS Secret Key: ")
 		var err error
@@ -190,7 +179,7 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.SecretKey = secretKey
 	if os.Getenv("BW_SESSION") != "" {
-		saveAndReportPersonal("AWS_SECRET_KEY", secretKey)
+		saveAndReportPersonal(envSuffixedField(c.SelectedEnv, "AWS_SECRET_KEY"), secretKey)
 	}
 
 	fmt.Println("Enter your AWS cluster region: ")
@@ -234,8 +223,11 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 		awsCfg.NumWorker = numWorkers
 	}
 
-	// Update the config
-	cfg.AWSConfig = &awsCfg.D8XAWSConfig
+	cfgAws := awsCfg.D8XAWSConfig
+	cfgAws.AccesKey = ""
+	cfgAws.SecretKey = ""
+	cfgAws.RDSCredentialsFilePath = ""
+	cfg.AWSConfig = &cfgAws
 	cfg.ServerProvider = configs.D8XServerProviderAWS
 
 	return awsCfg, nil
