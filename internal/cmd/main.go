@@ -288,21 +288,7 @@ func RunD8XCli() {
 				return fmt.Errorf("loading chain json information: %w", err)
 			}
 
-			legacyPath := filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME)
-			var initialCfg *configs.D8XConfig
-			if legacyReader := configs.NewFileBasedD8XConfigRW(legacyPath); legacyReader != nil {
-				if cfg, lerr := legacyReader.Read(); lerr == nil {
-					initialCfg = cfg
-				}
-			}
-			container.ConfigRWriter = configs.NewInMemoryD8XConfigRW(initialCfg)
-
-			isInteractive := arg != "help" && arg != "" && !ctx.Bool("help") && !ctx.Bool("version")
-			if isInteractive {
-				if err := container.MigrateLegacyConfig(legacyPath); err != nil {
-					fmt.Printf("legacy migration error (non-fatal): %s\n", err)
-				}
-			}
+			container.ConfigRWriter = configs.NewInMemoryD8XConfigRW(nil)
 
 			// Initialize the input collector
 			container.Input = &actions.InputCollector{
