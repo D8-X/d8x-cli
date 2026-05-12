@@ -197,20 +197,11 @@ func NewD8XConfig() *D8XConfig {
 	}
 }
 
-// D8XConfigReadWriter is the in-process state store the CLI uses while it
-// reconciles remote config (infra repo + Bitwarden) with user edits. No file
-// I/O — Read/Write operate on a deep-copied in-memory D8XConfig.
 type D8XConfigReadWriter interface {
-	// Read returns a copy of the current state. If nothing has been written
-	// yet, an empty D8XConfig is returned.
 	Read() (*D8XConfig, error)
-
-	// Write replaces the current state with cfg.
 	Write(*D8XConfig) error
 }
 
-// NewInMemoryD8XConfigRW returns a read-writer that holds D8XConfig entirely
-// in memory.
 func NewInMemoryD8XConfigRW(initial *D8XConfig) D8XConfigReadWriter {
 	if initial == nil {
 		initial = NewD8XConfig()
