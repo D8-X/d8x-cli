@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"os"
 	"path"
 	"slices"
 	"strconv"
@@ -69,22 +70,35 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	}
 	fmt.Printf("  %s %s parsed (%d chain entries)\n", ok, rpcHistoryRemotePath, len(histEntries))
 
-	httpPool, wsPool := unionRpcsForChain(cfg.ChainId, mainEntries, histEntries)
-	fmt.Printf("  %s union for chain %s: %d HTTP, %d WS\n", ok, chainIdStr, len(httpPool), len(wsPool))
+	mainHttp, mainWs := rpcsForChain(mainEntries, cfg.ChainId)
+	histHttp, histWs := rpcsForChain(histEntries, cfg.ChainId)
+	fmt.Printf("  %s api: %d HTTP, %d WS\n", ok, len(mainHttp), len(mainWs))
+	fmt.Printf("  %s history: %d HTTP, %d WS\n", ok, len(histHttp), len(histWs))
 
-	origHttpPool := append([]string{}, httpPool...)
-	origWsPool := append([]string{}, wsPool...)
+	orig := perServicePools{
+		mainHttp: append([]string{}, mainHttp...),
+		mainWs:   append([]string{}, mainWs...),
+		histHttp: append([]string{}, histHttp...),
+		histWs:   append([]string{}, histWs...),
+	}
 
 	fmt.Printf("\n%s Step 3/3: interactive edit (changes applied only on \"Apply and deploy\")\n", arrow)
 
+	pools := perServicePools{
+		mainHttp: mainHttp,
+		mainWs:   mainWs,
+		histHttp: histHttp,
+		histWs:   histWs,
+	}
+
 	for {
-		printRpcPools(chainIdStr, httpPool, wsPool)
+		printPerServicePools(chainIdStr, &pools)
 
 		opts := []string{"Add HTTP RPC", "Add WS RPC"}
-		if len(httpPool) > 0 {
+		if len(pools.mainHttp) > 0 || len(pools.histHttp) > 0 {
 			opts = append(opts, "Delete HTTP RPCs")
 		}
-		if len(wsPool) > 0 {
+		if len(pools.mainWs) > 0 || len(pools.histWs) > 0 {
 			opts = append(opts, "Delete WS RPCs")
 		}
 		opts = append(opts, "Apply and deploy", "Cancel without saving")
@@ -98,31 +112,31 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 		}
 		switch sel[0] {
 		case "Add HTTP RPC":
-			httpPool, err = addUrl(c, httpPool, "http")
-			if err != nil {
+			if err := addUrlPerService(c, &pools, "http"); err != nil {
 				return err
 			}
 		case "Add WS RPC":
-			wsPool, err = addUrl(c, wsPool, "ws")
-			if err != nil {
+			if err := addUrlPerService(c, &pools, "ws"); err != nil {
 				return err
 			}
 		case "Delete HTTP RPCs":
-			httpPool, err = deleteUrls(c, httpPool)
-			if err != nil {
+			if err := deleteUrlsPerService(c, &pools, "http"); err != nil {
 				return err
 			}
 		case "Delete WS RPCs":
-			wsPool, err = deleteUrls(c, wsPool)
-			if err != nil {
+			if err := deleteUrlsPerService(c, &pools, "ws"); err != nil {
 				return err
 			}
 		case "Apply and deploy":
-			if len(httpPool) == 0 {
-				fmt.Println(styles.ErrorText.Render("Refusing to apply: HTTP pool is empty. api and history services would have no RPCs. Add at least one HTTP RPC before applying."))
+			if len(pools.mainHttp) == 0 {
+				fmt.Println(styles.ErrorText.Render("Refusing to apply: api HTTP pool is empty. Service would have no RPCs. Add at least one HTTP RPC before applying."))
 				continue
 			}
-			return c.applyRemoteRpcChanges(sshConn, cfg, mainEntries, histEntries, origHttpPool, origWsPool, httpPool, wsPool)
+			if len(pools.histHttp) == 0 {
+				fmt.Println(styles.ErrorText.Render("Refusing to apply: history HTTP pool is empty. Service would have no RPCs. Add at least one HTTP RPC before applying."))
+				continue
+			}
+			return c.applyRemoteRpcChanges(sshConn, cfg, mainEntries, histEntries, &orig, &pools)
 		case "Cancel without saving":
 			fmt.Println(styles.ItalicText.Render("No changes applied."))
 			return nil
@@ -130,7 +144,136 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	}
 }
 
-func addUrl(c *Container, pool []string, kind string) ([]string, error) {
+func addUrlPerService(c *Container, pools *perServicePools, kind string) error {
+	target, err := c.TUI.NewSelection(
+		[]string{"api only", "history only", "both"},
+		components.SelectionOptAllowOnlySingleItem(),
+		components.SelectionOptRequireSelection(),
+	)
+	if err != nil {
+		return err
+	}
+	url, err := promptUrl(c, kind)
+	if err != nil {
+		return err
+	}
+	if url == "" {
+		return nil
+	}
+	switch target[0] {
+	case "api only":
+		if kind == "http" {
+			pools.mainHttp = addUrlToPool(pools.mainHttp, url)
+		} else {
+			pools.mainWs = addUrlToPool(pools.mainWs, url)
+		}
+	case "history only":
+		if kind == "http" {
+			pools.histHttp = addUrlToPool(pools.histHttp, url)
+		} else {
+			pools.histWs = addUrlToPool(pools.histWs, url)
+		}
+	case "both":
+		if kind == "http" {
+			pools.mainHttp = addUrlToPool(pools.mainHttp, url)
+			pools.histHttp = addUrlToPool(pools.histHttp, url)
+		} else {
+			pools.mainWs = addUrlToPool(pools.mainWs, url)
+			pools.histWs = addUrlToPool(pools.histWs, url)
+		}
+	}
+	return nil
+}
+
+func deleteUrlsPerService(c *Container, pools *perServicePools, kind string) error {
+	target, err := c.TUI.NewSelection(
+		[]string{"api only", "history only", "both"},
+		components.SelectionOptAllowOnlySingleItem(),
+		components.SelectionOptRequireSelection(),
+	)
+	if err != nil {
+		return err
+	}
+	switch target[0] {
+	case "api only":
+		if kind == "http" {
+			pools.mainHttp, err = deleteUrls(c, pools.mainHttp)
+		} else {
+			pools.mainWs, err = deleteUrls(c, pools.mainWs)
+		}
+	case "history only":
+		if kind == "http" {
+			pools.histHttp, err = deleteUrls(c, pools.histHttp)
+		} else {
+			pools.histWs, err = deleteUrls(c, pools.histWs)
+		}
+	case "both":
+		var unionPool []string
+		if kind == "http" {
+			unionPool = uniqueUnion(pools.mainHttp, pools.histHttp)
+		} else {
+			unionPool = uniqueUnion(pools.mainWs, pools.histWs)
+		}
+		if len(unionPool) == 0 {
+			return nil
+		}
+		toRemove, selErr := c.TUI.NewSelection(unionPool)
+		if selErr != nil {
+			return selErr
+		}
+		if len(toRemove) == 0 {
+			return nil
+		}
+		for _, r := range toRemove {
+			fmt.Println(styles.ErrorText.Render("  - " + r))
+		}
+		removeFn := func(u string) bool { return slices.Contains(toRemove, u) }
+		if kind == "http" {
+			pools.mainHttp = slices.DeleteFunc(pools.mainHttp, removeFn)
+			pools.histHttp = slices.DeleteFunc(pools.histHttp, removeFn)
+		} else {
+			pools.mainWs = slices.DeleteFunc(pools.mainWs, removeFn)
+			pools.histWs = slices.DeleteFunc(pools.histWs, removeFn)
+		}
+	}
+	return err
+}
+
+func addUrlToPool(pool []string, url string) []string {
+	if slices.Contains(pool, url) {
+		fmt.Println(styles.ItalicText.Render("already present in this service, ignoring"))
+		return pool
+	}
+	fmt.Println(styles.SuccessText.Render("  + " + url))
+	return append(pool, url)
+}
+
+func uniqueUnion(a, b []string) []string {
+	seen := map[string]struct{}{}
+	out := []string{}
+	for _, u := range a {
+		if _, ok := seen[u]; !ok {
+			seen[u] = struct{}{}
+			out = append(out, u)
+		}
+	}
+	for _, u := range b {
+		if _, ok := seen[u]; !ok {
+			seen[u] = struct{}{}
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+type perServicePools struct {
+	mainHttp []string
+	mainWs   []string
+	histHttp []string
+	histWs   []string
+}
+
+func promptUrl(c *Container, kind string) (string, error) {
 	var (
 		placeholder string
 		validator   func(string) bool
@@ -154,18 +297,9 @@ func addUrl(c *Container, pool []string, kind string) ([]string, error) {
 		components.TextInputOptValidation(validator, errMsg),
 	)
 	if err != nil {
-		return pool, err
+		return "", err
 	}
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return pool, nil
-	}
-	if slices.Contains(pool, url) {
-		fmt.Println(styles.ItalicText.Render("already present, ignoring"))
-		return pool, nil
-	}
-	fmt.Println(styles.SuccessText.Render("  + " + url))
-	return append(pool, url), nil
+	return strings.TrimSpace(url), nil
 }
 
 func deleteUrls(c *Container, pool []string) ([]string, error) {
@@ -191,22 +325,29 @@ func (c *Container) applyRemoteRpcChanges(
 	sshConn conn.SSHConnection,
 	cfg *configs.D8XConfig,
 	mainEntries, histEntries []RPCConfigEntry,
-	origHttpPool, origWsPool []string,
-	httpPool, wsPool []string,
+	orig, pools *perServicePools,
 ) error {
 	chainIdStr := strconv.Itoa(int(cfg.ChainId))
 
-	httpAdded, httpRemoved := diffPools(origHttpPool, httpPool)
-	wsAdded, wsRemoved := diffPools(origWsPool, wsPool)
+	mainHttpA, mainHttpR := diffPools(orig.mainHttp, pools.mainHttp)
+	mainWsA, mainWsR := diffPools(orig.mainWs, pools.mainWs)
+	histHttpA, histHttpR := diffPools(orig.histHttp, pools.histHttp)
+	histWsA, histWsR := diffPools(orig.histWs, pools.histWs)
 
-	if len(httpAdded)+len(httpRemoved)+len(wsAdded)+len(wsRemoved) == 0 {
+	totalChanges := len(mainHttpA) + len(mainHttpR) + len(mainWsA) + len(mainWsR) +
+		len(histHttpA) + len(histHttpR) + len(histWsA) + len(histWsR)
+	if totalChanges == 0 {
 		fmt.Println(styles.ItalicText.Render("No changes vs current manager state. Nothing to apply."))
 		return nil
 	}
 
 	fmt.Printf("\n%s Pending changes for chain %s\n", arrow, chainIdStr)
-	printDiffSection("HTTP", httpAdded, httpRemoved)
-	printDiffSection("WS  ", wsAdded, wsRemoved)
+	fmt.Println("  api:")
+	printDiffSection("    HTTP", mainHttpA, mainHttpR)
+	printDiffSection("    WS  ", mainWsA, mainWsR)
+	fmt.Println("  history:")
+	printDiffSection("    HTTP", histHttpA, histHttpR)
+	printDiffSection("    WS  ", histWsA, histWsR)
 
 	confirmed, err := c.TUI.NewPrompt("Apply these changes to the live cluster?", false)
 	if err != nil {
@@ -217,15 +358,8 @@ func (c *Container) applyRemoteRpcChanges(
 		return nil
 	}
 
-	tmp := *cfg
-	tmp.HttpRpcList = map[string][]string{chainIdStr: httpPool}
-	tmp.WsRpcList = map[string][]string{chainIdStr: wsPool}
-
-	httpMain, wsMain := DistributeRpcs(0, chainIdStr, &tmp)
-	httpHist, wsHist := DistributeRpcs(1, chainIdStr, &tmp)
-
-	newMain := setRpcEntry(mainEntries, cfg.ChainId, httpMain, wsMain)
-	newHist := setRpcEntry(histEntries, cfg.ChainId, httpHist, wsHist)
+	newMain := setRpcEntry(mainEntries, cfg.ChainId, pools.mainHttp, pools.mainWs)
+	newHist := setRpcEntry(histEntries, cfg.ChainId, pools.histHttp, pools.histWs)
 
 	mainBytes, err := json.MarshalIndent(newMain, "", "\t")
 	if err != nil {
@@ -237,7 +371,8 @@ func (c *Container) applyRemoteRpcChanges(
 	}
 
 	fmt.Printf("\n%s Applying RPC changes to live cluster\n", arrow)
-	fmt.Printf("  pool now: %d HTTP, %d WS for chain %s\n", len(httpPool), len(wsPool), chainIdStr)
+	fmt.Printf("  api now: %d HTTP, %d WS for chain %s\n", len(pools.mainHttp), len(pools.mainWs), chainIdStr)
+	fmt.Printf("  history now: %d HTTP, %d WS for chain %s\n", len(pools.histHttp), len(pools.histWs), chainIdStr)
 
 	rev := time.Now().Format("20060102150405")
 
@@ -285,10 +420,24 @@ func (c *Container) applyRemoteRpcChanges(
 		fmt.Printf("  %s created %s\n", ok, newName)
 		for _, svc := range r.services {
 			stackSvc := dockerStackName + "_" + svc
-			fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  updating service %s: detach %s, attach %s -> %s", stackSvc, r.configName, newName, r.targetPath)))
+			currentName, err := getAttachedConfigName(sshConn, stackSvc, r.targetPath)
+			if err != nil {
+				return fmt.Errorf("inspecting current config attached to %s at %s: %w", stackSvc, r.targetPath, err)
+			}
+			if currentName == newName {
+				fmt.Printf("  %s service %s already using %s, skipping rollout\n", ok, stackSvc, newName)
+				continue
+			}
+			detachClause := ""
+			if currentName != "" {
+				detachClause = fmt.Sprintf("--config-rm %s ", currentName)
+				fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  updating service %s: detach %s, attach %s -> %s", stackSvc, currentName, newName, r.targetPath)))
+			} else {
+				fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  updating service %s: attach %s -> %s (no prior config at this target)", stackSvc, newName, r.targetPath)))
+			}
 			cmd := fmt.Sprintf(
-				`docker service update --config-rm %s --config-add source=%s,target=%s %s`,
-				r.configName, newName, r.targetPath, stackSvc,
+				`docker service update %s--config-add source=%s,target=%s %s`,
+				detachClause, newName, r.targetPath, stackSvc,
 			)
 			if err := sshConn.ExecCommandPiped(cmd); err != nil {
 				return fmt.Errorf("rolling update of %s failed: %w", stackSvc, err)
@@ -346,6 +495,27 @@ func readRemoteFile(sshConn conn.SSHConnection, remotePath string) ([]byte, erro
 	return io.ReadAll(f)
 }
 
+func getAttachedConfigName(sshConn conn.SSHConnection, stackSvc, targetPath string) (string, error) {
+	format := fmt.Sprintf(
+		`{{range .Spec.TaskTemplate.ContainerSpec.Configs}}{{if eq .File.Name %q}}{{.ConfigName}}{{"\n"}}{{end}}{{end}}`,
+		targetPath,
+	)
+	out, err := sshConn.ExecCommand(fmt.Sprintf(
+		`docker service inspect %s --format '%s'`,
+		stackSvc, format,
+	))
+	if err != nil {
+		return "", fmt.Errorf("docker service inspect %s: %s (%w)", stackSvc, strings.TrimSpace(string(out)), err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			return name, nil
+		}
+	}
+	return "", nil
+}
+
 func writeRemoteFile(sshConn conn.SSHConnection, remotePath string, content []byte) error {
 	s, err := sftp.NewClient(sshConn.GetClient())
 	if err != nil {
@@ -366,32 +536,30 @@ func writeRemoteFile(sshConn conn.SSHConnection, remotePath string, content []by
 	return err
 }
 
-func unionRpcsForChain(chainId uint, files ...[]RPCConfigEntry) (httpUrls, wsUrls []string) {
+func rpcsForChain(entries []RPCConfigEntry, chainId uint) (httpUrls, wsUrls []string) {
 	seenH := map[string]struct{}{}
 	seenW := map[string]struct{}{}
-	for _, entries := range files {
-		for _, e := range entries {
-			if e.ChainId != chainId {
+	for _, e := range entries {
+		if e.ChainId != chainId {
+			continue
+		}
+		for _, u := range e.HttpRpcs {
+			if u == "" {
 				continue
 			}
-			for _, u := range e.HttpRpcs {
+			if _, ok := seenH[u]; !ok {
+				seenH[u] = struct{}{}
+				httpUrls = append(httpUrls, u)
+			}
+		}
+		if e.WsRpcs != nil {
+			for _, u := range *e.WsRpcs {
 				if u == "" {
 					continue
 				}
-				if _, ok := seenH[u]; !ok {
-					seenH[u] = struct{}{}
-					httpUrls = append(httpUrls, u)
-				}
-			}
-			if e.WsRpcs != nil {
-				for _, u := range *e.WsRpcs {
-					if u == "" {
-						continue
-					}
-					if _, ok := seenW[u]; !ok {
-						seenW[u] = struct{}{}
-						wsUrls = append(wsUrls, u)
-					}
+				if _, ok := seenW[u]; !ok {
+					seenW[u] = struct{}{}
+					wsUrls = append(wsUrls, u)
 				}
 			}
 		}
@@ -400,19 +568,18 @@ func unionRpcsForChain(chainId uint, files ...[]RPCConfigEntry) (httpUrls, wsUrl
 }
 
 func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []string) []RPCConfigEntry {
-	found := false
+	var indices []int
+	hadWsField := false
 	for i, e := range entries {
-		if e.ChainId != chainId {
-			continue
+		if e.ChainId == chainId {
+			indices = append(indices, i)
+			if e.WsRpcs != nil {
+				hadWsField = true
+			}
 		}
-		entries[i].HttpRpcs = append([]string{}, httpRpcs...)
-		if e.WsRpcs != nil || len(wsRpcs) > 0 {
-			ws := append([]string{}, wsRpcs...)
-			entries[i].WsRpcs = &ws
-		}
-		found = true
 	}
-	if !found {
+
+	if len(indices) == 0 {
 		entry := RPCConfigEntry{
 			ChainId:  chainId,
 			HttpRpcs: append([]string{}, httpRpcs...),
@@ -421,34 +588,97 @@ func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []stri
 			ws := append([]string{}, wsRpcs...)
 			entry.WsRpcs = &ws
 		}
-		entries = append(entries, entry)
+		return append(entries, entry)
+	}
+
+	keep := indices[0]
+	entries[keep].HttpRpcs = append([]string{}, httpRpcs...)
+	if hadWsField || len(wsRpcs) > 0 {
+		ws := append([]string{}, wsRpcs...)
+		entries[keep].WsRpcs = &ws
+	} else {
+		entries[keep].WsRpcs = nil
+	}
+
+	for i := len(indices) - 1; i > 0; i-- {
+		idx := indices[i]
+		entries = append(entries[:idx], entries[idx+1:]...)
 	}
 	return entries
 }
 
 func (c *Container) postRpcRolloutHealthCheck(cfg *configs.D8XConfig) {
-	targets := []configs.D8XServiceName{configs.D8XServiceMainHTTP, configs.D8XServiceHistory}
-	for _, name := range targets {
-		svc, exists := cfg.Services[name]
-		if !exists || svc.HostName == "" {
-			fmt.Printf("  %s %s: hostname not configured, skipping check\n", warning, name)
-			continue
-		}
+	hosts := c.discoverServiceHosts(cfg)
+	if len(hosts) == 0 {
+		fmt.Printf("  %s no service hostnames discovered (cfg.Services empty and no %s/sites.conf reachable); skipping health probe\n", warning, c.SelectedEnv)
+		return
+	}
+
+	for _, h := range hosts {
 		scheme := "http"
-		if svc.UsesHTTPS {
+		if h.https {
 			scheme = "https"
 		}
-		url := fmt.Sprintf("%s://%s", scheme, svc.HostName)
+		url := fmt.Sprintf("%s://%s", scheme, h.host)
 		status, took, err := probeService(c.HttpClient, url)
 		switch {
 		case err != nil:
-			fmt.Printf("  %s %s (%s): %s\n", notok, name, url, err)
+			fmt.Printf("  %s %s (%s): %s\n", notok, h.label, url, err)
 		case status >= 200 && status < 500:
-			fmt.Printf("  %s %s (%s): HTTP %d (%s)\n", ok, name, url, status, took.Round(time.Millisecond))
+			fmt.Printf("  %s %s (%s): HTTP %d (%s)\n", ok, h.label, url, status, took.Round(time.Millisecond))
 		default:
-			fmt.Printf("  %s %s (%s): HTTP %d (%s)\n", warning, name, url, status, took.Round(time.Millisecond))
+			fmt.Printf("  %s %s (%s): HTTP %d (%s)\n", warning, h.label, url, status, took.Round(time.Millisecond))
 		}
 	}
+}
+
+type discoveredHost struct {
+	label string
+	host  string
+	https bool
+}
+
+func (c *Container) discoverServiceHosts(cfg *configs.D8XConfig) []discoveredHost {
+	seen := map[string]struct{}{}
+	var out []discoveredHost
+
+	for _, svc := range cfg.Services {
+		if svc.HostName == "" {
+			continue
+		}
+		if _, dup := seen[svc.HostName]; dup {
+			continue
+		}
+		seen[svc.HostName] = struct{}{}
+		out = append(out, discoveredHost{
+			label: string(svc.Name),
+			host:  svc.HostName,
+			https: svc.UsesHTTPS,
+		})
+	}
+
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" || c.SelectedEnv == "" {
+		return out
+	}
+	sites, err := ghReadFile(token, c.SelectedEnv+"/sites.conf")
+	if err != nil {
+		fmt.Printf("  %s could not fetch %s/sites.conf (%s); probing only entries in cfg.Services\n", warning, c.SelectedEnv, err)
+		return out
+	}
+	for _, host := range extractAllServerNames(sites.Content) {
+		if _, dup := seen[host]; dup {
+			continue
+		}
+		seen[host] = struct{}{}
+		label := strings.Split(host, ".")[0]
+		out = append(out, discoveredHost{
+			label: label,
+			host:  host,
+			https: true,
+		})
+	}
+	return out
 }
 
 func probeService(client *http.Client, url string) (int, time.Duration, error) {
@@ -499,24 +729,30 @@ func printDiffSection(label string, added, removed []string) {
 	}
 }
 
-func printRpcPools(chainId string, http, ws []string) {
+func printPerServicePools(chainId string, p *perServicePools) {
 	fmt.Println()
-	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Chain %s — RPCs configured on manager", chainId)))
+	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Chain %s, RPCs configured on manager:", chainId)))
+	printOneServicePool("api", p.mainHttp, p.mainWs)
+	printOneServicePool("history", p.histHttp, p.histWs)
+	fmt.Println()
+}
+
+func printOneServicePool(label string, http, ws []string) {
+	fmt.Printf("  %s:\n", label)
 	if len(http) == 0 {
-		fmt.Println("  HTTP: (none)")
+		fmt.Println("    HTTP: (none)")
 	} else {
-		fmt.Println("  HTTP:")
+		fmt.Println("    HTTP:")
 		for i, u := range http {
-			fmt.Printf("    %d. %s\n", i+1, u)
+			fmt.Printf("      %d. %s\n", i+1, u)
 		}
 	}
 	if len(ws) == 0 {
-		fmt.Println("  WS:   (none)")
+		fmt.Println("    WS:   (none)")
 	} else {
-		fmt.Println("  WS:")
+		fmt.Println("    WS:")
 		for i, u := range ws {
-			fmt.Printf("    %d. %s\n", i+1, u)
+			fmt.Printf("      %d. %s\n", i+1, u)
 		}
 	}
-	fmt.Println()
 }

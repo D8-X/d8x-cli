@@ -351,6 +351,22 @@ func TestSetRpcEntry(t *testing.T) {
 			wantWsNil: true,
 			wantHttp:  []string{"new"},
 		},
+		{
+			name: "collapses duplicate chain entries into one",
+			entries: []RPCConfigEntry{
+				{ChainId: 1, HttpRpcs: []string{"keep1"}},
+				{ChainId: 42, HttpRpcs: []string{"old1"}, WsRpcs: &someWs},
+				{ChainId: 8, HttpRpcs: []string{"keep2"}},
+				{ChainId: 42, HttpRpcs: []string{"old2"}},
+			},
+			chainId:      42,
+			httpRpcs:     []string{"new"},
+			wsRpcs:       someWs,
+			wantLen:      3,
+			wantWsNil:    false,
+			wantHttp:     []string{"new"},
+			wantWsValues: someWs,
+		},
 	}
 
 	for _, tt := range tests {
