@@ -111,7 +111,7 @@ See [docs/maintenance.md](docs/maintenance.md) for updates, health checks, SSH a
 | `d8x grafana-tunnel` | Tunnel to Grafana dashboard |
 | `d8x ip manager\|broker` | Show server IPs |
 | `d8x fix-ingress` | Fix Docker Swarm ingress network |
-| `d8x tf-destroy` | Destroy all provisioned servers (irreversible) |
+| `d8x tf-destroy` | Destroy all provisioned servers for an env (irreversible). See [docs/tf-destroy.md](docs/tf-destroy.md) |
 
 ## Troubleshooting
 
