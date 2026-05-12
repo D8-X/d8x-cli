@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -26,8 +27,10 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		return fmt.Errorf("server_provider missing from %s/config.json in infra repo. Cannot determine which provider to destroy", c.SelectedEnv)
 	}
 
+	targets := c.collectDestroyTargets(cfg)
+
 	fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("You are about to destroy environment %q.", c.SelectedEnv)))
-	c.printDestroyTargets(cfg)
+	printDestroyTargets(targets)
 	fmt.Println(styles.AlertImportant.Render("All the resources listed above will be destroyed. Irreversible."))
 
 	confirm, err := c.TUI.NewPrompt(fmt.Sprintf("Proceed with destroying %q?", c.SelectedEnv), false)
@@ -50,6 +53,17 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	if strings.TrimSpace(typed) != c.SelectedEnv {
 		fmt.Printf("Typed %q does not match %q. Not destroying.\n", typed, c.SelectedEnv)
 		return nil
+	}
+
+	if err := c.fetchTerraformInputs(cfg); err != nil {
+		return err
+	}
+
+	tfInit := exec.Command("terraform", "init")
+	tfInit.Dir = c.ProvisioningTfDir
+	connectCMDToCurrentTerm(tfInit)
+	if err := tfInit.Run(); err != nil {
+		return fmt.Errorf("terraform init: %w", err)
 	}
 
 	var args []string = []string{
@@ -90,8 +104,21 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		return err
 	}
 
-	cfg.ResetDeploymentStatus()
+	fmt.Println()
+	fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Environment %q successfully destroyed:", c.SelectedEnv)))
+	printDestroyTargets(targets)
+	fmt.Println()
 
+	doCleanup, err := c.TUI.NewPrompt(fmt.Sprintf("Proceed with bookkeeping cleanup (clear deployment flags in %s/config.json, remove hosts.cfg locally and from infra repo)?", c.SelectedEnv), true)
+	if err != nil {
+		return err
+	}
+	if !doCleanup {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Cleanup skipped. %s/config.json and %s/hosts.cfg in the infra repo still reflect the pre-destroy state, and the local ./hosts.cfg is intact. Rerun \"d8x tf-destroy\" to clean them up later.", c.SelectedEnv, c.SelectedEnv)))
+		return nil
+	}
+
+	cfg.ResetDeploymentStatus()
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return err
 	}
@@ -99,6 +126,28 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		fmt.Printf("%s warning: could not publish reset state to infra repo: %s\n", warning, err)
 	}
 	c.cleanupHostsAfterDestroy()
+	return nil
+}
+
+func (c *Container) fetchTerraformInputs(cfg *configs.D8XConfig) error {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN missing, cannot fetch terraform configs from infra repo")
+	}
+	tfSubdir := "terraform/" + string(cfg.ServerProvider)
+	fmt.Println(styles.ItalicText.Render("Fetching terraform configs from infra repo (" + tfSubdir + ")..."))
+	if err := ghFetchDir(token, tfSubdir, c.ProvisioningTfDir); err != nil {
+		return fmt.Errorf("fetching %s from infra repo: %w", tfSubdir, err)
+	}
+	tfvars, err := ghReadFile(token, c.SelectedEnv+"/terraform.tfvars")
+	if err != nil {
+		return fmt.Errorf("fetching %s/terraform.tfvars from infra repo: %w", c.SelectedEnv, err)
+	}
+	tfvarsPath := filepath.Join(c.ProvisioningTfDir, "env.auto.tfvars")
+	if err := os.WriteFile(tfvarsPath, []byte(tfvars.Content), 0644); err != nil {
+		return fmt.Errorf("writing %s: %w", tfvarsPath, err)
+	}
+	fmt.Printf("  %s wrote %s\n", ok, tfvarsPath)
 	return nil
 }
 
@@ -129,53 +178,75 @@ func (c *Container) cleanupHostsAfterDestroy() {
 	fmt.Printf("%s removed %s from infra repo\n", ok, remotePath)
 }
 
-func (c *Container) printDestroyTargets(cfg *configs.D8XConfig) {
-	region, labelPrefix := "", ""
+type destroyTargets struct {
+	provider    string
+	region      string
+	labelPrefix string
+	managerIP   string
+	workerIPs   []string
+	brokerIP    string
+	deployed    []string
+}
+
+func (c *Container) collectDestroyTargets(cfg *configs.D8XConfig) destroyTargets {
+	t := destroyTargets{provider: string(cfg.ServerProvider)}
 	switch cfg.ServerProvider {
 	case configs.D8XServerProviderAWS:
 		if cfg.AWSConfig != nil {
-			region = cfg.AWSConfig.Region
-			labelPrefix = cfg.AWSConfig.LabelPrefix
+			t.region = cfg.AWSConfig.Region
+			t.labelPrefix = cfg.AWSConfig.LabelPrefix
 		}
 	case configs.D8XServerProviderLinode:
 		if cfg.LinodeConfig != nil {
-			region = cfg.LinodeConfig.Region
-			labelPrefix = cfg.LinodeConfig.LabelPrefix
+			t.region = cfg.LinodeConfig.Region
+			t.labelPrefix = cfg.LinodeConfig.LabelPrefix
 		}
 	}
-	fmt.Printf("  provider:        %s\n", cfg.ServerProvider)
-	if region != "" {
-		fmt.Printf("  region:          %s\n", region)
+	if managerIp, err := c.HostsCfg.GetMangerPublicIp(); err == nil {
+		t.managerIP = managerIp
 	}
-	if labelPrefix != "" {
-		fmt.Printf("  label prefix:    %s\n", labelPrefix)
+	if workerIps, err := c.HostsCfg.GetWorkerIps(); err == nil {
+		t.workerIPs = workerIps
 	}
-	if managerIp, err := c.HostsCfg.GetMangerPublicIp(); err == nil && managerIp != "" {
-		fmt.Printf("  manager:         %s\n", managerIp)
+	if brokerIp, err := c.HostsCfg.GetBrokerPublicIp(); err == nil {
+		t.brokerIP = brokerIp
 	}
-	if workerIps, err := c.HostsCfg.GetWorkerIps(); err == nil && len(workerIps) > 0 {
-		fmt.Printf("  workers (%d):     %s\n", len(workerIps), strings.Join(workerIps, ", "))
-	}
-	if brokerIp, err := c.HostsCfg.GetBrokerPublicIp(); err == nil && brokerIp != "" {
-		fmt.Printf("  broker:          %s\n", brokerIp)
-	}
-	var deployed []string
 	if cfg.SwarmDeployed {
-		deployed = append(deployed, "swarm")
+		t.deployed = append(t.deployed, "swarm")
 	}
 	if cfg.SwarmNginxDeployed {
-		deployed = append(deployed, "swarm-nginx")
+		t.deployed = append(t.deployed, "swarm-nginx")
 	}
 	if cfg.BrokerDeployed {
-		deployed = append(deployed, "broker")
+		t.deployed = append(t.deployed, "broker")
 	}
 	if cfg.BrokerNginxDeployed {
-		deployed = append(deployed, "broker-nginx")
+		t.deployed = append(t.deployed, "broker-nginx")
 	}
 	if cfg.MetricsDeployed {
-		deployed = append(deployed, "metrics")
+		t.deployed = append(t.deployed, "metrics")
 	}
-	if len(deployed) > 0 {
-		fmt.Printf("  deployed:        %s\n", strings.Join(deployed, ", "))
+	return t
+}
+
+func printDestroyTargets(t destroyTargets) {
+	fmt.Printf("  provider:        %s\n", t.provider)
+	if t.region != "" {
+		fmt.Printf("  region:          %s\n", t.region)
+	}
+	if t.labelPrefix != "" {
+		fmt.Printf("  label prefix:    %s\n", t.labelPrefix)
+	}
+	if t.managerIP != "" {
+		fmt.Printf("  manager:         %s\n", t.managerIP)
+	}
+	if len(t.workerIPs) > 0 {
+		fmt.Printf("  workers (%d):     %s\n", len(t.workerIPs), strings.Join(t.workerIPs, ", "))
+	}
+	if t.brokerIP != "" {
+		fmt.Printf("  broker:          %s\n", t.brokerIP)
+	}
+	if len(t.deployed) > 0 {
+		fmt.Printf("  deployed:        %s\n", strings.Join(t.deployed, ", "))
 	}
 }
