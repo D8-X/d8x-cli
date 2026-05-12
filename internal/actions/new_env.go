@@ -91,7 +91,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		return err
 	}
 
-	fmt.Println(styles.ItalicText.Render("\nNginx rate limiting throttles incoming requests per client IP across the api/ws/history/candles endpoints. When the limit is exceeded the client gets HTTP 503 until traffic slows down. Mainnet and testnet both run with it enabled."))
+	fmt.Println(styles.ItalicText.Render("\nNginx rate limiting throttles incoming requests per client IP across the api/ws/history/candles endpoints. When the limit is exceeded the client gets HTTP 503 until traffic slows down."))
 	rateLimitEnabled, err := c.TUI.NewPrompt("Enable nginx rate limiting for this environment?", true)
 	if err != nil {
 		return err
@@ -100,19 +100,18 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 	burstApiStr := "25"
 	burstWsStr := "20"
 	if rateLimitEnabled {
-		fmt.Println(styles.ItalicText.Render("\nSustained ceiling: the maximum requests per second a single client IP can keep doing forever without being throttled."))
-		rateLimitStr, err = c.promptPositiveInt("Sustained requests per second per client IP [25]:", "25", "sustained rate")
+		rateLimitStr, err = c.promptPositiveInt("Max requests per second per client IP (default 25):", "25", "rate")
 		if err != nil {
 			return err
 		}
 
-		fmt.Println(styles.ItalicText.Render("\nBurst: extra one-shot requests a client can fire on top of the sustained rate (e.g. a page load that fans out many requests at once). Larger burst = more tolerant of legitimate traffic spikes, but also more tolerant of abuse."))
-		burstApiStr, err = c.promptPositiveInt("Burst size for the 'api' endpoint [25]:", "25", "api burst")
+		fmt.Println(styles.ItalicText.Render("\nBurst = extra requests a client can fire above the limit in a quick spike (e.g. page load fan-out)."))
+		burstApiStr, err = c.promptPositiveInt("'api' burst (default 25):", "25", "api burst")
 		if err != nil {
 			return err
 		}
 
-		burstWsStr, err = c.promptPositiveInt("Burst size for the 'ws', 'history' and 'candles' endpoints [20]:", "20", "ws/history/candles burst")
+		burstWsStr, err = c.promptPositiveInt("'ws', 'history' and 'candles' burst (default 20):", "20", "ws/history/candles burst")
 		if err != nil {
 			return err
 		}
