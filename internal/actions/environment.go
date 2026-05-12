@@ -125,21 +125,11 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	upperEnv := strings.ToUpper(env)
 	sshKey := os.Getenv("SSH_KEY_" + upperEnv)
 	if sshKey == "" {
-		sshKey = os.Getenv("SSH_KEY_PATH_" + upperEnv)
-	}
-	if sshKey == "" {
 		bootPath, berr := c.bootstrapSSHKey(env)
 		if berr != nil {
 			return "", berr
 		}
 		sshKey = bootPath
-	}
-	if strings.HasPrefix(sshKey, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("could not resolve home directory: %w", err)
-		}
-		sshKey = filepath.Join(home, sshKey[2:])
 	}
 	keyContent, err := os.ReadFile(sshKey)
 	if err != nil {

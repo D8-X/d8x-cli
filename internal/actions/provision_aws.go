@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -191,6 +192,11 @@ func (a *awsConfigurer) uploadRDSCredsToBitwarden(c *Container) bool {
 			savedAll = false
 		default:
 			os.Setenv(f.fieldName, v)
+		}
+	}
+	if savedAll {
+		if err := os.Remove(RDS_CREDS_FILE); err != nil && !errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("%s warning: RDS credentials saved to Bitwarden but could not delete local %s: %s\n", warning, RDS_CREDS_FILE, err)
 		}
 	}
 	return savedAll
@@ -391,11 +397,7 @@ func parseAwsRDSCredentialsFile(contents []byte) map[string]string {
 func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName string) error {
 	credsMap := loadRDSCredsFromBitwarden(c.SelectedEnv)
 	if credsMap == nil {
-		creds, err := os.ReadFile(RDS_CREDS_FILE)
-		if err != nil {
-			return fmt.Errorf("RDS credentials not found in Bitwarden and could not read %s: %w", RDS_CREDS_FILE, err)
-		}
-		credsMap = parseAwsRDSCredentialsFile(creds)
+		return fmt.Errorf("RDS credentials not found in Bitwarden; unlock Bitwarden and rerun \"d8x setup provision\" so they get persisted to AWS_RDS_HOST/PORT/USER/PASSWORD_%s", strings.ToUpper(c.SelectedEnv))
 	}
 
 	envUpper := strings.ToUpper(c.SelectedEnv)

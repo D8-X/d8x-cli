@@ -101,41 +101,20 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 	burstWsStr := "20"
 	if rateLimitEnabled {
 		fmt.Println(styles.ItalicText.Render("\nSustained ceiling: the maximum requests per second a single client IP can keep doing forever without being throttled."))
-		fmt.Println("Sustained requests per second per client IP [25]:")
-		v, err := c.TUI.NewInput(components.TextInputOptValue("25"))
+		rateLimitStr, err = c.promptPositiveInt("Sustained requests per second per client IP [25]:", "25", "sustained rate")
 		if err != nil {
 			return err
-		}
-		if v = strings.TrimSpace(v); v != "" {
-			rateLimitStr = v
-		}
-		if n, err := strconv.Atoi(rateLimitStr); err != nil || n <= 0 {
-			return fmt.Errorf("invalid sustained rate '%s': must be a positive integer", rateLimitStr)
 		}
 
 		fmt.Println(styles.ItalicText.Render("\nBurst: extra one-shot requests a client can fire on top of the sustained rate (e.g. a page load that fans out many requests at once). Larger burst = more tolerant of legitimate traffic spikes, but also more tolerant of abuse."))
-		fmt.Println("Burst size for the 'api' endpoint [25]:")
-		v, err = c.TUI.NewInput(components.TextInputOptValue("25"))
+		burstApiStr, err = c.promptPositiveInt("Burst size for the 'api' endpoint [25]:", "25", "api burst")
 		if err != nil {
 			return err
-		}
-		if v = strings.TrimSpace(v); v != "" {
-			burstApiStr = v
-		}
-		if n, err := strconv.Atoi(burstApiStr); err != nil || n <= 0 {
-			return fmt.Errorf("invalid api burst '%s': must be a positive integer", burstApiStr)
 		}
 
-		fmt.Println("Burst size for the 'ws', 'history' and 'candles' endpoints [20]:")
-		v, err = c.TUI.NewInput(components.TextInputOptValue("20"))
+		burstWsStr, err = c.promptPositiveInt("Burst size for the 'ws', 'history' and 'candles' endpoints [20]:", "20", "ws/history/candles burst")
 		if err != nil {
 			return err
-		}
-		if v = strings.TrimSpace(v); v != "" {
-			burstWsStr = v
-		}
-		if n, err := strconv.Atoi(burstWsStr); err != nil || n <= 0 {
-			return fmt.Errorf("invalid ws/history/candles burst '%s': must be a positive integer", burstWsStr)
 		}
 	} else {
 		fmt.Println(styles.ItalicText.Render("Rate limiting will be written into the nginx configs but commented out. You can turn it on later by editing the generated files or re-running 'd8x setup new-env'."))
@@ -540,4 +519,22 @@ server {
 	fmt.Printf("  6. d8x setup broker-nginx\n")
 
 	return nil
+}
+
+func (c *Container) promptPositiveInt(prompt, defaultVal, label string) (string, error) {
+	for {
+		fmt.Println(prompt)
+		v, err := c.TUI.NewInput(components.TextInputOptValue(defaultVal))
+		if err != nil {
+			return "", err
+		}
+		v = strings.TrimSpace(v)
+		if v == "" {
+			v = defaultVal
+		}
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return v, nil
+		}
+		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Invalid %s '%s': must be a positive integer. Try again.", label, v)))
+	}
 }

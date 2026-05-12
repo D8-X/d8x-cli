@@ -89,11 +89,11 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		}
 
 		if needsBrokerKey {
-			pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
-			if err != nil {
+			c.Input.SelectedEnv = c.SelectedEnv
+			if err := c.Input.CollectBrokerPrivateKey(); err != nil {
 				return err
 			}
-			brokerPrivateKey = pk
+			brokerPrivateKey = c.Input.brokerDeployInput.privateKey
 		}
 
 		if c.SelectedEnv != "" {

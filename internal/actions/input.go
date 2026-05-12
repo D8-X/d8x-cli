@@ -3,7 +3,6 @@ package actions
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -999,14 +998,10 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 }
 
 func collectAwsRdsDsnString(cfg *configs.D8XConfig, env string) error {
-	creds, err := os.ReadFile(RDS_CREDS_FILE)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
+	credsMap := loadRDSCredsFromBitwarden(env)
+	if credsMap == nil {
+		return nil
 	}
-	credsMap := parseAwsRDSCredentialsFile(creds)
 	dbName := readEnvSecret(env, "AWS_RDS_DB_NAME")
 	if dbName == "" {
 		dbName = "history"

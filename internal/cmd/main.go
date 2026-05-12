@@ -212,12 +212,6 @@ func RunD8XCli() {
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:        flags.PrivateKeyPath,
-				EnvVars:     []string{"SSH_KEY_PATH"},
-				Destination: &container.SshKeyPath,
-				Usage:       "SSH key path (loaded from Bitwarden as SSH_KEY_{ENV})",
-			},
-			&cli.StringFlag{
 				Name:        flags.User,
 				Value:       configs.DEFAULT_USER_NAME,
 				Destination: &container.DefaultClusterUserName,
@@ -328,11 +322,28 @@ var setupSequence = []struct {
 	{"metrics-deploy", "Deploy prometheus and grafana on the manager node (optional)"},
 }
 
+var valueTakingFlags = map[string]struct{}{
+	"--password": {}, "-password": {},
+	"--user": {}, "-user": {},
+	"--github-token": {}, "-github-token": {},
+	"--nginx-api-key": {}, "-nginx-api-key": {},
+	"--chdir": {}, "-chdir": {},
+}
+
 func isHelpOrVersionInvocation(args []string) bool {
 	if len(args) <= 1 {
 		return true
 	}
+	skipNext := false
 	for _, a := range args[1:] {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if _, ok := valueTakingFlags[a]; ok {
+			skipNext = true
+			continue
+		}
 		switch a {
 		case "help", "h", "--help", "-h", "--version", "-v":
 			return true

@@ -334,6 +334,18 @@ func ghCommitFiles(token string, files []ghCommitFile, message string) error {
 	repo := getGhRepo()
 	base := fmt.Sprintf("https://api.github.com/repos/%s", repo)
 
+	changedFiles := make([]ghCommitFile, 0, len(files))
+	for _, f := range files {
+		existing, err := ghReadFile(token, f.Path)
+		if err == nil && existing.Content == f.Content {
+			continue
+		}
+		changedFiles = append(changedFiles, f)
+	}
+	if len(changedFiles) == 0 {
+		return nil
+	}
+
 	var repoInfo struct {
 		DefaultBranch string `json:"default_branch"`
 	}
@@ -365,8 +377,8 @@ func ghCommitFiles(token string, files []ghCommitFile, message string) error {
 	}
 	baseTreeSHA := commitInfo.Tree.SHA
 
-	treeItems := make([]map[string]any, 0, len(files))
-	for _, f := range files {
+	treeItems := make([]map[string]any, 0, len(changedFiles))
+	for _, f := range changedFiles {
 		var blob struct {
 			SHA string `json:"sha"`
 		}
