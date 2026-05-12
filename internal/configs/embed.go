@@ -31,6 +31,14 @@ func GetBrokerServerDockerComposeFile() ([]byte, error) {
 	return io.ReadAll(fs)
 }
 
+func GetSetupAnsiblePlaybook() ([]byte, error) {
+	fs, err := EmbededConfigs.Open("embedded/playbooks/setup.ansible.yaml")
+	if err != nil {
+		return nil, err
+	}
+	return io.ReadAll(fs)
+}
+
 type DockerService struct {
 	// Image without the tag
 	Image string `yaml:"image"`

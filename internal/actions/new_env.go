@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -495,6 +496,15 @@ server {
 `, brokerHost),
 		},
 	}
+
+	playbook, err := configs.GetSetupAnsiblePlaybook()
+	if err != nil {
+		return fmt.Errorf("loading embedded setup.ansible.yaml: %w", err)
+	}
+	files = append(files, fileEntry{
+		path:    envName + "/setup.ansible.yaml",
+		content: string(playbook),
+	})
 
 	fmt.Println(styles.ItalicText.Render("\nCreating environment files..."))
 	commitFiles := make([]ghCommitFile, 0, len(files))

@@ -6,10 +6,10 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -35,11 +35,8 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		}
 	}
 
-	// Copy the playbooks file
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/playbooks/setup.ansible.yaml", Dst: "./playbooks/setup.ansible.yaml", Overwrite: true},
-	); err != nil {
+	playbookPath, err := c.fetchSetupPlaybook()
+	if err != nil {
 		return err
 	}
 
@@ -58,10 +55,11 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		c.UserPassword = password
 	}
 
-	fmt.Printf("  Server password: %s\n", c.UserPassword)
 	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 		fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
 		saveAndReport(fieldName, c.UserPassword)
+	} else {
+		fmt.Printf("  %s BW_SESSION not set; server password not saved to Bitwarden. Make sure you have it captured before this run ends.\n", warning)
 	}
 
 	configureUser := cfg.GetAnsibleUser()
@@ -76,7 +74,6 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		return fmt.Errorf("generating hashed password: %w", err)
 	}
 	hashedPassword := string(h)
-	fmt.Printf("hashed user password: %s\n", hashedPassword)
 
 	inventoryPath, err := writeHostsToTempFile(c.HostsCfg)
 	if err != nil {
@@ -91,7 +88,7 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, hashedPassword),
 		"-i", inventoryPath,
 		"-u", configureUser,
-		"./playbooks/setup.ansible.yaml",
+		playbookPath,
 	}
 
 	switch cfg.ServerProvider {
@@ -135,6 +132,35 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
 	}
 	return nil
+}
+
+func (c *Container) fetchSetupPlaybook() (string, error) {
+	var content []byte
+	token := os.Getenv("GITHUB_TOKEN")
+	if token != "" && c.SelectedEnv != "" {
+		file, err := ghReadFile(token, c.SelectedEnv+"/setup.ansible.yaml")
+		if err == nil {
+			content = []byte(file.Content)
+		} else if !strings.Contains(err.Error(), "404") {
+			fmt.Printf("  %s could not fetch %s/setup.ansible.yaml from infra repo (%s); falling back to embedded playbook\n", warning, c.SelectedEnv, err)
+		}
+	}
+	if content == nil {
+		embedded, err := configs.GetSetupAnsiblePlaybook()
+		if err != nil {
+			return "", fmt.Errorf("loading embedded setup.ansible.yaml: %w", err)
+		}
+		content = embedded
+	}
+	dir := filepath.Join(os.TempDir(), "d8x-cli")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("creating temp playbook dir: %w", err)
+	}
+	path := filepath.Join(dir, "setup.ansible.yaml")
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		return "", fmt.Errorf("writing temp playbook: %w", err)
+	}
+	return path, nil
 }
 
 func generatePassword(n int) (string, error) {
