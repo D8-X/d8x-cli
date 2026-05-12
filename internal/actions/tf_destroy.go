@@ -27,6 +27,9 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
 
 	fmt.Printf("Using provider from config: %s\n", cfg.ServerProvider)
 
