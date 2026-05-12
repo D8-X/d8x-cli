@@ -142,7 +142,7 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 				oldContent = stagingFile.Content
 			}
 			if stagingContent != oldContent {
-				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath+" - d8x setup staging-origins")
+				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath)
 				if err != nil {
 					return fmt.Errorf("pushing to GitHub: %w", err)
 				}
@@ -320,6 +320,136 @@ func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
 		return "", err
 	}
 	return result.Content.SHA, nil
+}
+
+type ghCommitFile struct {
+	Path    string
+	Content string
+}
+
+func ghCommitFiles(token string, files []ghCommitFile, message string) error {
+	if len(files) == 0 {
+		return nil
+	}
+	repo := getGhRepo()
+	base := fmt.Sprintf("https://api.github.com/repos/%s", repo)
+
+	var repoInfo struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := ghAPI(token, "GET", base, nil, &repoInfo); err != nil {
+		return fmt.Errorf("get repo: %w", err)
+	}
+	branch := repoInfo.DefaultBranch
+	if branch == "" {
+		branch = "main"
+	}
+
+	var refResp struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/ref/heads/"+branch, nil, &refResp); err != nil {
+		return fmt.Errorf("get ref: %w", err)
+	}
+	headSHA := refResp.Object.SHA
+
+	var commitInfo struct {
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/commits/"+headSHA, nil, &commitInfo); err != nil {
+		return fmt.Errorf("get head commit: %w", err)
+	}
+	baseTreeSHA := commitInfo.Tree.SHA
+
+	treeItems := make([]map[string]any, 0, len(files))
+	for _, f := range files {
+		var blob struct {
+			SHA string `json:"sha"`
+		}
+		if err := ghAPI(token, "POST", base+"/git/blobs", map[string]string{
+			"content":  f.Content,
+			"encoding": "utf-8",
+		}, &blob); err != nil {
+			return fmt.Errorf("create blob for %s: %w", f.Path, err)
+		}
+		treeItems = append(treeItems, map[string]any{
+			"path": f.Path,
+			"mode": "100644",
+			"type": "blob",
+			"sha":  blob.SHA,
+		})
+	}
+
+	var treeResp struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/trees", map[string]any{
+		"base_tree": baseTreeSHA,
+		"tree":      treeItems,
+	}, &treeResp); err != nil {
+		return fmt.Errorf("create tree: %w", err)
+	}
+
+	if treeResp.SHA == baseTreeSHA {
+		return nil
+	}
+
+	var newCommit struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/commits", map[string]any{
+		"message": message,
+		"tree":    treeResp.SHA,
+		"parents": []string{headSHA},
+	}, &newCommit); err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+
+	if err := ghAPI(token, "PATCH", base+"/git/refs/heads/"+branch, map[string]string{
+		"sha": newCommit.SHA,
+	}, nil); err != nil {
+		return fmt.Errorf("update ref: %w", err)
+	}
+	return nil
+}
+
+func ghAPI(token, method, url string, payload any, out any) error {
+	var body io.Reader
+	if payload != nil {
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = strings.NewReader(string(b))
+	}
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(respBody))
+	}
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ghDeleteFile(token, path, sha, commitMsg string) error {

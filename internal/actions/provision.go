@@ -95,8 +95,12 @@ func (c *Container) Provision(ctx *cli.Context) error {
 			sha := ""
 			if existing != nil {
 				sha = existing.SHA
+				if existing.Content == string(hostsContent) {
+					fmt.Printf("  %s hosts.cfg already up to date on GitHub (%s)\n", ok, path)
+					return nil
+				}
 			}
-			_, err := ghWriteFile(token, path, string(hostsContent), sha, "update "+path+" - d8x setup provision")
+			_, err := ghWriteFile(token, path, string(hostsContent), sha, "update "+path)
 			if err != nil {
 				fmt.Printf("  %s Could not push hosts.cfg to GitHub: %s\n", notok, err)
 			} else {
@@ -118,9 +122,13 @@ func hostsCfgGitHubPusher(env string) func(content string) error {
 		sha := ""
 		if existing, _ := ghReadFile(token, path); existing != nil {
 			sha = existing.SHA
+			if existing.Content == content {
+				fmt.Printf("%s %s already up to date in infra repo\n", ok, path)
+				return nil
+			}
 		}
 		fmt.Printf("%s overwriting %s in infra repo\n", warning, path)
-		if _, err := ghWriteFile(token, path, content, sha, "update "+path+" - d8x hosts update"); err != nil {
+		if _, err := ghWriteFile(token, path, content, sha, "update "+path); err != nil {
 			return fmt.Errorf("pushing hosts.cfg to infra repo: %w", err)
 		}
 		fmt.Printf("%s pushed %s to infra repo\n", ok, path)

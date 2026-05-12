@@ -107,12 +107,17 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 	}
 	hostsRemotePath := env + "/hosts.cfg"
 	c.HostsCfg = files.NewMemHostsFileInteractor(hostsContent, func(content string) error {
+		if hostsSHA != "" && string(hostsContent) == content {
+			fmt.Printf("%s %s already up to date in infra repo\n", ok, hostsRemotePath)
+			return nil
+		}
 		fmt.Printf("%s overwriting %s in infra repo\n", warning, hostsRemotePath)
-		newSHA, werr := ghWriteFile(token, hostsRemotePath, content, hostsSHA, "update "+hostsRemotePath+" - d8x hosts update")
+		newSHA, werr := ghWriteFile(token, hostsRemotePath, content, hostsSHA, "update "+env+"/hosts.cfg")
 		if werr != nil {
 			return fmt.Errorf("pushing hosts.cfg to infra repo: %w", werr)
 		}
 		hostsSHA = newSHA
+		hostsContent = []byte(content)
 		fmt.Printf("%s pushed %s to infra repo\n", ok, hostsRemotePath)
 		return nil
 	})
@@ -259,8 +264,12 @@ func (c *Container) PublishRemoteConfig(cfg *configs.D8XConfig) error {
 	sha := ""
 	if existing, err := ghReadFile(token, path); err == nil {
 		sha = existing.SHA
+		if existing.Content == string(data) {
+			fmt.Printf("%s %s already up to date in infra repo\n", ok, path)
+			return nil
+		}
 	}
-	if _, err := ghWriteFile(token, path, string(data), sha, "update "+path+" - d8x config sync"); err != nil {
+	if _, err := ghWriteFile(token, path, string(data), sha, "update "+path); err != nil {
 		return fmt.Errorf("pushing %s to infra repo: %w", path, err)
 	}
 	fmt.Printf("%s pushed sanitized config to infra repo (%s)\n", ok, path)

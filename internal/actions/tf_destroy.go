@@ -171,7 +171,7 @@ func (c *Container) cleanupHostsAfterDestroy() {
 		fmt.Printf("%s warning: could not look up %s on infra repo: %s\n", warning, remotePath, err)
 		return
 	}
-	if err := ghDeleteFile(token, remotePath, existing.SHA, "delete "+remotePath+" - d8x tf-destroy"); err != nil {
+	if err := ghDeleteFile(token, remotePath, existing.SHA, "delete "+remotePath); err != nil {
 		fmt.Printf("%s warning: could not delete %s on infra repo: %s\n", warning, remotePath, err)
 		return
 	}

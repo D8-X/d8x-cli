@@ -122,7 +122,7 @@ func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
 		)))
 	}
 
-	manualRecovery := fmt.Sprintf("connect via \"d8x ssh manager\" and run \"docker run --rm -it --network host postgres:16 psql 'postgres://%%s:%%s@%%s:%%s/postgres' -c 'CREATE DATABASE %s;'\" using the values from Bitwarden fields AWS_RDS_USER_%s / AWS_RDS_PASSWORD_%s / AWS_RDS_HOST_%s / AWS_RDS_PORT_%s", dbName, envUpper, envUpper, envUpper, envUpper)
+	recoveryHint := fmt.Sprintf("Easiest retry: rerun \"d8x setup provision\" and accept the auto-create prompt. Manual alternative: on the manager (\"d8x ssh manager\") run a psql against the RDS host using the values from Bitwarden fields AWS_RDS_HOST_%s / AWS_RDS_PORT_%s / AWS_RDS_USER_%s / AWS_RDS_PASSWORD_%s and execute \"CREATE DATABASE %s;\".", envUpper, envUpper, envUpper, envUpper, dbName)
 
 	create, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-create the %q database on RDS now? (decline only if you'll create it manually on the manager before \"d8x setup swarm-deploy\")", dbName), true)
 	if perr != nil {
@@ -132,9 +132,9 @@ func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
 		if err := a.createRDSDatabases(c, dbName); err != nil {
 			recordedNote := fmt.Sprintf("The name %q is still recorded in Bitwarden as %s, so the DSN built by \"d8x setup swarm-deploy\" will point at it.", dbName, dbNameField)
 			if !dbNameRecorded {
-				recordedNote = fmt.Sprintf("The name %q was NOT recorded in Bitwarden (see the warning above). Either fix that, or expect \"d8x setup swarm-deploy\" to fall back to the default \"history\" suffix.", dbName)
+				recordedNote = fmt.Sprintf("The name %q was NOT recorded in Bitwarden (see the warning above). Fix that or expect \"d8x setup swarm-deploy\" to fall back to the default \"history\" suffix.", dbName)
 			}
-			fmt.Printf("%s warning: could not auto-create %q on RDS: %s. %s To create the database manually later, %s. Alternatively, rerun \"d8x setup provision\" and accept the auto-create prompt to retry.\n", warning, dbName, err, recordedNote, manualRecovery)
+			fmt.Printf("%s warning: could not auto-create %q on RDS: %s. %s %s\n", warning, dbName, err, recordedNote, recoveryHint)
 		}
 	} else {
 		recordedNote := fmt.Sprintf("The name %q is recorded in Bitwarden as %s, so the DSN will point at %q.", dbName, dbNameField, dbName)
@@ -142,8 +142,8 @@ func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
 			recordedNote = fmt.Sprintf("The name %q was NOT recorded in Bitwarden (see the warning above); \"d8x setup swarm-deploy\" will fall back to the default \"history\" suffix unless you set %s manually.", dbName, dbNameField)
 		}
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf(
-			"Skipping auto-create. %s Before running \"d8x setup swarm-deploy\", create the database manually: %s.",
-			recordedNote, manualRecovery,
+			"Skipping auto-create. %s Before running \"d8x setup swarm-deploy\", create it manually. %s",
+			recordedNote, recoveryHint,
 		)))
 	}
 

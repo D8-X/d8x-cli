@@ -258,8 +258,7 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
-			arg := ctx.Args().First()
-			if arg != "help" && arg != "" && !ctx.Bool("help") && !ctx.Bool("version") {
+			if !isHelpOrVersionInvocation(os.Args) {
 				container.LoadSecretsFromBitwarden()
 			}
 
@@ -327,6 +326,19 @@ var setupSequence = []struct {
 	{"broker-deploy", "Deploy the broker server (signs orders) on its host"},
 	{"broker-nginx", "Set up nginx plus certbot SSL in front of the broker server"},
 	{"metrics-deploy", "Deploy prometheus and grafana on the manager node (optional)"},
+}
+
+func isHelpOrVersionInvocation(args []string) bool {
+	if len(args) <= 1 {
+		return true
+	}
+	for _, a := range args[1:] {
+		switch a {
+		case "help", "h", "--help", "-h", "--version", "-v":
+			return true
+		}
+	}
+	return false
 }
 
 func withNextStep(name string, action cli.ActionFunc) cli.ActionFunc {
