@@ -199,19 +199,19 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 		return BwSkippedConflict, "", fmt.Errorf("bitwarden item '%s' not found", itemName)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return BwSkippedConflict, "", err
 	}
 
-	fields, ok := raw["fields"].([]interface{})
+	fields, ok := raw["fields"].([]any)
 	if !ok {
-		fields = []interface{}{}
+		fields = []any{}
 	}
 	existingIdx := -1
 	existingValue := ""
 	for i, f := range fields {
-		field, ok := f.(map[string]interface{})
+		field, ok := f.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -229,7 +229,7 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	if !overwrite && existingIdx >= 0 && existingValue != "" && existingValue != fieldValue {
 		return BwSkippedConflict, existingValue, nil
 	}
-	newField := map[string]interface{}{
+	newField := map[string]any{
 		"name":  fieldName,
 		"value": fieldValue,
 		"type":  1,
