@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func (c *Container) Init(ctx *cli.Context) error {
+func (c *Container) Init(_ *cli.Context) error {
 	tfFound := true
 	ansibleFound := true
 
@@ -24,14 +25,14 @@ func (c *Container) Init(ctx *cli.Context) error {
 		fmt.Println(styles.SuccessText.Render("Terraform found!"))
 	}
 
-	if err := c.findInPath("ansible", "ansible-playbook"); err != nil {
+	if err := c.findInPath("ansible", "ansible-playbook", "ansible-galaxy"); err != nil {
 		ansibleFound = false
 		fmt.Println(styles.ErrorText.Render("Ansible was not found!"))
 	} else {
 		fmt.Println(styles.SuccessText.Render("Ansible found!"))
 	}
 
-	if strings.Contains(runtime.GOOS, "darwin") {
+	if runtime.GOOS == "darwin" {
 		if !tfFound || !ansibleFound {
 			missing := []string{}
 			if !tfFound {
@@ -46,53 +47,73 @@ func (c *Container) Init(ctx *cli.Context) error {
 	}
 
 	install := []string{}
-
 	if !tfFound {
 		install = append(install, "terraform")
 	}
 	if !ansibleFound {
 		install = append(install, "ansible")
 	}
+	if len(install) == 0 {
+		return nil
+	}
 
-	if !tfFound || !ansibleFound {
-		fmt.Println(styles.SuccessText.Italic(true).MarginTop(1).Render("Select which dependencies you wish to install automatically:"))
-		selected, err := c.TUI.NewSelection(install)
-		if err != nil {
-			return err
-		}
+	fmt.Println(styles.SuccessText.Italic(true).MarginTop(1).Render("Select which dependencies you wish to install automatically:"))
+	selected, err := c.TUI.NewSelection(install)
+	if err != nil {
+		return err
+	}
 
-		if len(selected) == 0 {
-			fmt.Println(styles.ItalicText.Render(fmt.Sprintf("No dependency selected for automatic install. Install manually before running other commands: %s.", strings.Join(install, ", "))))
-			return fmt.Errorf("missing dependencies: %s", strings.Join(install, ", "))
-		}
+	if len(selected) == 0 {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("No dependency selected for automatic install. Install manually before running other commands: %s.", strings.Join(install, ", "))))
+		return fmt.Errorf("missing dependencies: %s", strings.Join(install, ", "))
+	}
 
-		fmt.Printf("Attempting to install: %v\n", strings.Join(selected, ", "))
-		for _, dep := range selected {
-			switch dep {
-			case "terraform":
-				if err := c.installTerraform(); err != nil {
-					return fmt.Errorf("installing terraform: %w. See https://developer.hashicorp.com/terraform/downloads for manual install", err)
-				}
-			case "ansible":
-				if err := c.installAnsible(); err != nil {
-					return fmt.Errorf("installing ansible: %w. See https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html for manual install", err)
-				}
+	fmt.Printf("Attempting to install: %v\n", strings.Join(selected, ", "))
+	for _, dep := range selected {
+		switch dep {
+		case "terraform":
+			if err := c.installTerraform(); err != nil {
+				return fmt.Errorf("installing terraform: %w. See https://developer.hashicorp.com/terraform/downloads for manual install", err)
 			}
-		}
-
-		stillMissing := []string{}
-		if c.findInPath("terraform") != nil {
-			stillMissing = append(stillMissing, "terraform")
-		}
-		if c.findInPath("ansible", "ansible-playbook", "ansible-galaxy") != nil {
-			stillMissing = append(stillMissing, "ansible")
-		}
-		if len(stillMissing) > 0 {
-			return fmt.Errorf("still missing after install attempt: %s. Install manually and retry", strings.Join(stillMissing, ", "))
+		case "ansible":
+			if err := c.installAnsible(); err != nil {
+				return fmt.Errorf("installing ansible: %w. See https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html for manual install", err)
+			}
 		}
 	}
 
+	ensureLocalBinOnPath()
+
+	stillMissing := []string{}
+	if c.findInPath("terraform") != nil {
+		stillMissing = append(stillMissing, "terraform")
+	}
+	if c.findInPath("ansible", "ansible-playbook", "ansible-galaxy") != nil {
+		stillMissing = append(stillMissing, "ansible")
+	}
+	if len(stillMissing) > 0 {
+		return fmt.Errorf("still missing after install attempt: %s. Install manually and retry", strings.Join(stillMissing, ", "))
+	}
+
 	return nil
+}
+
+func ensureLocalBinOnPath() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	localBin := filepath.Join(home, ".local", "bin")
+	if _, err := os.Stat(localBin); err != nil {
+		return
+	}
+	path := os.Getenv("PATH")
+	for _, p := range filepath.SplitList(path) {
+		if p == localBin {
+			return
+		}
+	}
+	os.Setenv("PATH", localBin+string(os.PathListSeparator)+path)
 }
 
 // findInPath searches for executables in PATH
@@ -110,32 +131,62 @@ func (c *Container) findInPath(executable ...string) error {
 func (c *Container) installTerraform() error {
 	fmt.Println(styles.ItalicText.Render("Installing terraform..."))
 
+	if !lookPathOk("sudo") {
+		return fmt.Errorf("sudo not found in PATH. The install script requires sudo to write apt/dnf/yum repo files. Install sudo or run terraform install manually from https://developer.hashicorp.com/terraform/downloads")
+	}
+
 	sh := ""
 	switch {
 	case lookPathOk("dnf"):
 		sh = `
+set -eo pipefail
 dnf install -y dnf-plugins-core
-dnf config-manager --add-repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
+if [ -f /etc/yum.repos.d/hashicorp.repo ]; then
+  echo "hashicorp.repo already exists at /etc/yum.repos.d/hashicorp.repo, skipping add-repo to avoid overwriting"
+else
+  dnf config-manager --add-repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
+fi
 dnf -y install terraform
 `
 	case lookPathOk("yum"):
 		sh = `
+set -eo pipefail
 yum install -y yum-utils
-yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+if [ -f /etc/yum.repos.d/hashicorp.repo ]; then
+  echo "hashicorp.repo already exists at /etc/yum.repos.d/hashicorp.repo, skipping add-repo to avoid overwriting"
+else
+  yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+fi
 yum -y install terraform
 `
 	case lookPathOk("apt"):
 		sh = `
-set -e
+set -eo pipefail
 if ! command -v lsb_release >/dev/null 2>&1; then
   apt update && apt install -y lsb-release
 fi
-wget -O- https://apt.releases.hashicorp.com/gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/hashicorp.list
+if ! command -v wget >/dev/null 2>&1; then
+  apt install -y wget
+fi
+if ! command -v gpg >/dev/null 2>&1; then
+  apt install -y gnupg
+fi
+KEYRING=/usr/share/keyrings/hashicorp-archive-keyring.gpg
+SOURCES_LIST=/etc/apt/sources.list.d/hashicorp.list
+if [ -f "$KEYRING" ]; then
+  echo "$KEYRING already exists, skipping download to avoid overwriting"
+else
+  wget -O- https://apt.releases.hashicorp.com/gpg | gpg --batch --dearmor -o "$KEYRING"
+fi
+if [ -f "$SOURCES_LIST" ]; then
+  echo "$SOURCES_LIST already exists, skipping repo line write to avoid overwriting"
+else
+  echo "deb [signed-by=$KEYRING] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | tee "$SOURCES_LIST"
+fi
 apt update && apt install -y terraform
 `
 	default:
-		return fmt.Errorf("no supported package manager found (looked for dnf, yum, apt). Install terraform manually from https://developer.hashicorp.com/terraform/downloads")
+		return fmt.Errorf("no supported package manager found (looked for dnf, yum, apt). On Windows or other systems install terraform manually from https://developer.hashicorp.com/terraform/downloads")
 	}
 
 	f, err := os.CreateTemp("", "d8x-installation-*.sh")
@@ -178,16 +229,11 @@ func (c *Container) installAnsible() error {
 	}
 
 	if c.findInPath("pipx") != nil {
-		fmt.Println(styles.ItalicText.Render("Installing pipx..."))
-		cmd := exec.Command("python3", expandCMD("-m pip install pipx passlib")...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := c.RunCmd(cmd); err != nil {
-			return fmt.Errorf("installing pipx: %w", err)
+		if err := c.installPipx(); err != nil {
+			return err
 		}
-		fmt.Println(styles.SuccessText.Render("pipx was installed"))
 	}
+	ensureLocalBinOnPath()
 
 	if c.findInPath("ansible", "ansible-playbook", "ansible-galaxy") != nil {
 		fmt.Println(styles.ItalicText.Render("Installing ansible..."))
@@ -200,8 +246,18 @@ func (c *Container) installAnsible() error {
 		}
 		fmt.Println(styles.SuccessText.Render("ansible was installed"))
 	}
+	ensureLocalBinOnPath()
 
-	fmt.Println(styles.ItalicText.Render("Installing ansible-galaxy collections..."))
+	fmt.Println(styles.ItalicText.Render("Injecting passlib into the ansible pipx venv (needed for the password_hash filter)..."))
+	injectCmd := exec.Command("pipx", "inject", "ansible", "passlib")
+	injectCmd.Stdin = os.Stdin
+	injectCmd.Stdout = os.Stdout
+	injectCmd.Stderr = os.Stderr
+	if err := c.RunCmd(injectCmd); err != nil {
+		return fmt.Errorf("injecting passlib into ansible pipx venv: %w", err)
+	}
+
+	fmt.Println(styles.ItalicText.Render("Ensuring ansible-galaxy collections are installed..."))
 	collectionsArgs := append([]string{"collection", "install"}, ansibleCollections...)
 	cmd := exec.Command("ansible-galaxy", collectionsArgs...)
 	cmd.Stdin = os.Stdin
@@ -210,8 +266,44 @@ func (c *Container) installAnsible() error {
 	if err := c.RunCmd(cmd); err != nil {
 		return fmt.Errorf("installing ansible galaxy collections: %w", err)
 	}
-	fmt.Println(styles.SuccessText.Render("ansible galaxy collections were installed"))
+	fmt.Println(styles.SuccessText.Render("ansible-galaxy collections are up to date"))
 
+	return nil
+}
+
+func (c *Container) installPipx() error {
+	fmt.Println(styles.ItalicText.Render("Installing pipx..."))
+
+	if lookPathOk("sudo") {
+		var distroCmd *exec.Cmd
+		switch {
+		case lookPathOk("apt"):
+			distroCmd = exec.Command("sudo", "bash", "-c", "apt update && apt install -y pipx")
+		case lookPathOk("dnf"):
+			distroCmd = exec.Command("sudo", "dnf", "install", "-y", "pipx")
+		case lookPathOk("yum"):
+			distroCmd = exec.Command("sudo", "yum", "install", "-y", "pipx")
+		}
+		if distroCmd != nil {
+			distroCmd.Stdin = os.Stdin
+			distroCmd.Stdout = os.Stdout
+			distroCmd.Stderr = os.Stderr
+			if err := c.RunCmd(distroCmd); err == nil {
+				fmt.Println(styles.SuccessText.Render("pipx was installed via the system package manager"))
+				return nil
+			}
+			fmt.Println(styles.ItalicText.Render("System package install failed, falling back to pip user install..."))
+		}
+	}
+
+	cmd := exec.Command("python3", expandCMD("-m pip install --user --break-system-packages pipx")...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := c.RunCmd(cmd); err != nil {
+		return fmt.Errorf("installing pipx via pip: %w", err)
+	}
+	fmt.Println(styles.SuccessText.Render("pipx was installed via pip --user"))
 	return nil
 }
 
