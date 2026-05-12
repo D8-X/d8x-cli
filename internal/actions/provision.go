@@ -54,7 +54,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	tfInit := exec.Command("terraform", "init")
 	tfInit.Dir = c.ProvisioningTfDir
 	connectCMDToCurrentTerm(tfInit)
-	if err := tfInit.Run(); err != nil {
+	if err := c.RunCmd(tfInit); err != nil {
 		return err
 	}
 
@@ -63,7 +63,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		tfCmd.Dir = c.ProvisioningTfDir
 
 		connectCMDToCurrentTerm(tfCmd)
-		err := tfCmd.Run()
+		err := c.RunCmd(tfCmd)
 		if err != nil {
 			fmt.Println(styles.ErrorText.Render("Terraform apply failed, please check the output above for more details.\nPossible issues:\n\tDuplicate server label\n\tIncorrect server provider credentials\n\tSelected region was used first time"))
 			return err
