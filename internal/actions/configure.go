@@ -57,9 +57,20 @@ func (c *Container) Configure(ctx *cli.Context) error {
 
 	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 		fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
-		saveAndReport(fieldName, c.UserPassword)
+		result, _, err := SaveSecretToBitwardenItem(bwItemName, fieldName, c.UserPassword)
+		switch {
+		case err != nil:
+			fmt.Printf("  %s could not save %s to Bitwarden: %s\n", notok, fieldName, err)
+			fmt.Printf("  %s server password (capture now, Bitwarden save failed): %s\n", warning, c.UserPassword)
+		case result == BwSkippedConflict:
+			fmt.Printf("  %s %s already exists in Bitwarden with a different value; not overwriting. This run is using a freshly generated password: %s\n", warning, fieldName, c.UserPassword)
+		case result == BwSaved:
+			fmt.Printf("  %s server password saved to Bitwarden as %s\n", ok, fieldName)
+		case result == BwUnchanged:
+			fmt.Printf("  %s server password already in Bitwarden as %s (reused)\n", ok, fieldName)
+		}
 	} else {
-		fmt.Printf("  %s BW_SESSION not set; server password not saved to Bitwarden. Make sure you have it captured before this run ends.\n", warning)
+		fmt.Printf("  %s BW_SESSION not set; server password not saved to Bitwarden. Capture it now: %s\n", warning, c.UserPassword)
 	}
 
 	configureUser := cfg.GetAnsibleUser()
@@ -165,17 +176,15 @@ func (c *Container) fetchSetupPlaybook() (string, error) {
 
 func generatePassword(n int) (string, error) {
 	set := "_1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	l := len(set)
-	pwd := ""
-
+	l := int64(len(set))
+	var pwd strings.Builder
+	pwd.Grow(n)
 	for i := 0; i < n; i++ {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(l)))
+		idx, err := rand.Int(rand.Reader, big.NewInt(l))
 		if err != nil {
 			return "", err
 		}
-		pwd += string(set[n.Int64()])
+		pwd.WriteByte(set[idx.Int64()])
 	}
-
-	return pwd, nil
-
+	return pwd.String(), nil
 }
