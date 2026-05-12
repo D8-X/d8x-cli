@@ -155,6 +155,8 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 		var err error
 		accessKey, err = c.TUI.NewInput(
 			components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
+			components.TextInputOptMasked(),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return awsCfg, err
@@ -193,9 +195,13 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	}
 	awsCfg.Region = region
 
-	fmt.Println("Enter server tag prefix (must be unique between deployments): ")
+	prefixDefault := awsServerLabelPrefix
+	if c.SelectedEnv != "" {
+		prefixDefault = c.SelectedEnv
+	}
+	fmt.Println("Enter server tag prefix (must be unique between deployments; defaults to env name):")
 	labelPrefix, err := c.TUI.NewInput(
-		components.TextInputOptValue(awsServerLabelPrefix),
+		components.TextInputOptValue(prefixDefault),
 		components.TextInputOptPlaceholder("my-cluster"),
 	)
 	if err != nil {

@@ -187,24 +187,31 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 		return BwSkippedConflict, "", fmt.Errorf("BW_SESSION is not set")
 	}
 
+	syncCmd := exec.Command("bw", "sync", "--session", session)
+	var syncStderr strings.Builder
+	syncCmd.Stderr = &syncStderr
+	if _, err := syncCmd.Output(); err != nil {
+		return BwSkippedConflict, "", fmt.Errorf("bw sync failed: %w (stderr: %s)", err, strings.TrimSpace(syncStderr.String()))
+	}
+
 	out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
 	if err != nil {
 		return BwSkippedConflict, "", fmt.Errorf("bitwarden item '%s' not found", itemName)
 	}
 
-	var raw map[string]interface{}
+	var raw map[string]any
 	if err := json.Unmarshal(out, &raw); err != nil {
 		return BwSkippedConflict, "", err
 	}
 
-	fields, ok := raw["fields"].([]interface{})
+	fields, ok := raw["fields"].([]any)
 	if !ok {
-		fields = []interface{}{}
+		fields = []any{}
 	}
 	existingIdx := -1
 	existingValue := ""
 	for i, f := range fields {
-		field, ok := f.(map[string]interface{})
+		field, ok := f.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -222,7 +229,7 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	if !overwrite && existingIdx >= 0 && existingValue != "" && existingValue != fieldValue {
 		return BwSkippedConflict, existingValue, nil
 	}
-	newField := map[string]interface{}{
+	newField := map[string]any{
 		"name":  fieldName,
 		"value": fieldValue,
 		"type":  1,
@@ -233,6 +240,13 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 		fields = append(fields, newField)
 	}
 	raw["fields"] = fields
+
+	for _, k := range []string{
+		"revisionDate", "creationDate", "deletedDate",
+		"object", "attachments", "passwordHistory",
+	} {
+		delete(raw, k)
+	}
 
 	encoded, err := json.Marshal(raw)
 	if err != nil {
@@ -245,15 +259,19 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	}
 	cmd := exec.Command("bw", "encode")
 	cmd.Stdin = strings.NewReader(string(encoded))
+	var encodeStderr strings.Builder
+	cmd.Stderr = &encodeStderr
 	encodedOut, err := cmd.Output()
 	if err != nil {
-		return BwSkippedConflict, existingValue, fmt.Errorf("bw encode failed: %w", err)
+		return BwSkippedConflict, existingValue, fmt.Errorf("bw encode failed: %w (stderr: %s)", err, strings.TrimSpace(encodeStderr.String()))
 	}
 
 	editCmd := exec.Command("bw", "edit", "item", itemID, "--session", session)
 	editCmd.Stdin = strings.NewReader(string(encodedOut))
+	var editStderr strings.Builder
+	editCmd.Stderr = &editStderr
 	if _, err := editCmd.Output(); err != nil {
-		return BwSkippedConflict, existingValue, fmt.Errorf("bw edit failed: %w", err)
+		return BwSkippedConflict, existingValue, fmt.Errorf("bw edit failed: %w (stderr: %s)", err, strings.TrimSpace(editStderr.String()))
 	}
 
 	return BwSaved, existingValue, nil

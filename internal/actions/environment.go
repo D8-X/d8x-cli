@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -116,19 +117,17 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		return nil
 	})
 
-	// SSH key: check SSH_KEY_{ENV} (from Bitwarden) then SSH_KEY_PATH_{ENV} (from .env)
 	upperEnv := strings.ToUpper(env)
 	sshKey := os.Getenv("SSH_KEY_" + upperEnv)
 	if sshKey == "" {
 		sshKey = os.Getenv("SSH_KEY_PATH_" + upperEnv)
 	}
-	envKey := "SSH_KEY_PATH_" + upperEnv
 	if sshKey == "" {
-		fmt.Printf("%s not found in Bitwarden (field SSH_KEY_%s). Enter SSH key path for %s:\n", envKey, upperEnv, env)
-		sshKey, err = c.TUI.NewInput(components.TextInputOptValue("./id_ed25519"))
-		if err != nil {
-			return "", err
+		bootPath, berr := c.bootstrapSSHKey(env)
+		if berr != nil {
+			return "", berr
 		}
+		sshKey = bootPath
 	}
 	if strings.HasPrefix(sshKey, "~/") {
 		home, err := os.UserHomeDir()
@@ -145,6 +144,23 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		return "", fmt.Errorf("file %s does not look like a valid SSH private key", sshKey)
 	}
 	c.SshKeyPath = sshKey
+	if c.Input != nil {
+		c.Input.SSHKeyPath = sshKey
+	}
+
+	fieldName := "SSH_KEY_" + upperEnv
+	if os.Getenv("BW_SESSION") != "" && os.Getenv(fieldName) == "" {
+		result, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent))
+		switch {
+		case serr != nil:
+			fmt.Printf("%s warning: could not save SSH key to Bitwarden (%s): %s\n", warning, fieldName, serr)
+		case result == BwSkippedConflict:
+			fmt.Printf("%s warning: %s already exists in Bitwarden with a different value. Local key not synced. Run \"bw edit\" manually or rotate the key.\n", warning, fieldName)
+		default:
+			os.Setenv(fieldName, sshKey)
+			fmt.Printf("%s uploaded SSH key to Bitwarden as %s\n", ok, fieldName)
+		}
+	}
 
 	// Password from .env
 	pwdKey := "SERVER_PASSWORD_" + strings.ToUpper(env)
@@ -249,6 +265,91 @@ func (c *Container) PublishRemoteConfig(cfg *configs.D8XConfig) error {
 	}
 	fmt.Printf("%s pushed sanitized config to infra repo (%s)\n", ok, path)
 	return nil
+}
+
+func (c *Container) bootstrapSSHKey(env string) (string, error) {
+	if os.Getenv("BW_SESSION") == "" {
+		return "", fmt.Errorf("BW_SESSION not set. Unlock Bitwarden first (bw unlock) to bootstrap an SSH key for env %q", env)
+	}
+
+	upperEnv := strings.ToUpper(env)
+	fieldName := "SSH_KEY_" + upperEnv
+
+	fmt.Printf("%s no SSH key registered for env %q (Bitwarden field %s missing).\n", notok, env, fieldName)
+
+	choices := []string{
+		"Generate a new ed25519 keypair and upload to Bitwarden",
+		"Import an existing private key from a local file (uploaded once, never read again)",
+	}
+	picked, err := c.TUI.NewSelection(
+		choices,
+		components.SelectionOptAllowOnlySingleItem(),
+		components.SelectionOptRequireSelection(),
+	)
+	if err != nil {
+		return "", err
+	}
+
+	tempPath := filepath.Join(os.TempDir(), "d8x-cli", fieldName)
+	if err := os.MkdirAll(filepath.Dir(tempPath), 0700); err != nil {
+		return "", fmt.Errorf("creating temp dir: %w", err)
+	}
+
+	if picked[0] == choices[0] {
+		_ = os.Remove(tempPath)
+		_ = os.Remove(tempPath + ".pub")
+		keygen := fmt.Sprintf("yes | ssh-keygen -N \"\" -t ed25519 -C d8x-%s -f %s", env, tempPath)
+		cmd := exec.Command("bash", "-c", keygen)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if rerr := c.RunCmd(cmd); rerr != nil {
+			return "", fmt.Errorf("ssh-keygen failed: %w", rerr)
+		}
+		fmt.Printf("%s generated ed25519 keypair at %s (+ .pub)\n", ok, tempPath)
+	} else {
+		fmt.Println("Enter path to existing SSH private key (will be read once and uploaded to Bitwarden):")
+		path, perr := c.TUI.NewInput(components.TextInputOptDenyEmpty())
+		if perr != nil {
+			return "", perr
+		}
+		path = strings.TrimSpace(path)
+		if strings.HasPrefix(path, "~/") {
+			home, herr := os.UserHomeDir()
+			if herr != nil {
+				return "", fmt.Errorf("resolving home dir: %w", herr)
+			}
+			path = filepath.Join(home, path[2:])
+		}
+		content, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return "", fmt.Errorf("reading %s: %w", path, rerr)
+		}
+		if !strings.Contains(string(content), "PRIVATE KEY") {
+			return "", fmt.Errorf("%s does not look like a valid SSH private key", path)
+		}
+		if werr := os.WriteFile(tempPath, content, 0600); werr != nil {
+			return "", fmt.Errorf("staging SSH key at %s: %w", tempPath, werr)
+		}
+		if out, kerr := exec.Command("ssh-keygen", "-y", "-f", tempPath).Output(); kerr == nil {
+			_ = os.WriteFile(tempPath+".pub", out, 0644)
+		}
+		fmt.Printf("%s imported SSH key from %s into %s\n", ok, path, tempPath)
+	}
+
+	keyContent, rerr := os.ReadFile(tempPath)
+	if rerr != nil {
+		return "", fmt.Errorf("reading staged SSH key: %w", rerr)
+	}
+	result, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent))
+	if serr != nil {
+		return "", fmt.Errorf("uploading SSH key to Bitwarden (%s): %w", fieldName, serr)
+	}
+	if result == BwSkippedConflict {
+		return "", fmt.Errorf("%s already exists in Bitwarden with a different value. Either remove it via \"bw edit\" or reuse the existing key", fieldName)
+	}
+	os.Setenv(fieldName, tempPath)
+	fmt.Printf("%s uploaded %s to Bitwarden item %q\n", ok, fieldName, bwItemName)
+	return tempPath, nil
 }
 
 func indexOf(list []string, item string) int {

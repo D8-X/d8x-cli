@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -35,10 +36,8 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		return fmt.Errorf("environment name cannot be empty")
 	}
 
-	for _, e := range existing {
-		if e == envName {
-			return fmt.Errorf("environment '%s' already exists", envName)
-		}
+	if slices.Contains(existing, envName) {
+		return fmt.Errorf("environment '%s' already exists", envName)
 	}
 
 	fmt.Println("Enter chain ID:")
@@ -114,10 +113,25 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		{
 			path: envName + "/config.json",
 			content: func() string {
-				b, _ := json.MarshalIndent(map[string]interface{}{
-					"chain_id": chainID,
-					"provider": provider,
-				}, "", "  ")
+				cfg := map[string]any{
+					"chain_id":        chainID,
+					"server_provider": provider,
+				}
+				switch provider {
+				case "linode":
+					numWorkers, _ := strconv.Atoi(numWorkersStr)
+					cfg["linode_config"] = map[string]any{
+						"label_prefix": labelPrefix,
+						"region":       region,
+						"num_worker":   numWorkers,
+					}
+				case "aws":
+					cfg["aws_config"] = map[string]any{
+						"label_prefix": labelPrefix,
+						"region":       region,
+					}
+				}
+				b, _ := json.MarshalIndent(cfg, "", "  ")
 				return string(b) + "\n"
 			}(),
 		},
@@ -162,7 +176,7 @@ if ($auth_ok = 0) {
 		},
 		{
 			path: envName + "/nginx.conf",
-			content: fmt.Sprintf(`user www-data;
+			content: `user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
 include /etc/nginx/modules-enabled/*.conf;
@@ -223,7 +237,7 @@ http {
 	include /etc/nginx/conf.d/*.conf;
 	include /etc/nginx/sites-enabled/*;
 }
-`),
+`,
 		},
 		{
 			path: envName + "/sites.conf",

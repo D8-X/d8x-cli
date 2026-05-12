@@ -46,7 +46,7 @@ func RunD8XCli() {
 			{
 				Name:   "init",
 				Action: container.Init,
-				Usage:  "Initialize configuration directory and install dependencies",
+				Usage:  "Check for required dependencies (terraform, ansible) and offer to install missing ones on Linux",
 			},
 			{
 				Name:        "setup",
@@ -86,52 +86,52 @@ func RunD8XCli() {
 				},
 				Subcommands: []*cli.Command{
 					{
-						Name: "new-env",
-						Usage:   "Create a new environment in the infra repo",
-						Action:  container.NewEnvironment,
+						Name:   "new-env",
+						Usage:  "Create a new environment in the infra repo",
+						Action: withNextStep("new-env", container.NewEnvironment),
 					},
 					{
 						Name:        "provision",
 						Aliases:     []string{"prov"},
 						Usage:       "Provision server resources with terraform",
-						Action:      container.Provision,
+						Action:      withNextStep("provision", container.Provision),
 						Description: ProvisionDescription,
 					},
 					{
 						Name:        "configure",
 						Aliases:     []string{"config"},
 						Usage:       "Configure servers with ansible",
-						Action:      container.Configure,
+						Action:      withNextStep("configure", container.Configure),
 						Description: ConfigureDescription,
 					},
 					{
-						Name: "broker-deploy",
-						Usage:   "Deploy and configure broker-server deployment",
-						Action: container.BrokerDeploy,
+						Name:   "broker-deploy",
+						Usage:  "Deploy and configure broker-server deployment",
+						Action: withNextStep("broker-deploy", container.BrokerDeploy),
 					},
 					{
-						Name: "broker-nginx",
-						Usage:   "Configure and setup nginx + certbot for broker server deployment",
-						Action: container.BrokerServerNginxCertbotSetup,
+						Name:   "broker-nginx",
+						Usage:  "Configure and setup nginx + certbot for broker server deployment",
+						Action: withNextStep("broker-nginx", container.BrokerServerNginxCertbotSetup),
 					},
 					{
 						Name:        "swarm-deploy",
 						Aliases:     []string{"sd"},
 						Usage:       "Deploy and configure d8x-trader-backend swarm cluster",
-						Action:      container.SwarmDeploy,
+						Action:      withNextStep("swarm-deploy", container.SwarmDeploy),
 						Description: SwarmDeployDescription,
 					},
 					{
 						Name:        "swarm-nginx",
 						Aliases:     []string{"sn"},
 						Usage:       "Configure and setup nginx + certbot for d8x-trader swarm deployment",
-						Action:      container.SwarmNginx,
+						Action:      withNextStep("swarm-nginx", container.SwarmNginx),
 						Description: SwarmNginxDescription,
 					},
 					{
 						Name:        "metrics-deploy",
 						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
-						Action:      container.DeployMetrics,
+						Action:      withNextStep("metrics-deploy", container.DeployMetrics),
 						Description: DeployMetricsDescription,
 					},
 					{
@@ -313,4 +313,44 @@ func RunD8XCli() {
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal(err)
 	}
+}
+
+var setupSequence = []struct {
+	name string
+	desc string
+}{
+	{"new-env", "Create the env directory in the infra repo (config + nginx + tfvars)"},
+	{"provision", "Run terraform to create the cloud servers (manager, workers, broker)"},
+	{"configure", "Run ansible to install docker, swarm, users, ssh keys on the servers"},
+	{"swarm-deploy", "Deploy the trader-backend swarm stack (api, history, redis, ...)"},
+	{"swarm-nginx", "Set up nginx plus certbot SSL in front of the swarm services"},
+	{"broker-deploy", "Deploy the broker server (signs orders) on its host"},
+	{"broker-nginx", "Set up nginx plus certbot SSL in front of the broker server"},
+	{"metrics-deploy", "Deploy prometheus and grafana on the manager node (optional)"},
+}
+
+func withNextStep(name string, action cli.ActionFunc) cli.ActionFunc {
+	return func(ctx *cli.Context) error {
+		if err := action(ctx); err != nil {
+			return err
+		}
+		printRemainingSteps(name)
+		return nil
+	}
+}
+
+func printRemainingSteps(current string) {
+	idx := -1
+	for i, s := range setupSequence {
+		if s.name == current {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 || idx+1 >= len(setupSequence) {
+		return
+	}
+	next := setupSequence[idx+1]
+	fmt.Println()
+	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Next step: \"d8x setup %s\" (%s)", next.name, next.desc)))
 }

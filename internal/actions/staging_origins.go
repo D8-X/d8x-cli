@@ -159,10 +159,21 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 			}
 			if password == "" {
 				fmt.Println("Enter server sudo password:")
-				password, err = c.TUI.NewInput(components.TextInputOptPlaceholder("password"))
+				password, err = c.TUI.NewInput(
+					components.TextInputOptPlaceholder("password"),
+					components.TextInputOptMasked(),
+					components.TextInputOptDenyEmpty(),
+				)
 				if err != nil {
 					return err
 				}
+				if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+					fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
+					if err := saveAndReport(fieldName, password); err != nil {
+						fmt.Printf("%s warning: could not save SERVER_PASSWORD to Bitwarden (%s): %s\n", warning, fieldName, err)
+					}
+				}
+				c.UserPassword = password
 			}
 			sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
 			if err != nil {
