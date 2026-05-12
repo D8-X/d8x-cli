@@ -8,10 +8,11 @@ d8x init
 
 ## What you'll see
 
-1. The CLI checks `PATH` for `terraform` and for the ansible toolchain (`ansible` + `ansible-playbook` + `ansible-galaxy`) and prints a found/not-found line for each.
-2. **macOS**: if anything is missing, the command exits with a Homebrew install hint.
-3. **Linux**: a multi-select prompt lets you pick what to install. Picking nothing exits with a clear "missing dependencies" error.
-4. After install, the CLI re-checks `PATH` (with `~/.local/bin` auto-added so freshly pipx-installed tools show up). Anything still missing causes a `still missing after install attempt` exit.
+1. If you launched `d8x init` as root (e.g. via `sudo`), the CLI prints a warning and asks you to confirm before continuing. `pipx`, `ansible`, and `ansible-galaxy` are user-scoped tools and installing them under `/root` makes them invisible to later commands run as your normal user. The recommended action is to abort and rerun without `sudo`.
+2. The CLI checks `PATH` for `terraform` and for the ansible toolchain (`ansible` + `ansible-playbook` + `ansible-galaxy`) and prints a found/not-found line for each.
+3. **macOS**: if anything is missing, the command exits with a Homebrew install hint.
+4. **Linux**: a multi-select prompt lets you pick what to install. Picking nothing exits with a clear "missing dependencies" error.
+5. After install, the CLI re-checks `PATH` (with `~/.local/bin` auto-added so freshly pipx-installed tools show up). Anything still missing causes a `still missing after install attempt` exit.
 
 ## How install works (Linux)
 
@@ -21,6 +22,7 @@ d8x init
 
 ## Requirements
 
+- Run as your normal user, **not** root. The terraform install handles its own elevation via `sudo` per command; tools that need to live in your home (pipx, ansible, collections) are installed without sudo.
 - `sudo` on PATH (terraform install and pipx-via-distro install need it).
 - `python3` on PATH if ansible needs to be installed.
 - An internet connection.
