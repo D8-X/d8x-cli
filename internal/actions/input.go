@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -326,8 +326,7 @@ func (input *InputCollector) PostProvisioningHook() error {
 		return err
 	}
 
-	// Attempt to parse aws_rds credentials file
-	if err := collectAwsRdsDsnString(cfg); err != nil {
+	if err := collectAwsRdsDsnString(cfg, input.SelectedEnv); err != nil {
 		return err
 	}
 
@@ -868,11 +867,7 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 			chainSelection = append(chainSelection, chainName)
 		}
 
-		// Sort chains by name so we always have consistent order in the
-		// selection
-		sort.Slice(chainSelection, func(i, j int) bool {
-			return chainSelection[i] < chainSelection[j]
-		})
+		slices.Sort(chainSelection)
 
 		chains, err := c.TUI.NewSelection(chainSelection, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
@@ -989,9 +984,8 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			}
 		}
 
-	// For AWS - read it from rds credentials file
 	case configs.D8XServerProviderAWS:
-		if err := collectAwsRdsDsnString(cfg); err != nil {
+		if err := collectAwsRdsDsnString(cfg, c.SelectedEnv); err != nil {
 			return err
 		}
 	}
@@ -1004,10 +998,7 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// collectAwsRdsDsnString collects database dsn string from AWS RDS credentials
-// file and adds it to the given cfg. If RDS_CREDS_FILE does not exist yet it
-// will not return an error and will silently fail.
-func collectAwsRdsDsnString(cfg *configs.D8XConfig) error {
+func collectAwsRdsDsnString(cfg *configs.D8XConfig, env string) error {
 	creds, err := os.ReadFile(RDS_CREDS_FILE)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -1016,11 +1007,16 @@ func collectAwsRdsDsnString(cfg *configs.D8XConfig) error {
 		return err
 	}
 	credsMap := parseAwsRDSCredentialsFile(creds)
-	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
+	dbName := readEnvSecret(env, "AWS_RDS_DB_NAME")
+	if dbName == "" {
+		dbName = "history"
+	}
+	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
 		credsMap["user"],
 		credsMap["password"],
 		credsMap["host"],
 		credsMap["port"],
+		dbName,
 	)
 
 	return nil

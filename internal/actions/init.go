@@ -62,15 +62,28 @@ func (c *Container) Init(_ *cli.Context) error {
 		return nil
 	}
 
-	fmt.Println(styles.SuccessText.Italic(true).MarginTop(1).Render("Select which dependencies you wish to install automatically:"))
-	selected, err := c.TUI.NewSelection(install)
-	if err != nil {
-		return err
-	}
-
-	if len(selected) == 0 {
-		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("No dependency selected for automatic install. Install manually before running other commands: %s.", strings.Join(install, ", "))))
-		return fmt.Errorf("missing dependencies: %s", strings.Join(install, ", "))
+	var selected []string
+	if len(install) == 1 {
+		ok, err := c.TUI.NewPrompt(fmt.Sprintf("Install %s automatically?", install[0]), true)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Declined automatic install. Install %s manually before running other commands.", install[0])))
+			return fmt.Errorf("missing dependencies: %s", install[0])
+		}
+		selected = []string{install[0]}
+	} else {
+		fmt.Println(styles.SuccessText.Italic(true).MarginTop(1).Render("Select which dependencies you wish to install automatically:"))
+		picked, err := c.TUI.NewSelection(install)
+		if err != nil {
+			return err
+		}
+		if len(picked) == 0 {
+			fmt.Println(styles.ItalicText.Render(fmt.Sprintf("No dependency selected for automatic install. Install manually before running other commands: %s.", strings.Join(install, ", "))))
+			return fmt.Errorf("missing dependencies: %s", strings.Join(install, ", "))
+		}
+		selected = picked
 	}
 
 	fmt.Printf("Attempting to install: %v\n", strings.Join(selected, ", "))
@@ -100,7 +113,41 @@ func (c *Container) Init(_ *cli.Context) error {
 		return fmt.Errorf("still missing after install attempt: %s. Install manually and retry", strings.Join(stillMissing, ", "))
 	}
 
+	c.ensurePasslibForAnsible()
+
 	return nil
+}
+
+func (c *Container) ensurePasslibForAnsible() {
+	if !lookPathOk("pipx") || !lookPathOk("ansible") {
+		return
+	}
+	out, err := exec.Command("pipx", "list", "--short").Output()
+	if err != nil {
+		return
+	}
+	pipxHasAnsible := false
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == "ansible" {
+			pipxHasAnsible = true
+			break
+		}
+	}
+	if !pipxHasAnsible {
+		fmt.Println(styles.ItalicText.Render(
+			"Note: ansible is not installed via pipx. The d8x playbook needs the \"passlib\" Python package for the password_hash filter. If a playbook complains about a missing passlib, install it in the same Python environment that runs your ansible.",
+		))
+		return
+	}
+	fmt.Println(styles.ItalicText.Render("Ensuring passlib is injected in the ansible pipx venv..."))
+	inj := exec.Command("pipx", "inject", "ansible", "passlib")
+	inj.Stdin = os.Stdin
+	inj.Stdout = os.Stdout
+	inj.Stderr = os.Stderr
+	if err := c.RunCmd(inj); err != nil {
+		fmt.Printf("%s warning: pipx inject ansible passlib failed: %s\n", warning, err)
+	}
 }
 
 func warnOrAbortIfRunningAsRoot(c *Container) error {
@@ -284,15 +331,6 @@ func (c *Container) installAnsible() error {
 	}
 	ensureLocalBinOnPath()
 
-	fmt.Println(styles.ItalicText.Render("Injecting passlib into the ansible pipx venv (needed for the password_hash filter)..."))
-	injectCmd := exec.Command("pipx", "inject", "ansible", "passlib")
-	injectCmd.Stdin = os.Stdin
-	injectCmd.Stdout = os.Stdout
-	injectCmd.Stderr = os.Stderr
-	if err := c.RunCmd(injectCmd); err != nil {
-		return fmt.Errorf("injecting passlib into ansible pipx venv: %w", err)
-	}
-
 	fmt.Println(styles.ItalicText.Render("Ensuring ansible-galaxy collections are installed..."))
 	collectionsArgs := append([]string{"collection", "install"}, ansibleCollections...)
 	cmd := exec.Command("ansible-galaxy", collectionsArgs...)
@@ -338,7 +376,7 @@ func (c *Container) installPipx() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := c.RunCmd(cmd); err != nil {
-		return fmt.Errorf("installing pipx via pip: %w. If you saw \"No module named pip\", install python3-pip via your distro package manager first", err)
+		return fmt.Errorf("installing pipx via pip: %w. If you saw \"No module named pip\", install python3-pip via your distro package manager first. If you saw \"no such option: --break-system-packages\", your pip is too old; install pipx via your distro package manager instead (e.g. apt install -y pipx)", err)
 	}
 	fmt.Println(styles.SuccessText.Render("pipx was installed via pip --user"))
 	return nil
