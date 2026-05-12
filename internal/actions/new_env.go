@@ -91,6 +91,61 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		return err
 	}
 
+	fmt.Println(styles.ItalicText.Render("\nNginx rate limiting throttles incoming requests per client IP across the api/ws/history/candles endpoints. When the limit is exceeded the client gets HTTP 503 until traffic slows down. Mainnet and testnet both run with it enabled."))
+	rateLimitEnabled, err := c.TUI.NewPrompt("Enable nginx rate limiting for this environment?", true)
+	if err != nil {
+		return err
+	}
+	rateLimitStr := "25"
+	burstApiStr := "25"
+	burstWsStr := "20"
+	if rateLimitEnabled {
+		fmt.Println(styles.ItalicText.Render("\nSustained ceiling: the maximum requests per second a single client IP can keep doing forever without being throttled."))
+		fmt.Println("Sustained requests per second per client IP [25]:")
+		v, err := c.TUI.NewInput(components.TextInputOptValue("25"))
+		if err != nil {
+			return err
+		}
+		if v = strings.TrimSpace(v); v != "" {
+			rateLimitStr = v
+		}
+		if n, err := strconv.Atoi(rateLimitStr); err != nil || n <= 0 {
+			return fmt.Errorf("invalid sustained rate '%s': must be a positive integer", rateLimitStr)
+		}
+
+		fmt.Println(styles.ItalicText.Render("\nBurst: extra one-shot requests a client can fire on top of the sustained rate (e.g. a page load that fans out many requests at once). Larger burst = more tolerant of legitimate traffic spikes, but also more tolerant of abuse."))
+		fmt.Println("Burst size for the 'api' endpoint [25]:")
+		v, err = c.TUI.NewInput(components.TextInputOptValue("25"))
+		if err != nil {
+			return err
+		}
+		if v = strings.TrimSpace(v); v != "" {
+			burstApiStr = v
+		}
+		if n, err := strconv.Atoi(burstApiStr); err != nil || n <= 0 {
+			return fmt.Errorf("invalid api burst '%s': must be a positive integer", burstApiStr)
+		}
+
+		fmt.Println("Burst size for the 'ws', 'history' and 'candles' endpoints [20]:")
+		v, err = c.TUI.NewInput(components.TextInputOptValue("20"))
+		if err != nil {
+			return err
+		}
+		if v = strings.TrimSpace(v); v != "" {
+			burstWsStr = v
+		}
+		if n, err := strconv.Atoi(burstWsStr); err != nil || n <= 0 {
+			return fmt.Errorf("invalid ws/history/candles burst '%s': must be a positive integer", burstWsStr)
+		}
+	} else {
+		fmt.Println(styles.ItalicText.Render("Rate limiting will be written into the nginx configs but commented out. You can turn it on later by editing the generated files or re-running 'd8x setup new-env'."))
+	}
+
+	commentPrefix := ""
+	if !rateLimitEnabled {
+		commentPrefix = "#"
+	}
+
 	apiHost := fmt.Sprintf("api-%s.%s", subdomain, baseDomain)
 	wsHost := fmt.Sprintf("ws-%s.%s", subdomain, baseDomain)
 	historyHost := fmt.Sprintf("history-%s.%s", subdomain, baseDomain)
@@ -154,7 +209,7 @@ create_swarm         = true
 			content: `if ($request_method = 'OPTIONS') {
     add_header 'Access-Control-Allow-Origin' '*' always;
     add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
+    add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
     add_header 'Access-Control-Max-Age' 86400;
     return 204;
 }
@@ -169,6 +224,11 @@ if ($http_x_api_key = 'API_KEY_HERE') {
     set $auth_ok 1;
 }
 
+# Grafana dashboard server
+if ($remote_addr = '172.104.135.218') {
+    set $auth_ok 1;
+}
+
 if ($auth_ok = 0) {
     return 403;
 }
@@ -176,7 +236,7 @@ if ($auth_ok = 0) {
 		},
 		{
 			path: envName + "/nginx.conf",
-			content: `user www-data;
+			content: fmt.Sprintf(`user www-data;
 worker_processes auto;
 pid /run/nginx.pid;
 include /etc/nginx/modules-enabled/*.conf;
@@ -191,13 +251,18 @@ http {
 
 	map $http_origin $is_allowed_origin {
 		default 0;
-		"https://app.predictex.io" 1;
-		"https://predictex.io" 1;
-		"https://app.predictex.com" 1;
-		"https://predictex.com" 1;
-		~^https://.*\.d8x-based-predictex-frontend\.pages\.dev$ 1;
+		~^https://.*predictex\.io$ 1;
+		~^https://.*predictex\.com$ 1;
+		~^https://.*predictex-frontend\.pages\.dev$ 1;
+		~^https?://localhost(:\d+)?$ 1;
+		~^https?://127\.0\.0\.1(:\d+)?$ 1;
 		include /etc/nginx/conf.d/staging_origins.map;
 	}
+
+	# Cloudflare real ip setup (cloudflare.com/ips-v4). Do not edit this
+	# comment.
+	#
+	# {real_ip_cloudflare}
 
 	set_real_ip_from 173.245.48.0/20;
 	set_real_ip_from 103.21.244.0/22;
@@ -214,9 +279,14 @@ http {
 	set_real_ip_from 104.24.0.0/14;
 	set_real_ip_from 172.64.0.0/13;
 	set_real_ip_from 131.0.72.0/22;
+
 	real_ip_header CF-Connecting-IP;
 
-	limit_req_zone $binary_remote_addr zone=primary_zone:10m rate=25r/s;
+	# {/real_ip_cloudflare}
+
+	# {enable_rate_limiting}
+	%[1]slimit_req_zone $binary_remote_addr zone=primary_zone:10m rate=%[2]sr/s;
+	# {/enable_rate_limiting}
 
 	server_names_hash_bucket_size 128;
 
@@ -237,16 +307,18 @@ http {
 	include /etc/nginx/conf.d/*.conf;
 	include /etc/nginx/sites-enabled/*;
 }
-`,
+`, commentPrefix, rateLimitStr),
 		},
 		{
 			path: envName + "/sites.conf",
 			content: fmt.Sprintf(`# Main service REST API
 server {
-    server_name %s;
+    server_name %[1]s;
     listen 80;
 
-    limit_req zone=primary_zone burst=25 nodelay;
+    # {enable_rate_limiting}
+    %[5]slimit_req zone=primary_zone burst=%[6]s nodelay;
+    # {/enable_rate_limiting}
 
     location / {
         include /etc/nginx/auth_check.conf;
@@ -259,17 +331,19 @@ server {
 
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
         add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
     }
 }
 
 # Main service WS
 server {
-    server_name %s;
+    server_name %[2]s;
     listen 80;
 
-    limit_req zone=primary_zone burst=20 nodelay;
+    # {enable_rate_limiting}
+    %[5]slimit_req zone=primary_zone burst=%[7]s nodelay;
+    # {/enable_rate_limiting}
 
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -292,17 +366,19 @@ server {
 
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
         add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
     }
 }
 
 # History service REST API
 server {
-    server_name %s;
+    server_name %[3]s;
     listen 80;
 
-    limit_req zone=primary_zone burst=20 nodelay;
+    # {enable_rate_limiting}
+    %[5]slimit_req zone=primary_zone burst=%[7]s nodelay;
+    # {/enable_rate_limiting}
 
     location /health {
         proxy_pass http://127.0.0.1:3003;
@@ -325,17 +401,19 @@ server {
 
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
         add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
     }
 }
 
 # Candlesticks websockets service
 server {
-    server_name %s;
+    server_name %[4]s;
     listen 80;
 
-    limit_req zone=primary_zone burst=20 nodelay;
+    # {enable_rate_limiting}
+    %[5]slimit_req zone=primary_zone burst=%[7]s nodelay;
+    # {/enable_rate_limiting}
 
     location / {
         proxy_pass http://127.0.0.1:3005/ws;
@@ -354,42 +432,42 @@ server {
 
         add_header 'Access-Control-Allow-Origin' '*' always;
         add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
         add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
     }
 }
-`, apiHost, wsHost, historyHost, candlesHost),
+`, apiHost, wsHost, historyHost, candlesHost, commentPrefix, burstApiStr, burstWsStr),
 		},
 		{
 			path: envName + "/broker-nginx.conf",
 			content: fmt.Sprintf(`# Websocket or REST broker server
+
+map $http_origin $is_allowed_origin {
+    default 0;
+    ~^https?://(.*\.)?predictex\.com$ 1;
+    ~^https?://(.*\.)?predictex\.io$ 1;
+    ~^https?://.*predictex-frontend\.pages\.dev$ 1;
+    ~^https?://localhost(:\d+)?$ 1;
+    ~^https?://127\.0\.0\.1(:\d+)?$ 1;
+}
+
 server {
     listen 80;
     server_name %s;
 
-    # RPC proxy — restricted to allowed origins and API key
     location /rpc {
+        # CORS preflight: origin-only check (browsers don't send X-Api-Key on preflight)
         if ($request_method = 'OPTIONS') {
-            add_header 'Access-Control-Allow-Origin' '$http_origin' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
-            add_header 'Access-Control-Max-Age' 86400;
+            add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key' always;
+            add_header 'Access-Control-Max-Age' 86400 always;
             return 204;
         }
 
-        set $rpc_allowed 0;
-
-        # Allowed origins
-        if ($http_origin = 'https://app.predictex.io') { set $rpc_allowed 1; }
-        if ($http_origin = 'https://predictex.io') { set $rpc_allowed 1; }
-        if ($http_origin = 'https://app.predictex.com') { set $rpc_allowed 1; }
-        if ($http_origin = 'https://predictex.com') { set $rpc_allowed 1; }
-        if ($http_origin ~* '^https?://localhost(:\d+)?$') { set $rpc_allowed 1; }
-        if ($http_origin ~* '\.d8x-based-predictex-frontend\.pages\.dev$') { set $rpc_allowed 1; }
-
-        # API key
+        # Actual requests: allow if origin is in allowlist OR api key matches
+        set $rpc_allowed $is_allowed_origin;
         if ($http_x_api_key = 'API_KEY_HERE') { set $rpc_allowed 1; }
-
         if ($rpc_allowed = 0) { return 403; }
 
         proxy_pass http://BROKER_PRIVATE_IP_HERE:8090/rpc;
@@ -398,10 +476,10 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        add_header 'Access-Control-Allow-Origin' '$http_origin' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key';
-        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+        add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,X-Api-Key' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
     }
 
     location /ws {
@@ -410,27 +488,30 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
+        add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
     }
 
     location / {
+        if ($request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+            add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
+            return 204;
+        }
+
         proxy_pass http://127.0.0.1:8001;
 
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
-        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range';
-        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range';
-
-        if ($request_method = 'OPTIONS') {
-            return 204;
-        }
+        add_header 'Access-Control-Allow-Origin' "$http_origin" always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'Authorization,DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
     }
 }
 `, brokerHost),
@@ -438,12 +519,13 @@ server {
 	}
 
 	fmt.Println(styles.ItalicText.Render("\nCreating environment files..."))
+	commitFiles := make([]ghCommitFile, 0, len(files))
 	for _, f := range files {
-		_, err = ghWriteFile(token, f.path, f.content, "", "create "+f.path+" - d8x setup new-env")
-		if err != nil {
-			return fmt.Errorf("creating %s: %w", f.path, err)
-		}
+		commitFiles = append(commitFiles, ghCommitFile{Path: f.path, Content: f.content})
 		fmt.Printf("  %s %s\n", ok, f.path)
+	}
+	if err := ghCommitFiles(token, commitFiles, fmt.Sprintf("scaffold %s environment", envName)); err != nil {
+		return fmt.Errorf("creating environment files: %w", err)
 	}
 
 	fmt.Println(styles.SuccessText.Render(fmt.Sprintf("\nEnvironment '%s' created (chain %d).", envName, chainID)))
