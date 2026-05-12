@@ -356,19 +356,6 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	return nil
 }
 
-// certbotNginxSetup performs certificate issuance for given domains. Nginx and
-// DNS A records must be setup beforehand.
-func (c *Container) certbotNginxSetup(sshConn conn.SSHConnection, userSudoPassword, email string, domains []string) ([]byte, error) {
-	cmd := fmt.Sprintf(
-		`echo '%s' | sudo -S certbot --nginx -d %s -n  --agree-tos -m %s`,
-		userSudoPassword,
-		strings.Join(domains, ","),
-		email,
-	)
-
-	return sshConn.ExecCommand(cmd)
-}
-
 type brokerServerDeployment struct {
 	brokerFeeTBPS string
 

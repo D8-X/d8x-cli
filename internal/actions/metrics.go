@@ -20,9 +20,6 @@ import (
 // Port that we expose cadvisor on
 var CADVISOR_PORT = 4003
 
-// Stack name for metrics services deployed on manager
-var dockerMetricsStackName = "metrics"
-
 // DeployMetrics copies prometheus config and redeploys prometheus service.
 // Prometheus deployment is separated from main swarm deployment because we want
 // to run it on manager, and it is set to drainer availability by default (in
@@ -36,6 +33,9 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	}
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
+	}
+	if cfg.ServerProvider == "" {
+		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo. Set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first.")
 	}
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()

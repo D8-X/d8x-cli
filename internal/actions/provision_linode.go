@@ -2,8 +2,6 @@ package actions
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -362,22 +360,3 @@ func (c *Container) LinodeInventorySetUserVar(ipAddresses []string, sshUser stri
 	return c.HostsCfg.WriteLines(hostLines)
 }
 
-// fetchLinodeAPIRequest sends GET request to linode api endpoint and reads the
-// response
-func fetchLinodeAPIRequest(c *http.Client, endpoint, linodeToken string) ([]byte, error) {
-	req, err := http.NewRequest(
-		http.MethodGet,
-		endpoint,
-		nil,
-	)
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", linodeToken))
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
-}

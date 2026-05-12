@@ -45,7 +45,7 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 		cfg.DatabaseDSN = readEnvSecret(c.SelectedEnv, "DATABASE_DSN")
 	}
 	if len(cfg.DatabaseDSN) == 0 {
-		return fmt.Errorf("DATABASE_DSN missing: set DATABASE_DSN_%s in Bitwarden or run swarm-deploy", strings.ToUpper(c.SelectedEnv))
+		return fmt.Errorf("DATABASE_DSN_%s missing in Bitwarden. On AWS it is written by \"d8x setup provision\"; on Linode by \"d8x setup swarm-deploy\". You can also set it manually as a field on the d8x-cli Bitwarden item.", strings.ToUpper(c.SelectedEnv))
 	}
 
 	// Parse the database dsn string

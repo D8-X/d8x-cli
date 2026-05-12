@@ -31,7 +31,11 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
+	env, err := c.EnsureEnvironment(cfg)
+	if err != nil {
+		return err
+	}
+	if err := c.ensureSSHKey(env); err != nil {
 		return err
 	}
 

@@ -155,7 +155,7 @@ func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp st
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return err
 	}
-	fmt.Println(styles.SuccessText.Render("Remote swarm config loaded and merged into local config."))
+	fmt.Println(styles.SuccessText.Render("Remote swarm config loaded into the in-memory session config."))
 	return nil
 }
 
@@ -261,7 +261,7 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 		}
 		if bwVal != "" && chk.remoteVal == "" {
 			if *chk.target != "" && *chk.target != bwVal {
-				fmt.Printf("%s %s in local config differs from Bitwarden (%s). Using Bitwarden value.\n", notok, chk.displayName, chk.bwField)
+				fmt.Printf("%s %s in this session's config differs from Bitwarden (%s). Using Bitwarden value.\n", notok, chk.displayName, chk.bwField)
 			}
 			*chk.target = bwVal
 			continue
@@ -473,6 +473,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	}
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
+	}
+	if cfg.ServerProvider == "" {
+		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo. Set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first.")
 	}
 
 	if err := c.swarmDeploy(ctx, true); err != nil {
@@ -1053,34 +1056,6 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 	}
 
 	return nil
-}
-
-// enableSectionsInNginxFile reads contents of nginx configuration file at
-// nginxCfgPath and processes it to enable priovided enableSections sections and
-// writes the result in place.
-func enableSectionsInNginxFile(nginxCfgPath string, enableSections []NginxConfigSection) error {
-	nginxConf, err := os.Open(nginxCfgPath)
-	if err != nil {
-		return err
-	}
-	defer nginxConf.Close()
-
-	contents, err := io.ReadAll(nginxConf)
-	if err != nil {
-		return err
-	}
-
-	cfgBuf := bytes.NewBuffer(contents)
-
-	for _, enableSection := range enableSections {
-		nginxConfUpdated, err := processNginxConfigComments(cfgBuf, enableSection)
-		if err != nil {
-			return fmt.Errorf("nginx config: failed to enable section %q: %w", enableSection, err)
-		}
-		cfgBuf = bytes.NewBuffer(nginxConfUpdated)
-	}
-
-	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0o644)
 }
 
 // processNginxConfigComments enables (uncomments) provided enableSection in

@@ -142,11 +142,9 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 				oldContent = stagingFile.Content
 			}
 			if stagingContent != oldContent {
-				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath)
-				if err != nil {
+				if _, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath); err != nil {
 					return fmt.Errorf("pushing to GitHub: %w", err)
 				}
-				currentSHA = newSHA
 				fmt.Println(styles.SuccessText.Render("Pushed staging_origins.map to GitHub."))
 			} else {
 				fmt.Println(styles.ItalicText.Render("No changes to staging origins, skipping GitHub push."))

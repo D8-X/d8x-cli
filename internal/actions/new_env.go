@@ -117,7 +117,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			return err
 		}
 	} else {
-		fmt.Println(styles.ItalicText.Render("Rate limiting will be written into the nginx configs but commented out. You can turn it on later by editing the generated files or re-running 'd8x setup new-env'."))
+		fmt.Println(styles.ItalicText.Render("Rate limiting will be written into the nginx configs but commented out. To turn it on later, uncomment the `limit_req`/`limit_req_zone` lines inside the `{enable_rate_limiting}` blocks in <env>/nginx.conf and <env>/sites.conf on the infra repo, then run `d8x setup swarm-nginx` to redeploy."))
 	}
 
 	commentPrefix := ""

@@ -122,42 +122,12 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 		return nil
 	})
 
-	upperEnv := strings.ToUpper(env)
-	sshKey := os.Getenv("SSH_KEY_" + upperEnv)
-	if sshKey == "" {
-		bootPath, berr := c.bootstrapSSHKey(env)
-		if berr != nil {
-			return "", berr
-		}
-		sshKey = bootPath
-	}
-	keyContent, err := os.ReadFile(sshKey)
-	if err != nil {
-		return "", fmt.Errorf("SSH key not found at %s", sshKey)
-	}
-	if !strings.Contains(string(keyContent), "PRIVATE KEY") {
-		return "", fmt.Errorf("file %s does not look like a valid SSH private key", sshKey)
-	}
-	c.SshKeyPath = sshKey
-	if c.Input != nil {
-		c.Input.SSHKeyPath = sshKey
-	}
-
-	fieldName := "SSH_KEY_" + upperEnv
-	if os.Getenv("BW_SESSION") != "" && os.Getenv(fieldName) == "" {
-		result, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent))
-		switch {
-		case serr != nil:
-			fmt.Printf("%s warning: could not save SSH key to Bitwarden (%s): %s\n", warning, fieldName, serr)
-		case result == BwSkippedConflict:
-			fmt.Printf("%s warning: %s already exists in Bitwarden with a different value. Local key not synced. Run \"bw edit\" manually or rotate the key.\n", warning, fieldName)
-		default:
-			os.Setenv(fieldName, sshKey)
-			fmt.Printf("%s uploaded SSH key to Bitwarden as %s\n", ok, fieldName)
+	if hostsSHA != "" {
+		if err := c.ensureSSHKey(env); err != nil {
+			return "", err
 		}
 	}
 
-	// Password from .env
 	pwdKey := "SERVER_PASSWORD_" + strings.ToUpper(env)
 	if pwd := os.Getenv(pwdKey); pwd != "" {
 		c.UserPassword = pwd
@@ -197,23 +167,8 @@ func loadRemoteConfig(cfg, remoteCfg *configs.D8XConfig) {
 		cfg.WsRpcList = make(map[string][]string)
 	}
 
-	missing := []string{}
-	if cfg.ServerProvider == "" {
-		missing = append(missing, "server_provider")
-	}
-	if !cfg.SwarmDeployed {
-		missing = append(missing, "swarm_deployed")
-	}
-	if !cfg.BrokerDeployed {
-		missing = append(missing, "broker_deployed")
-	}
-	if cfg.ChainId == 0 {
-		fmt.Printf("%s loaded env config from infra repo (no chain_id set in remote)\n", warning)
-	} else {
+	if cfg.ChainId != 0 {
 		fmt.Printf("%s loaded env config from infra repo: chain_id=%d\n", ok, cfg.ChainId)
-	}
-	if len(missing) > 0 {
-		fmt.Printf("%s remote config.json is missing or empty for: %s — run a deploy command to publish current state\n", warning, strings.Join(missing, ", "))
 	}
 }
 
@@ -263,6 +218,44 @@ func (c *Container) PublishRemoteConfig(cfg *configs.D8XConfig) error {
 		return fmt.Errorf("pushing %s to infra repo: %w", path, err)
 	}
 	fmt.Printf("%s pushed sanitized config to infra repo (%s)\n", ok, path)
+	return nil
+}
+
+func (c *Container) ensureSSHKey(env string) error {
+	upperEnv := strings.ToUpper(env)
+	sshKey := os.Getenv("SSH_KEY_" + upperEnv)
+	if sshKey == "" {
+		bootPath, berr := c.bootstrapSSHKey(env)
+		if berr != nil {
+			return berr
+		}
+		sshKey = bootPath
+	}
+	keyContent, err := os.ReadFile(sshKey)
+	if err != nil {
+		return fmt.Errorf("SSH key not found at %s", sshKey)
+	}
+	if !strings.Contains(string(keyContent), "PRIVATE KEY") {
+		return fmt.Errorf("file %s does not look like a valid SSH private key", sshKey)
+	}
+	c.SshKeyPath = sshKey
+	if c.Input != nil {
+		c.Input.SSHKeyPath = sshKey
+	}
+
+	fieldName := "SSH_KEY_" + upperEnv
+	if os.Getenv("BW_SESSION") != "" && os.Getenv(fieldName) == "" {
+		result, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent))
+		switch {
+		case serr != nil:
+			fmt.Printf("%s warning: could not save SSH key to Bitwarden (%s): %s\n", warning, fieldName, serr)
+		case result == BwSkippedConflict:
+			fmt.Printf("%s warning: %s already exists in Bitwarden with a different value. Local key not synced. Run \"bw edit\" manually or rotate the key.\n", warning, fieldName)
+		default:
+			os.Setenv(fieldName, sshKey)
+			fmt.Printf("%s uploaded SSH key to Bitwarden as %s\n", ok, fieldName)
+		}
+	}
 	return nil
 }
 

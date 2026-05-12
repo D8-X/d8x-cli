@@ -16,7 +16,22 @@ func (c *Container) Ips(ctx *cli.Context) error {
 	}
 
 	onlyIp := ctx.Bool("quiet")
-	switch ctx.Args().First() {
+	target := ctx.Args().First()
+	if target == "" {
+		managerIp, mErr := c.HostsCfg.GetMangerPublicIp()
+		brokerIp, bErr := c.HostsCfg.GetBrokerPublicIp()
+		if mErr != nil && bErr != nil {
+			return fmt.Errorf("no manager or broker IP available; has this env been provisioned?")
+		}
+		if mErr == nil {
+			fmt.Printf("Manager node public IP address: %s\n", managerIp)
+		}
+		if bErr == nil {
+			fmt.Printf("Broker node public IP address:  %s\n", brokerIp)
+		}
+		return nil
+	}
+	switch target {
 	case "manager":
 		ip, err := c.HostsCfg.GetMangerPublicIp()
 		if err != nil {
@@ -38,7 +53,7 @@ func (c *Container) Ips(ctx *cli.Context) error {
 		}
 		fmt.Printf("Broker node public IP address: %s\n", ip)
 	default:
-		return fmt.Errorf("Unknown argument: %s. Supported values: manager, broker", ctx.Args().First())
+		return fmt.Errorf("unknown argument %q; supported values: manager, broker (or omit for both)", target)
 	}
 
 	return nil

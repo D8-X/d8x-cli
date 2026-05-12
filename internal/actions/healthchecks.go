@@ -36,7 +36,7 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 	if token != "" && c.SelectedEnv != "" {
 		sites, err := ghReadFile(token, c.SelectedEnv+"/sites.conf")
 		if err != nil {
-			fmt.Printf("%s could not fetch %s/sites.conf (%s); health checks will run only against locally configured services\n", notok, c.SelectedEnv, err)
+			fmt.Printf("%s could not fetch %s/sites.conf from the infra repo (%s); health checks will run only against the services already listed in this env's config.json\n", notok, c.SelectedEnv, err)
 		} else {
 			for _, host := range extractAllServerNames(sites.Content) {
 				name := strings.Split(host, ".")[0]
