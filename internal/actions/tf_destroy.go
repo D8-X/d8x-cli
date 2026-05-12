@@ -62,7 +62,7 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	tfInit := exec.Command("terraform", "init")
 	tfInit.Dir = c.ProvisioningTfDir
 	connectCMDToCurrentTerm(tfInit)
-	if err := tfInit.Run(); err != nil {
+	if err := c.RunCmd(tfInit); err != nil {
 		return fmt.Errorf("terraform init: %w", err)
 	}
 
@@ -241,7 +241,7 @@ func printDestroyTargets(t destroyTargets) {
 		fmt.Printf("  manager:         %s\n", t.managerIP)
 	}
 	if len(t.workerIPs) > 0 {
-		fmt.Printf("  workers (%d):     %s\n", len(t.workerIPs), strings.Join(t.workerIPs, ", "))
+		fmt.Printf("  workers:         (%d) %s\n", len(t.workerIPs), strings.Join(t.workerIPs, ", "))
 	}
 	if t.brokerIP != "" {
 		fmt.Printf("  broker:          %s\n", t.brokerIP)
