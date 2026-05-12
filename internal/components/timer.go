@@ -9,8 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-const timeout = time.Second * 5
-
 type timerModel struct {
 	title string
 

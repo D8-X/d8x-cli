@@ -35,7 +35,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		return err
 	}
 	if cfg.ServerProvider == "" {
-		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo. Set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first.")
+		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first")
 	}
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()

@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -14,7 +15,7 @@ func newConfirmation(text string) error {
 
 	mdl, err := p.Run()
 	if v, ok := mdl.(exitModel); ok {
-		return fmt.Errorf(v.Message())
+		return errors.New(v.Message())
 	}
 
 	return err

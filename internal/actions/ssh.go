@@ -46,7 +46,7 @@ func (c *Container) SSH(ctx *cli.Context) error {
 			}
 			parsedWorkerNum, err := strconv.Atoi(strings.Split(serverName, "worker-")[1])
 			if err != nil {
-				return fmt.Errorf("Incorrect worker name was passed. Accepted values are worker-1, worker-2, worker-3, worker-*...")
+				return fmt.Errorf("incorrect worker name; accepted values are worker-1, worker-2, worker-3, worker-*")
 			}
 
 			isWorker = true
@@ -57,7 +57,7 @@ func (c *Container) SSH(ctx *cli.Context) error {
 			}
 		}
 
-		return fmt.Errorf("Incorrect server name was passed. Accepted values are manager, broker, worker-* (where * is a digit)")
+		return fmt.Errorf("incorrect server name; accepted values are manager, broker, worker-* (where * is a digit)")
 	}
 
 	if err != nil {
