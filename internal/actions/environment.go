@@ -150,9 +150,13 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 
 	fieldName := "SSH_KEY_" + upperEnv
 	if os.Getenv("BW_SESSION") != "" && os.Getenv(fieldName) == "" {
-		if _, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent)); serr != nil {
+		result, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent))
+		switch {
+		case serr != nil:
 			fmt.Printf("%s warning: could not save SSH key to Bitwarden (%s): %s\n", warning, fieldName, serr)
-		} else {
+		case result == BwSkippedConflict:
+			fmt.Printf("%s warning: %s already exists in Bitwarden with a different value. Local key not synced. Run \"bw edit\" manually or rotate the key.\n", warning, fieldName)
+		default:
 			os.Setenv(fieldName, sshKey)
 			fmt.Printf("%s uploaded SSH key to Bitwarden as %s\n", ok, fieldName)
 		}
@@ -298,7 +302,7 @@ func (c *Container) bootstrapSSHKey(env string) (string, error) {
 		cmd := exec.Command("bash", "-c", keygen)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		if rerr := cmd.Run(); rerr != nil {
+		if rerr := c.RunCmd(cmd); rerr != nil {
 			return "", fmt.Errorf("ssh-keygen failed: %w", rerr)
 		}
 		fmt.Printf("%s generated ed25519 keypair at %s (+ .pub)\n", ok, tempPath)
@@ -336,8 +340,12 @@ func (c *Container) bootstrapSSHKey(env string) (string, error) {
 	if rerr != nil {
 		return "", fmt.Errorf("reading staged SSH key: %w", rerr)
 	}
-	if _, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent)); serr != nil {
+	result, _, serr := SaveSecretToBitwardenItem(bwItemName, fieldName, string(keyContent))
+	if serr != nil {
 		return "", fmt.Errorf("uploading SSH key to Bitwarden (%s): %w", fieldName, serr)
+	}
+	if result == BwSkippedConflict {
+		return "", fmt.Errorf("%s already exists in Bitwarden with a different value. Either remove it via \"bw edit\" or reuse the existing key", fieldName)
 	}
 	os.Setenv(fieldName, tempPath)
 	fmt.Printf("%s uploaded %s to Bitwarden item %q\n", ok, fieldName, bwItemName)
