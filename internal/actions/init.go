@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -13,6 +14,10 @@ import (
 )
 
 func (c *Container) Init(_ *cli.Context) error {
+	if err := warnOrAbortIfRunningAsRoot(c); err != nil {
+		return err
+	}
+
 	tfFound := true
 	ansibleFound := true
 
@@ -98,6 +103,39 @@ func (c *Container) Init(_ *cli.Context) error {
 	return nil
 }
 
+func warnOrAbortIfRunningAsRoot(c *Container) error {
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	sudoUser := os.Getenv("SUDO_USER")
+	switch {
+	case sudoUser != "" && sudoUser != "root":
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf(
+			"Detected sudo invocation (SUDO_USER=%s). pipx, ansible, and ansible-galaxy install per-user; running them under root will land them in /root and your subsequent commands as %s will not find them.",
+			sudoUser, sudoUser,
+		)))
+		proceed, err := c.TUI.NewPrompt(fmt.Sprintf("Continue installing as root anyway? (recommended: rerun as %s)", sudoUser), false)
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			return fmt.Errorf("aborted to avoid installing user-scoped tools under root. Rerun without sudo, as %s", sudoUser)
+		}
+	default:
+		fmt.Println(styles.AlertImportant.Render(
+			"Running as root. pipx, ansible, and ansible-galaxy install per-user. If you intend to run later d8x commands as a non-root user, they will not find these tools. Run \"d8x init\" as the same user that will run subsequent commands.",
+		))
+		proceed, err := c.TUI.NewPrompt("Continue installing as root anyway?", false)
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			return fmt.Errorf("aborted to avoid installing user-scoped tools under root. Rerun as your normal user")
+		}
+	}
+	return nil
+}
+
 func ensureLocalBinOnPath() {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -108,10 +146,8 @@ func ensureLocalBinOnPath() {
 		return
 	}
 	path := os.Getenv("PATH")
-	for _, p := range filepath.SplitList(path) {
-		if p == localBin {
-			return
-		}
+	if slices.Contains(filepath.SplitList(path), localBin) {
+		return
 	}
 	os.Setenv("PATH", localBin+string(os.PathListSeparator)+path)
 }
@@ -197,7 +233,7 @@ apt update && apt install -y terraform
 	defer func() {
 		os.Remove(f.Name())
 	}()
-	if err := f.Chmod(0700); err != nil {
+	if err := f.Chmod(0600); err != nil {
 		return fmt.Errorf("chmod on temp install script %s: %w", f.Name(), err)
 	}
 	if _, err := f.Write([]byte(sh)); err != nil {
@@ -291,8 +327,9 @@ func (c *Container) installPipx() error {
 			if err := c.RunCmd(distroCmd); err == nil {
 				fmt.Println(styles.SuccessText.Render("pipx was installed via the system package manager"))
 				return nil
+			} else {
+				fmt.Println(styles.ItalicText.Render(fmt.Sprintf("System package install failed (%s), falling back to pip user install...", err)))
 			}
-			fmt.Println(styles.ItalicText.Render("System package install failed, falling back to pip user install..."))
 		}
 	}
 
@@ -301,7 +338,7 @@ func (c *Container) installPipx() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := c.RunCmd(cmd); err != nil {
-		return fmt.Errorf("installing pipx via pip: %w", err)
+		return fmt.Errorf("installing pipx via pip: %w. If you saw \"No module named pip\", install python3-pip via your distro package manager first", err)
 	}
 	fmt.Println(styles.SuccessText.Render("pipx was installed via pip --user"))
 	return nil

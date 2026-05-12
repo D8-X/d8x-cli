@@ -155,6 +155,8 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 		var err error
 		accessKey, err = c.TUI.NewInput(
 			components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
+			components.TextInputOptMasked(),
+			components.TextInputOptDenyEmpty(),
 		)
 		if err != nil {
 			return awsCfg, err

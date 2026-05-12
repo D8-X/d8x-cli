@@ -337,11 +337,49 @@ func (input *InputCollector) PostProvisioningHook() error {
 // CollectBrokerPrivateKey collects broker private key and stores it in input
 // state
 func (input *InputCollector) CollectBrokerPrivateKey() error {
+	envUpper := strings.ToUpper(input.SelectedEnv)
+	fieldName := "BROKER_PRIVATE_KEY_" + envUpper
+
+	if input.SelectedEnv != "" {
+		if existing := os.Getenv(fieldName); existing != "" {
+			normalized := strings.TrimPrefix(existing, "0x")
+			if addr, err := PrivateKeyToAddress(normalized); err == nil {
+				fmt.Printf("%s found broker private key in Bitwarden as %s\n", ok, fieldName)
+				fmt.Printf("  Wallet address: %s\n", addr.Hex())
+				reuse, perr := input.TUI.NewPrompt("Reuse this key?", true)
+				if perr != nil {
+					return perr
+				}
+				if reuse {
+					input.brokerDeployInput.privateKey = normalized
+					return nil
+				}
+			} else {
+				fmt.Printf("%s broker private key in Bitwarden (%s) is invalid (%s). Collecting a fresh key.\n", warning, fieldName, err)
+			}
+		}
+	}
+
 	pk, _, err := input.CollectAndValidatePrivateKey("Enter your broker private key:")
 	if err != nil {
 		return err
 	}
 	input.brokerDeployInput.privateKey = pk
+
+	if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
+		save, perr := input.TUI.NewPrompt(
+			fmt.Sprintf("Save the broker private key to Bitwarden as %s for redeploy convenience? (the key signs broker orders; only persist it if your Bitwarden vault is the right place for it)", fieldName),
+			true,
+		)
+		if perr != nil {
+			return perr
+		}
+		if save {
+			if err := saveAndReport(fieldName, pk); err != nil {
+				return fmt.Errorf("saving broker private key to Bitwarden: %w", err)
+			}
+		}
+	}
 
 	return nil
 }
