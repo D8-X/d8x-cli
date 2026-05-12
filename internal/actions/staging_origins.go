@@ -311,6 +311,41 @@ func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
 	return result.Content.SHA, nil
 }
 
+func ghDeleteFile(token, path, sha, commitMsg string) error {
+	if sha == "" {
+		return fmt.Errorf("ghDeleteFile requires a sha")
+	}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+
+	payload := map[string]string{
+		"message": commitMsg,
+		"sha":     sha,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshalling payload: %w", err)
+	}
+	req, err := http.NewRequest("DELETE", url, strings.NewReader(string(body)))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}
+
 func parseProductionOrigins(nginxConf string) []string {
 	var origins []string
 	inMap := false

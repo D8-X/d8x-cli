@@ -32,16 +32,10 @@ type Container struct {
 	// have ssh key provided via SshKeyPath added to authorized_keys
 	DefaultClusterUserName string
 
-	// Password of DefaultClusterUserName. If not provided, attempt to read
-	// password from ./password.txt will be made in Before action. If
-	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
-	// Currently selected environment
 	SelectedEnv string
 
-	// Directory to the terraform files. Defaults to ./terraform but can be
-	// overriden by --tf-dir flag
 	ProvisioningTfDir string
 
 	EmbedCopier files.EmbedFileCopier

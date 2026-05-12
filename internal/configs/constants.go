@@ -7,9 +7,6 @@ const (
 	// user will be used to ssh into the server.
 	DEFAULT_USER_NAME = "d8xtrader"
 
-	// File where password for DEFAULT_USER_NAME will be stored
-	DEFAULT_PASSWORD_FILE = "./password.txt"
-
 	// Default ansible hosts.cfg (ini format) file path
 	DEFAULT_HOSTS_FILE = "./hosts.cfg"
 )
