@@ -337,25 +337,33 @@ func (c *Container) applyRemoteRpcChanges(
 	totalChanges := len(mainHttpA) + len(mainHttpR) + len(mainWsA) + len(mainWsR) +
 		len(histHttpA) + len(histHttpR) + len(histWsA) + len(histWsR)
 	if totalChanges == 0 {
-		fmt.Println(styles.ItalicText.Render("No changes vs current manager state. Nothing to apply."))
-		return nil
-	}
+		fmt.Println(styles.ItalicText.Render("No changes vs current manager state."))
+		forceRoll, err := c.TUI.NewPrompt("Reroll the api and history services anyway (useful after restoring backup files by hand on the manager)?", false)
+		if err != nil {
+			return err
+		}
+		if !forceRoll {
+			fmt.Println(styles.ItalicText.Render("Nothing to apply."))
+			return nil
+		}
+		fmt.Println(styles.ItalicText.Render("Force rerolling services with the manager's current RPC files..."))
+	} else {
+		fmt.Printf("\n%s Pending changes for chain %s\n", arrow, chainIdStr)
+		fmt.Println("  api:")
+		printDiffSection("    HTTP", mainHttpA, mainHttpR)
+		printDiffSection("    WS  ", mainWsA, mainWsR)
+		fmt.Println("  history:")
+		printDiffSection("    HTTP", histHttpA, histHttpR)
+		printDiffSection("    WS  ", histWsA, histWsR)
 
-	fmt.Printf("\n%s Pending changes for chain %s\n", arrow, chainIdStr)
-	fmt.Println("  api:")
-	printDiffSection("    HTTP", mainHttpA, mainHttpR)
-	printDiffSection("    WS  ", mainWsA, mainWsR)
-	fmt.Println("  history:")
-	printDiffSection("    HTTP", histHttpA, histHttpR)
-	printDiffSection("    WS  ", histWsA, histWsR)
-
-	confirmed, err := c.TUI.NewPrompt("Apply these changes to the live cluster?", false)
-	if err != nil {
-		return err
-	}
-	if !confirmed {
-		fmt.Println(styles.ItalicText.Render("Aborted. No changes applied."))
-		return nil
+		confirmed, err := c.TUI.NewPrompt("Apply these changes to the live cluster?", false)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Println(styles.ItalicText.Render("Aborted. No changes applied."))
+			return nil
+		}
 	}
 
 	newMain := setRpcEntry(mainEntries, cfg.ChainId, pools.mainHttp, pools.mainWs)

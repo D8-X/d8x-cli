@@ -24,6 +24,14 @@ d8x setup staging-origins
 
 Add or remove whitelisted staging origins. Changes are committed to the infra repo and deployed to the server.
 
+## RPC URLs
+
+```bash
+d8x setup rpc
+```
+
+Add or remove RPC URLs for the selected chain. Routes each URL to `api`, `history`, or both, then rolls the affected services. See [docs/setup-rpc.md](setup-rpc.md).
+
 ## SSH Access
 
 ```bash
