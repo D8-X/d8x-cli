@@ -85,6 +85,7 @@ See [docs/maintenance.md](docs/maintenance.md) for updates, health checks, SSH a
 
 | Command | Alias | Description |
 |---------|-------|-------------|
+| `d8x init` | | Check / install required dependencies (terraform, ansible). See [docs/init.md](docs/init.md) |
 | `d8x setup new-env` | | Create a new environment in the infra repo |
 | `d8x setup provision` | `prov` | Provision servers with Terraform |
 | `d8x setup configure` | `config` | Configure servers with Ansible |
