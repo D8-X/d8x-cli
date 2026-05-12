@@ -30,17 +30,6 @@ func RunD8XCli() {
 		log.Fatal(err)
 	}
 
-	// Shared flags below
-
-	// Default terraform files and state directory (./terraform)
-	provisionTfDirFlag := &cli.StringFlag{
-		Name:        "tf-dir",
-		Value:       "./terraform",
-		Required:    false,
-		Usage:       "Terraform files directory path. Used for backwards compatibility only.",
-		Destination: &container.ProvisioningTfDir,
-	}
-
 	// Initialize cli application and its subcommands and bind default values
 	// for ac (via flags.Destination)
 	app := &cli.App{
@@ -95,7 +84,6 @@ func RunD8XCli() {
 
 					return nil
 				},
-				Flags: []cli.Flag{provisionTfDirFlag},
 				Subcommands: []*cli.Command{
 					{
 						Name: "new-env",
@@ -108,7 +96,6 @@ func RunD8XCli() {
 						Usage:       "Provision server resources with terraform",
 						Action:      container.Provision,
 						Description: ProvisionDescription,
-						Flags:       []cli.Flag{provisionTfDirFlag},
 					},
 					{
 						Name:        "configure",
@@ -177,9 +164,9 @@ func RunD8XCli() {
 				Action:    container.Ips,
 			},
 			{
-				Name:   "tf-destroy",
-				Usage:  "Run terraform destroy for current setup",
-				Action: container.TerraformDestroy,
+				Name:        "tf-destroy",
+				Usage:       "Destroy all provisioned servers and infrastructure for an environment (irreversible)",
+				Action:      container.TerraformDestroy,
 			},
 			{
 				Name:   "ssh",
