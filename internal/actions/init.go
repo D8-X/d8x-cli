@@ -11,8 +11,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// Init performs initialization of configuration files, installation of
-// dependencies.
 func (c *Container) Init(ctx *cli.Context) error {
 	tfFound := true
 	ansibleFound := true
@@ -33,10 +31,16 @@ func (c *Container) Init(ctx *cli.Context) error {
 		fmt.Println(styles.SuccessText.Render("Ansible found!"))
 	}
 
-	// MACOS
 	if strings.Contains(runtime.GOOS, "darwin") {
 		if !tfFound || !ansibleFound {
-			return fmt.Errorf("ansible or terraform is not installed on the system")
+			missing := []string{}
+			if !tfFound {
+				missing = append(missing, "terraform")
+			}
+			if !ansibleFound {
+				missing = append(missing, "ansible")
+			}
+			return fmt.Errorf("missing on macOS: %s. Install via Homebrew (e.g. \"brew install %s\") and retry", strings.Join(missing, ", "), strings.Join(missing, " "))
 		}
 		return nil
 	}
@@ -62,11 +66,11 @@ func (c *Container) Init(ctx *cli.Context) error {
 			switch dep {
 			case "terraform":
 				if err := c.installTerraform(); err != nil {
-					return fmt.Errorf("Installing terraform: %w\n please refer to official guides on manual terraform installation: https://developer.hashicorp.com/terraform/downloads", err)
+					return fmt.Errorf("installing terraform: %w. See https://developer.hashicorp.com/terraform/downloads for manual install", err)
 				}
 			case "ansible":
 				if err := c.installAnsible(); err != nil {
-					return fmt.Errorf("Installing ansible: %w\n please refer to official guides on manual ansible installation: https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html", err)
+					return fmt.Errorf("installing ansible: %w. See https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html for manual install", err)
 				}
 			}
 		}
@@ -104,13 +108,12 @@ yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.
 yum -y install terraform
 		`
 	}
-	// DNF/fedora
 	if _, err := exec.LookPath("dnf"); err == nil {
 		sh = `
-yum install -y yum-utils
-yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
-yum -y install terraform
-		`
+dnf install -y dnf-plugins-core
+dnf config-manager --add-repo https://rpm.releases.hashicorp.com/fedora/hashicorp.repo
+dnf -y install terraform
+`
 	}
 
 	// Make temp script file

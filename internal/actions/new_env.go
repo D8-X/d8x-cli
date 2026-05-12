@@ -114,10 +114,25 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		{
 			path: envName + "/config.json",
 			content: func() string {
-				b, _ := json.MarshalIndent(map[string]interface{}{
-					"chain_id": chainID,
-					"provider": provider,
-				}, "", "  ")
+				cfg := map[string]interface{}{
+					"chain_id":        chainID,
+					"server_provider": provider,
+				}
+				switch provider {
+				case "linode":
+					numWorkers, _ := strconv.Atoi(numWorkersStr)
+					cfg["linode_config"] = map[string]interface{}{
+						"label_prefix": labelPrefix,
+						"region":       region,
+						"num_worker":   numWorkers,
+					}
+				case "aws":
+					cfg["aws_config"] = map[string]interface{}{
+						"label_prefix": labelPrefix,
+						"region":       region,
+					}
+				}
+				b, _ := json.MarshalIndent(cfg, "", "  ")
 				return string(b) + "\n"
 			}(),
 		},
