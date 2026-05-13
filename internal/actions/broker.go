@@ -10,7 +10,6 @@ import (
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -18,24 +17,42 @@ import (
 
 const BROKER_KEY_VOL_NAME = "keyvol"
 
-var (
-	brokerDeployChainConfig   = "./broker-server/chainConfig.json"
-	brokerDeployRpcConfig     = "./broker-server/rpc.json"
-	brokerDeployDockerCompose = "./broker-server/docker-compose.yml"
 
-	// Optional .env file path. If found, this .env file will be copied to the
-	// broker-server deployment.
-	brokerEnvFile = "./broker-server/.env"
-)
+func (c *Container) LoadBrokerDeployConfigs() (rpc, chainConfig, dockerCompose []byte, err error) {
+	rpc, err = c.loadInfraRepoFile("broker-server/rpc.json", "embedded/broker-server/rpc.json")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("loading broker-server/rpc.json: %w", err)
+	}
+	chainConfig, err = c.loadInfraRepoFile("broker-server/chainConfig.json", "embedded/broker-server/chainConfig.json")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("loading broker-server/chainConfig.json: %w", err)
+	}
+	dockerCompose, err = c.loadInfraRepoFile("broker-server/docker-compose.yml", "embedded/broker-server/docker-compose.yml")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("loading broker-server/docker-compose.yml: %w", err)
+	}
+	return rpc, chainConfig, dockerCompose, nil
+}
 
 func (c *Container) CopyBrokerDeployConfigs() error {
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/broker-server/rpc.json", Dst: brokerDeployRpcConfig, Overwrite: false},
-		files.EmbedCopierOp{Src: "embedded/broker-server/chainConfig.json", Dst: brokerDeployChainConfig, Overwrite: false},
-		files.EmbedCopierOp{Src: "embedded/broker-server/docker-compose.yml", Dst: brokerDeployDockerCompose, Overwrite: false},
-	); err != nil {
-		return fmt.Errorf("copying configs to local file system: %w", err)
+	rpc, chainCfg, compose, err := c.LoadBrokerDeployConfigs()
+	if err != nil {
+		return err
+	}
+	for _, w := range []struct {
+		path    string
+		content []byte
+	}{
+		{"./broker-server/rpc.json", rpc},
+		{"./broker-server/chainConfig.json", chainCfg},
+		{"./broker-server/docker-compose.yml", compose},
+	} {
+		if err := os.MkdirAll(filepath.Dir(w.path), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(w.path, w.content, 0644); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -78,22 +95,13 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	bsd.brokerServerIpAddr = brokerIpAddr
 
-	// Dest filenames for copying from embed. TODO - centralize this via flags
-	if err := c.CopyBrokerDeployConfigs(); err != nil {
-		return err
-	}
-
-	absChainConfig, err := filepath.Abs(brokerDeployChainConfig)
-	if err != nil {
-		return err
-	}
-	absRpcConfig, err := filepath.Abs(brokerDeployRpcConfig)
+	rpcContent, chainConfigContent, composeContent, err := c.LoadBrokerDeployConfigs()
 	if err != nil {
 		return err
 	}
 	c.TUI.NewConfirmation(
-		"Please review the configuration files and ensure values are correct before proceeding:" + "\n" +
-			styles.AlertImportant.Render(absChainConfig+"\n"+absRpcConfig),
+		"Review broker-server/chainConfig.json and broker-server/rpc.json on the infra repo before proceeding:\n" +
+			styles.AlertImportant.Render(fmt.Sprintf("%s/broker-server/chainConfig.json\n%s/broker-server/rpc.json", c.SelectedEnv, c.SelectedEnv)),
 	)
 
 	fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
@@ -139,17 +147,16 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("establishing ssh connection: %w", err)
 	}
 	if err := sshClient.CopyFilesOverSftp(
-		conn.SftpCopySrcDest{Src: brokerDeployChainConfig, Dst: "./broker/chainConfig.json"},
-		conn.SftpCopySrcDest{Src: brokerDeployRpcConfig, Dst: "./broker/rpc.json"},
-		conn.SftpCopySrcDest{Src: brokerDeployDockerCompose, Dst: "./broker/docker-compose.yml"},
+		conn.SftpCopySrcDest{Content: chainConfigContent, Dst: "./broker/chainConfig.json"},
+		conn.SftpCopySrcDest{Content: rpcContent, Dst: "./broker/rpc.json"},
+		conn.SftpCopySrcDest{Content: composeContent, Dst: "./broker/docker-compose.yml"},
 	); err != nil {
 		return err
 	}
 
-	// Optional. Copy the .env file to broker dir on server if it exists
-	if _, err := os.Stat(brokerEnvFile); err == nil {
+	if envContent, err := c.loadOptionalInfraRepoFile("broker-server/.env"); err == nil && envContent != nil {
 		if err := sshClient.CopyFilesOverSftp(
-			conn.SftpCopySrcDest{Src: brokerEnvFile, Dst: "./broker/.env"},
+			conn.SftpCopySrcDest{Content: envContent, Dst: "./broker/.env"},
 		); err != nil {
 			return err
 		}

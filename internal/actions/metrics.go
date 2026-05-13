@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v2"
@@ -52,45 +50,40 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		return err
 	}
 
-	filesToCopy := []files.EmbedCopierOp{
-		// Metrics (grafana/prometheus) stack
-		{Src: "embedded/docker-swarm-metrics.yml", Dst: "./docker-swarm-metrics.yml", Overwrite: true},
-		// Prometheus config
-		{Src: "embedded/prometheus.yml", Dst: "./prometheus.yml", Overwrite: true},
-
-		// All things grafana
-		{Src: "embedded/grafana", Dst: "./grafana", Overwrite: true, Dir: true},
+	loads := []struct {
+		envRelPath, embeddedSrc, remoteDst string
+	}{
+		{"docker-swarm-metrics.yml", "embedded/docker-swarm-metrics.yml", "./docker-swarm-metrics.yml"},
+		{"prometheus.yml", "embedded/prometheus.yml", "./prometheus.yml"},
+		{"grafana/datasource-prometheus.yml", "embedded/grafana/datasource-prometheus.yml", "./grafana/datasource-prometheus.yml"},
+		{"grafana/chart.json", "embedded/grafana/chart.json", "./grafana/chart.json"},
+		{"grafana/chart-cadvisor.json", "embedded/grafana/chart-cadvisor.json", "./grafana/chart-cadvisor.json"},
+		{"grafana/dashboards.yml", "embedded/grafana/dashboards.yml", "./grafana/dashboards.yml"},
 	}
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
-		return fmt.Errorf("copying configs to local file system: %w", err)
+	contents := make(map[string][]byte, len(loads))
+	for _, l := range loads {
+		data, err := c.loadInfraRepoFile(l.envRelPath, l.embeddedSrc)
+		if err != nil {
+			return fmt.Errorf("loading %s: %w", l.envRelPath, err)
+		}
+		contents[l.envRelPath] = data
 	}
 
-	// Configure the ip addresses of prometheus targets
 	workerIPs, err := c.HostsCfg.GetWorkerPrivateIps()
 	if err != nil {
 		return err
 	}
-	prometheusYaml, err := os.ReadFile("./prometheus.yml")
+	prometheusWithTargets, err := c.processPrometheusYaml(contents["prometheus.yml"], workerIPs)
 	if err != nil {
 		return err
 	}
-	if prometheusWithTargets, err := c.processPrometheusYaml(prometheusYaml, workerIPs); err != nil {
-		return err
-	} else {
-		if err := os.WriteFile("./prometheus.yml", prometheusWithTargets, 0666); err != nil {
-			return err
-		}
+	contents["prometheus.yml"] = prometheusWithTargets
+
+	sftpOps := make([]conn.SftpCopySrcDest, 0, len(loads))
+	for _, l := range loads {
+		sftpOps = append(sftpOps, conn.SftpCopySrcDest{Content: contents[l.envRelPath], Dst: l.remoteDst})
 	}
-
-	if err := manager.CopyFilesOverSftp(
-		conn.SftpCopySrcDest{Src: "./prometheus.yml", Dst: "./prometheus.yml"},
-		conn.SftpCopySrcDest{Src: "./docker-swarm-metrics.yml", Dst: "./docker-swarm-metrics.yml"},
-
-		conn.SftpCopySrcDest{Src: "./grafana/datasource-prometheus.yml", Dst: "./grafana/datasource-prometheus.yml"},
-		conn.SftpCopySrcDest{Src: "./grafana/chart.json", Dst: "./grafana/chart.json"},
-		conn.SftpCopySrcDest{Src: "./grafana/chart-cadvisor.json", Dst: "./grafana/chart-cadvisor.json"},
-		conn.SftpCopySrcDest{Src: "./grafana/dashboards.yml", Dst: "./grafana/dashboards.yml"},
-	); err != nil {
+	if err := manager.CopyFilesOverSftp(sftpOps...); err != nil {
 		return fmt.Errorf("copying prometheus config to manager: %w", err)
 	}
 

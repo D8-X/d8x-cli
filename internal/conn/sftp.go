@@ -1,6 +1,7 @@
 package conn
 
 import (
+	"fmt"
 	"os"
 	"path"
 
@@ -9,13 +10,11 @@ import (
 )
 
 type SftpCopySrcDest struct {
-	// Local source
-	Src string
-	// Remote destination
-	Dst string
+	Src     string
+	Content []byte
+	Dst     string
 }
 
-// CopyFilesOverSftp copies the list of srcDst to remote conn.
 func CopyFilesOverSftp(
 	conn *ssh.Client,
 	srcDst ...SftpCopySrcDest,
@@ -26,30 +25,30 @@ func CopyFilesOverSftp(
 	}
 
 	for _, cp := range srcDst {
-		// Ensure dir exists on remote
 		dir := path.Dir(cp.Dst)
 		if err := s.MkdirAll(dir); err != nil {
 			return err
 		}
 
-		// Open source file
-		srcFileContents, err := os.ReadFile(cp.Src)
-		if err != nil {
-			return err
+		content := cp.Content
+		if content == nil {
+			if cp.Src == "" {
+				return fmt.Errorf("sftp copy: Dst=%q has neither Content nor Src", cp.Dst)
+			}
+			content, err = os.ReadFile(cp.Src)
+			if err != nil {
+				return err
+			}
 		}
 
-		// Open remote file
 		dstFd, err := s.Create(cp.Dst)
 		if err != nil {
 			return err
 		}
-
-		// Write
-		_, err = dstFd.Write(srcFileContents)
-		if err != nil {
+		if _, err := dstFd.Write(content); err != nil {
+			dstFd.Close()
 			return err
 		}
-
 		dstFd.Close()
 	}
 

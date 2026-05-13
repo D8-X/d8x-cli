@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
+	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/flags"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -85,16 +86,93 @@ func envSuffixedField(env, base string) string {
 	return base + "_" + strings.ToUpper(env)
 }
 
+func workPath(rel string) string {
+	return filepath.Join(os.TempDir(), "d8x-cli", rel)
+}
+
+func ensureWorkDir(rel string) (string, error) {
+	path := workPath(rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+type infraRepoFile struct {
+	envRelPath  string
+	embeddedSrc string
+}
+
+var infraRepoManagedFiles = []infraRepoFile{
+	{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json"},
+	{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json"},
+	{"candles/prices.config.json", "embedded/candles/prices.config.json"},
+	{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json"},
+	{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml"},
+	{"docker-swarm-metrics.yml", "embedded/docker-swarm-metrics.yml"},
+	{"prometheus.yml", "embedded/prometheus.yml"},
+	{"grafana/datasource-prometheus.yml", "embedded/grafana/datasource-prometheus.yml"},
+	{"grafana/chart.json", "embedded/grafana/chart.json"},
+	{"grafana/chart-cadvisor.json", "embedded/grafana/chart-cadvisor.json"},
+	{"grafana/dashboards.yml", "embedded/grafana/dashboards.yml"},
+	{"broker-server/rpc.json", "embedded/broker-server/rpc.json"},
+	{"broker-server/chainConfig.json", "embedded/broker-server/chainConfig.json"},
+	{"broker-server/docker-compose.yml", "embedded/broker-server/docker-compose.yml"},
+}
+
+func (c *Container) loadInfraRepoFile(envRelPath, embeddedSrc string) ([]byte, error) {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token != "" && c.SelectedEnv != "" {
+		f, err := ghReadFile(token, c.SelectedEnv+"/"+envRelPath)
+		if err == nil {
+			return []byte(f.Content), nil
+		}
+		if !strings.Contains(err.Error(), "404") {
+			fmt.Printf("  %s could not fetch %s/%s from infra repo (%s); using embedded fallback\n", warning, c.SelectedEnv, envRelPath, err)
+		}
+	}
+	data, err := configs.EmbededConfigs.ReadFile(embeddedSrc)
+	if err != nil {
+		return nil, fmt.Errorf("reading embedded %s: %w", embeddedSrc, err)
+	}
+	return data, nil
+}
+
+func (c *Container) loadOptionalInfraRepoFile(envRelPath string) ([]byte, error) {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" || c.SelectedEnv == "" {
+		return nil, nil
+	}
+	f, err := ghReadFile(token, c.SelectedEnv+"/"+envRelPath)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return []byte(f.Content), nil
+}
+
+func (c *Container) stageInfraRepoFile(envRelPath, embeddedSrc, localPath string) error {
+	content, err := c.loadInfraRepoFile(envRelPath, embeddedSrc)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(localPath), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(localPath, content, 0644)
+}
+
 func writeHostsToTempFile(h files.HostsFileInteractor) (string, error) {
 	lines, err := h.GetLines()
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join(os.TempDir(), "d8x-cli")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	path, err := ensureWorkDir("hosts.cfg")
+	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, "hosts.cfg")
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
 		return "", err
 	}
@@ -138,31 +216,25 @@ func (c *Container) CollectAndValidatePrivateKey(title string) (string, string, 
 	return pk, addr.Hex(), nil
 }
 
-// UpdateConfig opens the given json config file and parses its contents into
-// target which is then passed to updateFn to perform any updates. After
-// successful updateFn call config file contents at configFilePath is updated
-// with new version of target.
+func UpdateConfigBytes[Target any](contents []byte, updateFn func(*Target) error) ([]byte, error) {
+	target := new(Target)
+	if err := json.Unmarshal(contents, &target); err != nil {
+		return nil, err
+	}
+	if err := updateFn(target); err != nil {
+		return contents, nil
+	}
+	return json.MarshalIndent(target, "", "  ")
+}
+
 func UpdateConfig[Target any](configFilePath string, updateFn func(*Target) error) error {
 	contents, err := os.ReadFile(configFilePath)
 	if err != nil {
 		return err
 	}
-
-	target := new(Target)
-
-	if err := json.Unmarshal(contents, &target); err != nil {
-		return err
-	}
-
-	if err := updateFn(target); err != nil {
-		return nil
-	}
-
-	out, err := json.MarshalIndent(target, "", "  ")
+	out, err := UpdateConfigBytes(contents, updateFn)
 	if err != nil {
 		return err
 	}
-
 	return os.WriteFile(configFilePath, out, 0644)
-
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
@@ -39,16 +38,20 @@ const (
 // EditSwarmEnv edits the .env file for swarm deployment with user provided and
 // provisioning values.
 func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
-	// Edit .env file
 	fmt.Println(styles.ItalicText.Render("Editing .env file..."))
 	envFile, err := os.ReadFile(envPath)
 	if err != nil {
 		return fmt.Errorf("reading .env file: %w", err)
 	}
+	out, err := c.EditSwarmEnvBytes(envFile, cfg)
+	if err != nil {
+		return err
+	}
+	return c.FS.WriteFile(envPath, out)
+}
 
-	envFileLines := strings.Split(string(envFile), "\n")
-
-	// We assume that all cfg values are present at this point
+func (c *Container) EditSwarmEnvBytes(envContent []byte, cfg *configs.D8XConfig) ([]byte, error) {
+	envFileLines := strings.Split(string(envContent), "\n")
 	findReplaceOrCreateEnvs := map[string]string{
 		"SDK_CONFIG_NAME":    c.cachedChainJson.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
 		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
@@ -56,11 +59,7 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 		"REMOTE_BROKER_HTTP": cfg.SwarmRemoteBrokerHTTPUrl,
 		"DATABASE_DSN":       cfg.DatabaseDSN,
 	}
-
-	// List of envs that were not found in .env but will be added to the output
 	prependEnvs := []string{}
-
-	// Process the env file and append collected .env values
 	for env, value := range findReplaceOrCreateEnvs {
 		if value == "" {
 			continue
@@ -82,9 +81,7 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 	if len(prependEnvs) > 0 {
 		envFileLines = append(prependEnvs, envFileLines...)
 	}
-
-	// Write the env output
-	return c.FS.WriteFile(envPath, []byte(strings.Join(envFileLines, "\n")))
+	return []byte(strings.Join(envFileLines, "\n")), nil
 }
 
 // UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
@@ -101,23 +98,30 @@ func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints []string) 
 	}
 }
 
-var swarmDeployConfigFilesToCopy = []files.EmbedCopierOp{
-	// Trader backend configs
-	// Note that .env.example is not recognized in embed.FS
-	{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
-	{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
-	{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
-	// Candles configs
-	{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
-	{Src: "embedded/candles/rpc_conf.json", Dst: "./candles/rpc_conf.json", Overwrite: false},
-	// Docker swarm file - do not overwrite and allow user to modify the config
-	// (for example choose specific image manually).
-	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
-}
-
 func (c *Container) CopySwarmDeployConfigs() error {
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, swarmDeployConfigFilesToCopy...); err != nil {
-		return fmt.Errorf("copying configs to local file system: %w", err)
+	stagings := []struct {
+		envRelPath, embeddedSrc, localPath string
+	}{
+		{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json", "./trader-backend/rpc.main.json"},
+		{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json", "./trader-backend/rpc.history.json"},
+		{"candles/prices.config.json", "embedded/candles/prices.config.json", "./candles/prices.config.json"},
+		{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json", "./candles/rpc_conf.json"},
+		{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml", "./docker-swarm-stack.yml"},
+	}
+	envData, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
+	if err != nil {
+		return fmt.Errorf("reading embedded env.example: %w", err)
+	}
+	if err := os.MkdirAll("./trader-backend", 0755); err != nil {
+		return err
+	}
+	if err := os.WriteFile("./trader-backend/.env", envData, 0644); err != nil {
+		return err
+	}
+	for _, s := range stagings {
+		if err := c.stageInfraRepoFile(s.envRelPath, s.embeddedSrc, s.localPath); err != nil {
+			return fmt.Errorf("staging %s: %w", s.envRelPath, err)
+		}
 	}
 	return nil
 }
@@ -159,7 +163,7 @@ func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp st
 	return nil
 }
 
-func (c *Container) printDeploySummary(envPath string, cfg *configs.D8XConfig, managerIp string) {
+func (c *Container) printDeploySummaryBytes(envContent []byte, cfg *configs.D8XConfig, managerIp string) {
 	fmt.Println(styles.ItalicText.Render("Deployment summary:"))
 	fmt.Printf("  environment       : %s\n", c.SelectedEnv)
 	fmt.Printf("  manager IP        : %s\n", managerIp)
@@ -174,8 +178,8 @@ func (c *Container) printDeploySummary(envPath string, cfg *configs.D8XConfig, m
 		"WS_SPORTSLINEINDEX",
 		"NODE_AUTH_TOKEN",
 	}
-	values := parseEnvFile(envPath)
-	fmt.Println(styles.ItalicText.Render("Values that will be written to " + envPath + ":"))
+	values := parseEnvBytes(envContent)
+	fmt.Println(styles.ItalicText.Render("Values that will be written to ./trader-backend/.env on the manager:"))
 	for _, k := range keys {
 		v, ok := values[k]
 		if !ok {
@@ -185,25 +189,26 @@ func (c *Container) printDeploySummary(envPath string, cfg *configs.D8XConfig, m
 	}
 }
 
-func parseEnvFile(path string) map[string]string {
+func parseEnvBytes(data []byte) map[string]string {
 	out := make(map[string]string)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return out
-	}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		k, v, ok := strings.Cut(line, "=")
+		key, rest, ok := strings.Cut(line, "=")
 		if !ok {
 			continue
 		}
-		out[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		out[key] = strings.TrimSpace(strings.Trim(rest, `"'`))
 	}
 	return out
 }
+
 
 func redactSecret(key, value string) string {
 	upper := strings.ToUpper(key)
@@ -359,7 +364,7 @@ func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8X
 		return nil, nil
 	}
 
-	backupPath := fmt.Sprintf("./trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405"))
+	backupPath := workPath(fmt.Sprintf("trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405")))
 	if err := c.FS.WriteFile(backupPath, []byte(remoteEnv)); err != nil {
 		fmt.Printf("%s failed to write remote .env backup to %s: %s\n", notok, backupPath, err)
 		cont, perr := c.TUI.NewPrompt("Remote .env backup could not be written locally. Proceed without a safety copy?", false)
@@ -545,8 +550,28 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 
-	// Copy embed files before starting
-	if err := c.CopySwarmDeployConfigs(); err != nil {
+	envContent, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
+	if err != nil {
+		return fmt.Errorf("loading embedded trader-backend env template: %w", err)
+	}
+	rpcMain, err := c.loadInfraRepoFile("trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json")
+	if err != nil {
+		return err
+	}
+	rpcHist, err := c.loadInfraRepoFile("trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json")
+	if err != nil {
+		return err
+	}
+	prices, err := c.loadInfraRepoFile("candles/prices.config.json", "embedded/candles/prices.config.json")
+	if err != nil {
+		return err
+	}
+	rpcConf, err := c.loadInfraRepoFile("candles/rpc_conf.json", "embedded/candles/rpc_conf.json")
+	if err != nil {
+		return err
+	}
+	swarmStack, err := c.loadInfraRepoFile("docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml")
+	if err != nil {
 		return err
 	}
 
@@ -554,58 +579,61 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	shouldUpdateConfigs := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || cfg.SwarmRedisPassword != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
 
 	if c.Input.swarmDeployInput.guideConfig || shouldUpdateConfigs {
-		if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
-			return fmt.Errorf("editing .env file: %w", err)
+		envContent, err = c.EditSwarmEnvBytes(envContent, cfg)
+		if err != nil {
+			return fmt.Errorf("editing .env content: %w", err)
 		}
 
 		if len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 {
-			for i, rpconfigFilePath := range []string{
-				"./trader-backend/rpc.main.json",
-				"./trader-backend/rpc.history.json",
+			for i, slot := range []struct {
+				name    string
+				content *[]byte
+			}{
+				{"trader-backend/rpc.main.json", &rpcMain},
+				{"trader-backend/rpc.history.json", &rpcHist},
 			} {
-				httpRpcs, wsRpcs := DistributeRpcs(
-					i,
-					strconv.Itoa(int(cfg.ChainId)),
-					cfg,
-				)
-
-				fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-
-				if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
-					fmt.Println(
-						styles.ErrorText.Render(
-							fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
-						),
-					)
+				httpRpcs, wsRpcs := DistributeRpcs(i, chainIdStr, cfg)
+				fmt.Printf("Updating %s config...\n", slot.name)
+				updated, uerr := c.editRpcConfigUrlsBytes(*slot.content, cfg.ChainId, wsRpcs, httpRpcs)
+				if uerr != nil {
+					fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not update %s: %+v", slot.name, uerr)))
+					continue
 				}
+				*slot.content = updated
 			}
 		}
 
 		userProvidedHttpEndpoints := cfg.UserSuppliedPriceFeedEndpoints
 		slices.Sort(userProvidedHttpEndpoints)
 		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
-		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))
+		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(chainIdStr)
 		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
 		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
 			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
 		}
 
 		if len(priceServiceHTTPSEndpoints) > 0 {
-			if err := UpdateConfig(
-				"./candles/prices.config.json",
-				UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints),
-			); err != nil {
-				return fmt.Errorf("updating candles prices config: %w", err)
+			updated, uerr := UpdateConfigBytes(prices, UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints))
+			if uerr != nil {
+				return fmt.Errorf("updating candles prices config: %w", uerr)
 			}
+			prices = updated
 		}
 	}
 
 	if showConfigConfirmation {
 		fmt.Println(styles.AlertImportant.Render("Review the configuration below before deploying."))
-		c.printDeploySummary("./trader-backend/.env", cfg, managerIp)
+		c.printDeploySummaryBytes(envContent, cfg, managerIp)
 		fmt.Println("The following configuration files will be copied to the 'manager node':")
-		for _, f := range swarmDeployConfigFilesToCopy {
-			fmt.Println("  " + f.Dst)
+		for _, dst := range []string{
+			"./trader-backend/.env",
+			"./trader-backend/rpc.main.json",
+			"./trader-backend/rpc.history.json",
+			"./candles/prices.config.json",
+			"./candles/rpc_conf.json",
+			"./docker-stack.yml",
+		} {
+			fmt.Println("  " + dst)
 		}
 		proceed, err := c.TUI.NewPrompt("Proceed with deployment using the values above?", false)
 		if err != nil {
@@ -685,9 +713,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if err != nil {
 		return fmt.Errorf("NFS preparation on manager failed : %w", err)
 	}
-	if err := c.FS.WriteFile("./trader-backend/exports", []byte(configEtcExports)); err != nil {
-		return fmt.Errorf("temp storage of /etc/exports file failed: %w", err)
-	}
+	exportsContent := []byte(configEtcExports)
 
 	managedConfigNames := []string{
 		"cfg_rpc",
@@ -705,16 +731,14 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
 	}
 
-	// List of files to transfer to manager
 	copyList := []conn.SftpCopySrcDest{
-		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
-		{Src: "./trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json"},
-		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
-		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
-		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
-		{Src: "./candles/rpc_conf.json", Dst: "./candles/rpc_conf.json"},
-		// Note we are renaming to docker-stack.yml on remote!
-		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
+		{Content: envContent, Dst: "./trader-backend/.env"},
+		{Content: rpcMain, Dst: "./trader-backend/rpc.main.json"},
+		{Content: rpcHist, Dst: "./trader-backend/rpc.history.json"},
+		{Content: exportsContent, Dst: "./trader-backend/exports"},
+		{Content: prices, Dst: "./candles/prices.config.json"},
+		{Content: rpcConf, Dst: "./candles/rpc_conf.json"},
+		{Content: swarmStack, Dst: "./docker-stack.yml"},
 	}
 
 	// Copy files to remote

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -252,15 +251,15 @@ type RPCConfigEntry struct {
 // public rpc urls (in embedded configs). When wsRpcs is nil, WS field will be
 // omitted, however, when it is empty slice - it will be included as empty array
 // in json output.
-func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, wsRpcs, httpRpcs []string) error {
-	rpcCfg, err := os.ReadFile(rpcConfigFilePath)
-	if err != nil {
-		return err
-	}
+func (c *Container) editRpcConfigUrlsBytes(rpcCfg []byte, chainId uint, wsRpcs, httpRpcs []string) ([]byte, error) {
 	rpcConfig := []RPCConfigEntry{}
 	if err := json.Unmarshal(rpcCfg, &rpcConfig); err != nil {
-		return err
+		return nil, err
 	}
+	return c.editRpcConfigParsed(rpcConfig, chainId, wsRpcs, httpRpcs)
+}
+
+func (c *Container) editRpcConfigParsed(rpcConfig []RPCConfigEntry, chainId uint, wsRpcs, httpRpcs []string) ([]byte, error) {
 
 	// Find and replace our RPC config entry or create it if not found (for
 	// given chainId)
@@ -312,10 +311,9 @@ func (c *Container) editRpcConfigUrls(rpcConfigFilePath string, chainId uint, ws
 
 	marshalled, err := json.MarshalIndent(rpcConfig, "", "\t")
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	return c.FS.WriteFile(rpcConfigFilePath, marshalled)
+	return marshalled, nil
 }
 
 // DistributeRpcs distribute rpc from cfg (user supplied rpcs) based on provided

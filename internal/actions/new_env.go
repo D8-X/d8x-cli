@@ -506,6 +506,17 @@ server {
 		content: string(playbook),
 	})
 
+	for _, m := range infraRepoManagedFiles {
+		data, err := configs.EmbededConfigs.ReadFile(m.embeddedSrc)
+		if err != nil {
+			return fmt.Errorf("reading embedded %s: %w", m.embeddedSrc, err)
+		}
+		files = append(files, fileEntry{
+			path:    envName + "/" + m.envRelPath,
+			content: string(data),
+		})
+	}
+
 	fmt.Println(styles.ItalicText.Render("\nCreating environment files..."))
 	commitFiles := make([]ghCommitFile, 0, len(files))
 	for _, f := range files {
