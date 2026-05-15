@@ -288,7 +288,7 @@ func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
 
 	payload := map[string]string{
-		"message": commitMsg,
+		"message": prefixCommitMsg(commitMsg),
 		"content": base64.StdEncoding.EncodeToString([]byte(content)),
 	}
 	if sha != "" {
@@ -421,7 +421,7 @@ func ghCommitFiles(token string, files []ghCommitFile, message string) error {
 		SHA string `json:"sha"`
 	}
 	if err := ghAPI(token, "POST", base+"/git/commits", map[string]any{
-		"message": message,
+		"message": prefixCommitMsg(message),
 		"tree":    treeResp.SHA,
 		"parents": []string{headSHA},
 	}, &newCommit); err != nil {
@@ -501,7 +501,7 @@ func ghCommitDeletes(token string, paths []string, message string) error {
 		SHA string `json:"sha"`
 	}
 	if err := ghAPI(token, "POST", base+"/git/commits", map[string]any{
-		"message": message,
+		"message": prefixCommitMsg(message),
 		"tree":    treeResp.SHA,
 		"parents": []string{headSHA},
 	}, &newCommit); err != nil {
@@ -582,7 +582,7 @@ func ghDeleteFile(token, path, sha, commitMsg string) error {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
 
 	payload := map[string]string{
-		"message": commitMsg,
+		"message": prefixCommitMsg(commitMsg),
 		"sha":     sha,
 	}
 	body, err := json.Marshal(payload)
