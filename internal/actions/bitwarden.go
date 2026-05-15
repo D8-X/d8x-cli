@@ -31,6 +31,12 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	}
 
 	session := os.Getenv("BW_SESSION")
+	if session == "" {
+		if cached := readCachedBWSession(); cached != "" {
+			session = cached
+			os.Setenv("BW_SESSION", session)
+		}
+	}
 	needUnlock := session == ""
 	if !needUnlock {
 		probe, err := exec.Command("bw", "get", "item", bwItemName, "--session", session).CombinedOutput()
@@ -39,6 +45,7 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 			_ = probe
 			needUnlock = true
 			session = ""
+			clearCachedBWSession()
 		}
 	}
 	if needUnlock {
@@ -80,6 +87,11 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 		session = strings.TrimSpace(string(unlockOut))
 		os.Setenv("BW_SESSION", session)
+		if err := writeCachedBWSession(session); err != nil {
+			fmt.Printf("  %s could not cache BW_SESSION to disk (%s); will re-prompt next run\n", styles.ItalicText.Render("notok"), err)
+		} else {
+			fmt.Println(styles.ItalicText.Render("BW_SESSION cached for subsequent runs; no master password needed until the vault re-locks."))
+		}
 	}
 
 	if c.BitwardenFields == nil {
@@ -164,14 +176,6 @@ const (
 	BwUnchanged
 	BwSkippedConflict
 )
-
-func SaveSecretToBitwarden(fieldName, fieldValue string) (BwSaveResult, string, error) {
-	return saveBitwardenField(bwItemName, fieldName, fieldValue, false)
-}
-
-func SaveSecretToBitwardenPersonal(fieldName, fieldValue string) (BwSaveResult, string, error) {
-	return saveBitwardenField(bwPersonalItemName, fieldName, fieldValue, false)
-}
 
 func SaveSecretToBitwardenItem(itemName, fieldName, fieldValue string) (BwSaveResult, string, error) {
 	return saveBitwardenField(itemName, fieldName, fieldValue, false)
@@ -333,4 +337,41 @@ func writeSSHKeyToTempFile(name, content string) (string, error) {
 		fmt.Printf("  %s could not derive public key for %s: %s\n", notok, name, err)
 	}
 	return keyPath, nil
+}
+
+func bwSessionCachePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".d8x-cli", "session"), nil
+}
+
+func readCachedBWSession() string {
+	p, err := bwSessionCachePath()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func writeCachedBWSession(session string) error {
+	p, err := bwSessionCachePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(p, []byte(session), 0600)
+}
+
+func clearCachedBWSession() {
+	if p, err := bwSessionCachePath(); err == nil {
+		_ = os.Remove(p)
+	}
 }
