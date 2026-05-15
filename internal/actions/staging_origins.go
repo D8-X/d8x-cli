@@ -17,11 +17,20 @@ import (
 
 const defaultGhRepo = "D8-X/backend-nginx-infra-config"
 
+const cliCommitPrefix = "[D8X CLI]- "
+
 func getGhRepo() string {
 	if repo := os.Getenv("INFRA_REPO"); repo != "" {
 		return repo
 	}
 	return defaultGhRepo
+}
+
+func prefixCommitMsg(msg string) string {
+	if strings.HasPrefix(msg, cliCommitPrefix) {
+		return msg
+	}
+	return cliCommitPrefix + msg
 }
 
 type ghFileResponse struct {
@@ -425,6 +434,110 @@ func ghCommitFiles(token string, files []ghCommitFile, message string) error {
 		return fmt.Errorf("update ref: %w", err)
 	}
 	return nil
+}
+
+func ghCommitDeletes(token string, paths []string, message string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	repo := getGhRepo()
+	base := fmt.Sprintf("https://api.github.com/repos/%s", repo)
+
+	var repoInfo struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := ghAPI(token, "GET", base, nil, &repoInfo); err != nil {
+		return fmt.Errorf("get repo: %w", err)
+	}
+	branch := repoInfo.DefaultBranch
+	if branch == "" {
+		branch = "main"
+	}
+
+	var refResp struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/ref/heads/"+branch, nil, &refResp); err != nil {
+		return fmt.Errorf("get ref: %w", err)
+	}
+	headSHA := refResp.Object.SHA
+
+	var commitInfo struct {
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/commits/"+headSHA, nil, &commitInfo); err != nil {
+		return fmt.Errorf("get head commit: %w", err)
+	}
+	baseTreeSHA := commitInfo.Tree.SHA
+
+	treeItems := make([]map[string]any, 0, len(paths))
+	for _, p := range paths {
+		treeItems = append(treeItems, map[string]any{
+			"path": p,
+			"mode": "100644",
+			"type": "blob",
+			"sha":  nil,
+		})
+	}
+
+	var treeResp struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/trees", map[string]any{
+		"base_tree": baseTreeSHA,
+		"tree":      treeItems,
+	}, &treeResp); err != nil {
+		return fmt.Errorf("create tree: %w", err)
+	}
+	if treeResp.SHA == baseTreeSHA {
+		return nil
+	}
+
+	var newCommit struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/commits", map[string]any{
+		"message": message,
+		"tree":    treeResp.SHA,
+		"parents": []string{headSHA},
+	}, &newCommit); err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+	if err := ghAPI(token, "PATCH", base+"/git/refs/heads/"+branch, map[string]string{
+		"sha": newCommit.SHA,
+	}, nil); err != nil {
+		return fmt.Errorf("update ref: %w", err)
+	}
+	return nil
+}
+
+func ghListEnvFiles(token, env string) ([]string, error) {
+	repo := getGhRepo()
+	var treeResp struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+	}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/HEAD?recursive=1", repo)
+	if err := ghAPI(token, "GET", url, nil, &treeResp); err != nil {
+		return nil, err
+	}
+	prefix := env + "/"
+	var paths []string
+	for _, e := range treeResp.Tree {
+		if e.Type != "blob" {
+			continue
+		}
+		if strings.HasPrefix(e.Path, prefix) {
+			paths = append(paths, e.Path)
+		}
+	}
+	return paths, nil
 }
 
 func ghAPI(token, method, url string, payload any, out any) error {

@@ -62,6 +62,7 @@ func RunD8XCli() {
 
 					subcommands := []string{
 						"new-env",
+						"rm-env",
 						"provision", "prov",
 						"configure", "config",
 						"broker-deploy",
@@ -89,6 +90,11 @@ func RunD8XCli() {
 						Name:   "new-env",
 						Usage:  "Create a new environment in the infra repo",
 						Action: withNextStep("new-env", container.NewEnvironment),
+					},
+					{
+						Name:   "rm-env",
+						Usage:  "Remove a non-provisioned environment from the infra repo",
+						Action: container.RemoveEnvironment,
 					},
 					{
 						Name:        "provision",

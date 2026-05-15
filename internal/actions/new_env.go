@@ -51,7 +51,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		return fmt.Errorf("invalid chain ID: %w", err)
 	}
 
-	fmt.Println("Enter domain subdomain suffix (e.g. 84532-v2 for api-84532-v2.d8x.xyz):")
+	fmt.Println("Enter domain subdomain suffix (e.g. 84532 for api-84532.d8x.xyz):")
 	subdomain, err := c.TUI.NewInput(components.TextInputOptValue(chainIDStr))
 	if err != nil {
 		return err
@@ -230,9 +230,6 @@ http {
 
 	map $http_origin $is_allowed_origin {
 		default 0;
-		~^https://.*predictex\.io$ 1;
-		~^https://.*predictex\.com$ 1;
-		~^https://.*predictex-frontend\.pages\.dev$ 1;
 		~^https?://localhost(:\d+)?$ 1;
 		~^https?://127\.0\.0\.1(:\d+)?$ 1;
 		include /etc/nginx/conf.d/staging_origins.map;
@@ -423,9 +420,6 @@ server {
 
 map $http_origin $is_allowed_origin {
     default 0;
-    ~^https?://(.*\.)?predictex\.com$ 1;
-    ~^https?://(.*\.)?predictex\.io$ 1;
-    ~^https?://.*predictex-frontend\.pages\.dev$ 1;
     ~^https?://localhost(:\d+)?$ 1;
     ~^https?://127\.0\.0\.1(:\d+)?$ 1;
 }
