@@ -29,8 +29,8 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		return fmt.Errorf("cannot list directories on infra repo: %w", err)
 	}
 
-	var envs []string
 	var labels []string
+	labelToEnv := map[string]string{}
 	for _, d := range allDirs {
 		if strings.HasPrefix(d, ".") {
 			continue
@@ -49,15 +49,15 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		if _, hostsErr := ghReadFile(token, d+"/hosts.cfg"); hostsErr == nil {
 			continue
 		}
-		envs = append(envs, d)
 		label := d
 		if ec.ChainId > 0 {
 			label = fmt.Sprintf("%s  (chain %d)", d, ec.ChainId)
 		}
 		labels = append(labels, label)
+		labelToEnv[label] = d
 	}
 
-	if len(envs) == 0 {
+	if len(labels) == 0 {
 		fmt.Println(styles.ItalicText.Render("No non-provisioned environments found on the infra repo. Nothing to remove."))
 		fmt.Println(styles.ItalicText.Render("(\"setup rm-env\" only handles never-provisioned envs; for a provisioned one, run \"d8x tf-destroy\" first.)"))
 		return nil
@@ -72,7 +72,10 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	env := envs[indexOf(labels, picked[0])]
+	env, ok := labelToEnv[picked[0]]
+	if !ok {
+		return fmt.Errorf("internal: selection %q not found", picked[0])
+	}
 
 	paths, err := ghListEnvFiles(token, env)
 	if err != nil {

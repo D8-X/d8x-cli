@@ -156,6 +156,39 @@ func TestParseEnvBytes_HandlesQuotedAndComments(t *testing.T) {
 	assert.NotContains(t, got, "NO_EQ_SIGN")
 }
 
+func TestParseEnvBytes_TfvarsShape(t *testing.T) {
+	data := []byte("region               = \"eu-central\"\nnum_workers          = 3\nbroker_size          = \"g6-dedicated-2\"\nserver_label_prefix  = \"prov-test\"\ncreate_broker_server = true\ncreate_swarm         = true\n")
+	got := parseEnvBytes(data)
+	assert.Equal(t, "eu-central", got["region"])
+	assert.Equal(t, "3", got["num_workers"])
+	assert.Equal(t, "g6-dedicated-2", got["broker_size"])
+	assert.Equal(t, "prov-test", got["server_label_prefix"])
+	assert.Equal(t, "true", got["create_broker_server"])
+	assert.Equal(t, "true", got["create_swarm"])
+}
+
+func TestExtractAllServerNames_MultiHost(t *testing.T) {
+	sites := "server {\n  server_name a.example.com b.example.com;\n  ...\n}\nserver {\n  server_name c.example.com;\n  ...\n}\nserver {\n  server_name a.example.com;\n}\n"
+	got := extractAllServerNames(sites)
+	assert.Equal(t, []string{"a.example.com", "b.example.com", "c.example.com"}, got)
+}
+
+func TestShQuote(t *testing.T) {
+	assert.Equal(t, "'hello'", shQuote("hello"))
+	assert.Equal(t, `'it'\''s'`, shQuote("it's"))
+	assert.Equal(t, "''", shQuote(""))
+	assert.Equal(t, `'a$b`+"`c"+`\d'`, shQuote("a$b`c\\d"))
+}
+
+func TestIsValidEmail(t *testing.T) {
+	for _, s := range []string{"a@b.co", "user@example.com", "user.name+tag@sub.example.io"} {
+		assert.True(t, isValidEmail(s), s)
+	}
+	for _, s := range []string{"", "tes2tst.com", "no-at-sign", "a@b", "a@.com", "a@b.", "two@@signs.com", "spaces in@email.com"} {
+		assert.False(t, isValidEmail(s), s)
+	}
+}
+
 func truncate(s string) string {
 	if len(s) > 80 {
 		return s[:80] + "..."

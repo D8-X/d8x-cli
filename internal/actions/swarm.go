@@ -112,7 +112,7 @@ func (c *Container) CopySwarmDeployConfigs() error {
 	return nil
 }
 
-func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp string) error {
+func (c *Container) importRemoteSwarmDeployConfig(_ *cli.Context, managerIp string) error {
 	remoteCfg, err := c.fetchRemoteSwarmDeployConfig(managerIp)
 	if err != nil {
 		return err
@@ -138,7 +138,7 @@ func (c *Container) importRemoteSwarmDeployConfig(ctx *cli.Context, managerIp st
 	if err != nil {
 		return err
 	}
-	loadRemoteConfig(cfg, remoteCfg)
+	mergeRemoteSwarmEnvIntoCfg(cfg, remoteCfg)
 	if err := c.reconcileSecretsWithBitwarden(cfg, remoteCfg); err != nil {
 		return err
 	}
@@ -190,7 +190,7 @@ func parseEnvBytes(data []byte) map[string]string {
 		if key == "" {
 			continue
 		}
-		out[key] = strings.TrimSpace(strings.Trim(rest, `"'`))
+		out[key] = strings.Trim(strings.TrimSpace(rest), `"'`)
 	}
 	return out
 }
@@ -334,11 +334,46 @@ func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remote
 	return nil
 }
 
+func mergeRemoteSwarmEnvIntoCfg(cfg, remoteCfg *configs.D8XConfig) {
+	if remoteCfg == nil {
+		return
+	}
+	if remoteCfg.ChainId != 0 {
+		cfg.ChainId = remoteCfg.ChainId
+	}
+	if remoteCfg.DatabaseDSN != "" {
+		cfg.DatabaseDSN = remoteCfg.DatabaseDSN
+	}
+	if remoteCfg.SwarmRemoteBrokerHTTPUrl != "" {
+		cfg.SwarmRemoteBrokerHTTPUrl = remoteCfg.SwarmRemoteBrokerHTTPUrl
+	}
+	if remoteCfg.SwarmRedisPassword != "" {
+		cfg.SwarmRedisPassword = remoteCfg.SwarmRedisPassword
+	}
+	if len(remoteCfg.HttpRpcList) > 0 {
+		if cfg.HttpRpcList == nil {
+			cfg.HttpRpcList = map[string][]string{}
+		}
+		for k, v := range remoteCfg.HttpRpcList {
+			cfg.HttpRpcList[k] = v
+		}
+	}
+	if len(remoteCfg.WsRpcList) > 0 {
+		if cfg.WsRpcList == nil {
+			cfg.WsRpcList = map[string][]string{}
+		}
+		for k, v := range remoteCfg.WsRpcList {
+			cfg.WsRpcList[k] = v
+		}
+	}
+}
+
 func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8XConfig, error) {
 	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("SSH to manager %s failed: %w", managerIp, err)
 	}
+	defer sshConn.Close()
 
 	envOut, err := sshConn.ExecCommand(`if [ -f ./trader-backend/.env ]; then cat ./trader-backend/.env; fi`)
 	if err != nil {
@@ -350,7 +385,10 @@ func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8X
 		return nil, nil
 	}
 
-	backupPath := workPath(fmt.Sprintf("trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405")))
+	backupPath, dirErr := ensureWorkDir(fmt.Sprintf("trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405")))
+	if dirErr != nil {
+		fmt.Printf("%s failed to prepare backup dir: %s\n", notok, dirErr)
+	}
 	if err := c.FS.WriteFile(backupPath, []byte(remoteEnv)); err != nil {
 		fmt.Printf("%s failed to write remote .env backup to %s: %s\n", notok, backupPath, err)
 		cont, perr := c.TUI.NewPrompt("Remote .env backup could not be written locally. Proceed without a safety copy?", false)
@@ -468,6 +506,9 @@ func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	if cfg.ServerProvider == "" {
 		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first")
 	}
+	if err := c.RequireProvisionedHosts("swarm-deploy", "manager"); err != nil {
+		return err
+	}
 
 	if err := c.swarmDeploy(ctx, true); err != nil {
 		return err
@@ -527,6 +568,9 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		}
 	}
 
+	if c.Input == nil {
+		return fmt.Errorf("internal: input collector not initialized")
+	}
 	if err := c.Input.CollectSwarmDeployInputs(ctx); err != nil {
 		return err
 	}
@@ -643,10 +687,11 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if err != nil {
 		return err
 	}
+	defer managerSSHConn.Close()
 
 	// Stack might exist, prompt user to remove it
 	if _, err := managerSSHConn.ExecCommand(
-		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
+		fmt.Sprintf("printf '%%s\\n' %s | sudo -S docker stack ls | grep %s >/dev/null 2>&1", shQuote(pwd), shQuote(dockerStackName)),
 	); err == nil {
 		ok, err := c.TUI.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
 		if err != nil {
@@ -664,8 +709,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		}
 	}
 
-	ipWorkers, err := c.HostsCfg.GetWorkerIps()
-	if err != nil {
+	if _, err := c.HostsCfg.GetWorkerIps(); err != nil {
 		return fmt.Errorf("finding worker ip addresses: %w", err)
 	}
 	ipMgrPriv, err := c.HostsCfg.GetMangerPrivateIp()
@@ -677,21 +721,17 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
-	cmd := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c 'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general'`,
-		pwd,
-	)
+	pwQ := shQuote(pwd)
+	sudoPipe := fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c `, pwQ)
+	cmd := sudoPipe + `'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general'`
 
 	configEtcExports := "#"
 	for _, ip := range ipWorkersPriv {
-		// Essentially ufw allow from %s to any port nfs (tcp/udp)
 		iptables := fmt.Sprintf(`iptables -A INPUT -s %[1]s -p tcp --dport 2049 -j ACCEPT && iptables -A INPUT -s %[1]s -p udp --dport 2049 -j ACCEPT`, ip)
-		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "%s" `, pwd, iptables)
-		cmd = cmd + cmdUfw
+		cmd = cmd + " && " + sudoPipe + shQuote(iptables)
 		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
 	}
-	// Persist rules
-	cmd = cmd + fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4" `, pwd)
+	cmd = cmd + " && " + sudoPipe + `'mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4'`
 
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
@@ -739,7 +779,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	// enable nfs server
 	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server"`, pwd)
+	cmd = sudoPipe + `'cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server'`
 	_, err = managerSSHConn.ExecCommand(
 		cmd,
 	)
@@ -748,35 +788,27 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	}
 
 	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general" `, pwd, ipMgrPriv)
-	for k, ip := range ipWorkersPriv {
+	cmd = sudoPipe + shQuote(fmt.Sprintf("mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general", ipMgrPriv))
+
+	for _, ip := range ipWorkersPriv {
 		fmt.Println(styles.ItalicText.Render("worker "), ip)
-		var (
-			sshConnWorker conn.SSHConnection
-			err           error
-		)
-		if cfg.ServerProvider == configs.D8XServerProviderAWS {
-			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
+		if err := func() error {
+			sshConnWorker, err := conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
 				ip,
 				c.DefaultClusterUserName,
 				c.SshKeyPath,
 			)
-		} else {
-			sshConnWorker, err = c.CreateSSHConn(
-				ipWorkers[k],
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-		}
-		if err != nil {
+			if err != nil {
+				return err
+			}
+			defer sshConnWorker.Close()
+			if _, err := sshConnWorker.ExecCommand(cmd); err != nil {
+				return fmt.Errorf("failed to mount nfs dir on worker %s via manager bastion: %w", ip, err)
+			}
+			return nil
+		}(); err != nil {
 			return err
-		}
-		_, err = sshConnWorker.ExecCommand(
-			cmd,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to mount nfs dir on worker: %w", err)
 		}
 	}
 
@@ -809,56 +841,36 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`,
 		ipMgrPriv,
 	)
-	cmdDir := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general"`,
-		pwd,
-		ipMgrPriv,
-	)
-	for k, ip := range ipWorkers {
-		var (
-			sshConnWorker conn.SSHConnection
-			err           error
-		)
-		if cfg.ServerProvider == configs.D8XServerProviderAWS {
-			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
+	cmdDir := sudoPipe + shQuote(fmt.Sprintf("mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general", ipMgrPriv))
+
+	for _, ip := range ipWorkersPriv {
+		if err := func() error {
+			sshConnWorker, err := conn.NewSSHConnectionWithBastion(
 				managerSSHConn.GetClient(),
-				ipWorkersPriv[k],
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-		} else {
-			sshConnWorker, err = c.CreateSSHConn(
 				ip,
 				c.DefaultClusterUserName,
 				c.SshKeyPath,
 			)
-		}
-		if err != nil {
+			if err != nil {
+				return err
+			}
+			defer sshConnWorker.Close()
+			if _, err := sshConnWorker.ExecCommand(cmdDir); err != nil {
+				return fmt.Errorf("failed to create nfs dir on worker %s via manager bastion: %w", ip, err)
+			}
+			if _, err := sshConnWorker.ExecCommand(cmd); err != nil {
+				return fmt.Errorf("creating volume on worker failed: %w", err)
+			}
+			return nil
+		}(); err != nil {
 			return err
-		}
-		_, err = sshConnWorker.ExecCommand(
-			cmdDir,
-		)
-		if err != nil {
-			fmt.Println(string(out))
-			return fmt.Errorf("failed to create nfs dir on worker: %w", err)
-		}
-		_, err = sshConnWorker.ExecCommand(
-			cmd,
-		)
-		if err != nil {
-			fmt.Println(string(out))
-			return fmt.Errorf("creating volume on worker failed: %w", err)
 		}
 	}
 
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
-	swarmDeployCMD := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c "docker compose --env-file ./trader-backend/.env -f ./docker-stack.yml config | sed -E 's/published: \"([0-9]+)\"/published: \1/g' | sed -E 's/^name: .*$/ /'|  docker stack deploy -c - %s"`,
-		pwd,
-		dockerStackName,
-	)
+	deployInner := fmt.Sprintf(`docker compose --env-file ./trader-backend/.env -f ./docker-stack.yml config | sed -E 's/published: "([0-9]+)"/published: \1/g' | sed -E 's/^name: .*$/ /' | docker stack deploy -c - %s`, dockerStackName)
+	swarmDeployCMD := sudoPipe + shQuote(deployInner)
 	out, err = managerSSHConn.ExecCommand(swarmDeployCMD)
 	fmt.Println(string(out))
 	if err != nil {
@@ -888,6 +900,9 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("swarm-nginx", "manager"); err != nil {
+		return err
+	}
 
 	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
 		return err
@@ -912,6 +927,7 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("SSH connection: %w", err)
 	}
+	defer sshConn.Close()
 
 	fmt.Println(styles.ItalicText.Render("Fetching nginx configs from GitHub..."))
 	deployCfg, err := fetchAndBuildNginxConfig(token, env)
@@ -936,33 +952,64 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 	if setupCertbot {
-		fmt.Println("Enter email for certbot:")
-		email := cfg.CertbotEmail
-		if email == "" {
-			email, err = c.TUI.NewInput(components.TextInputOptPlaceholder("admin@example.com"))
-			if err != nil {
-				return err
-			}
-			cfg.CertbotEmail = email
+		email, err := c.promptCertbotEmail(cfg)
+		if err != nil {
+			return err
 		}
 
-		// Issue certs for all server_names in sites.conf
 		hostnames := extractAllServerNames(deployCfg.sitesConfContent)
-		for _, host := range hostnames {
-			fmt.Printf("  Issuing cert for %s...\n", host)
-			cmd := fmt.Sprintf("echo '%s' | sudo -S certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", password, host, email)
-			out, err := sshConn.ExecCommand(cmd)
-			if err != nil {
-				fmt.Printf("  %s certbot failed for %s: %s\n", notok, host, strings.TrimSpace(string(out)))
-			} else {
-				fmt.Printf("  %s %s\n", ok, host)
+		succeeded := map[string]bool{}
+		pending := hostnames
+		var failed []string
+		for {
+			failed = failed[:0]
+			for _, host := range pending {
+				fmt.Printf("  Issuing cert for %s...\n", host)
+				certCmd := fmt.Sprintf("certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", shQuote(host), shQuote(email))
+				out, err := sshExecSudo(sshConn, password, certCmd)
+				if err != nil {
+					fmt.Printf("  %s certbot failed for %s: %s\n", notok, host, strings.TrimSpace(string(out)))
+					failed = append(failed, host)
+				} else {
+					fmt.Printf("  %s %s\n", ok, host)
+					succeeded[host] = true
+				}
 			}
+			if len(failed) == 0 {
+				break
+			}
+			fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("%d of %d cert issuances failed: %s", len(failed), len(pending), strings.Join(failed, ", "))))
+			retry, perr := c.TUI.NewPrompt("Retry failed hosts with a different email?", false)
+			if perr != nil {
+				return perr
+			}
+			if !retry {
+				break
+			}
+			newEmail, eerr := c.promptCertbotEmail(&configs.D8XConfig{})
+			if eerr != nil {
+				return eerr
+			}
+			email = newEmail
+			cfg.CertbotEmail = newEmail
+			pending = append([]string(nil), failed...)
 		}
 
-		// Enable certbot renewal timer
-		sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer")
-
-		cfg.SwarmCertbotDeployed = true
+		if len(succeeded) > 0 {
+			if _, err := sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer"); err != nil {
+				fmt.Printf("  %s could not enable certbot renew timer: %s\n", notok, err)
+			}
+			cfg.SwarmCertbotDeployed = true
+		}
+		stillMissing := []string{}
+		for _, h := range hostnames {
+			if !succeeded[h] {
+				stillMissing = append(stillMissing, h)
+			}
+		}
+		if len(stillMissing) > 0 {
+			fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("certbot did not issue certs for: %s. Re-run \"d8x setup swarm-nginx\" once DNS/email is fixed.", strings.Join(stillMissing, ", "))))
+		}
 	}
 
 	cfg.SwarmNginxDeployed = true
@@ -1032,6 +1079,9 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 		return err
 	}
 	managerConn, err := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err == nil {
+		defer managerConn.Close()
+	}
 	if err != nil {
 		return err
 	}
@@ -1066,5 +1116,40 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 	}
 
 	return nil
+}
+
+func (c *Container) promptCertbotEmail(cfg *configs.D8XConfig) (string, error) {
+	if cfg != nil && isValidEmail(cfg.CertbotEmail) {
+		return cfg.CertbotEmail, nil
+	}
+	for {
+		fmt.Println("Enter email for certbot:")
+		email, err := c.TUI.NewInput(components.TextInputOptPlaceholder("admin@example.com"))
+		if err != nil {
+			return "", err
+		}
+		email = strings.TrimSpace(email)
+		if isValidEmail(email) {
+			if cfg != nil {
+				cfg.CertbotEmail = email
+			}
+			return email, nil
+		}
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("%q is not a valid email address. Try again.", email)))
+	}
+}
+
+func isValidEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.ContainsAny(s, " \t\r\n") {
+		return false
+	}
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || at != strings.LastIndexByte(s, '@') || at == len(s)-1 {
+		return false
+	}
+	domain := s[at+1:]
+	dot := strings.LastIndexByte(domain, '.')
+	return dot > 0 && dot < len(domain)-1
 }
 

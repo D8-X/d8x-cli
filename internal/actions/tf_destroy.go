@@ -55,6 +55,17 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		return nil
 	}
 
+	if err := c.ensureSSHKey(c.SelectedEnv); err != nil {
+		return fmt.Errorf("ensuring SSH key for destroy: %w", err)
+	}
+	authorizedKey, err := getPublicKey(c.SshKeyPath)
+	if err != nil {
+		return fmt.Errorf("reading SSH public key for terraform: %w", err)
+	}
+	if strings.TrimSpace(authorizedKey) == "" {
+		return fmt.Errorf("SSH public key at %s.pub is empty; terraform requires a non-empty authorized_keys value even for destroy", c.SshKeyPath)
+	}
+
 	if err := c.fetchTerraformInputs(cfg); err != nil {
 		return err
 	}
@@ -64,6 +75,17 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	connectCMDToCurrentTerm(tfInit)
 	if err := c.RunCmd(tfInit); err != nil {
 		return fmt.Errorf("terraform init: %w", err)
+	}
+
+	if err := requireTerraformState(c.ProvisioningTfDir); err != nil {
+		fmt.Println(styles.AlertImportant.Render(err.Error()))
+		proceed, perr := c.TUI.NewPrompt("Continue anyway? (destroy will be a no-op; resources at the cloud provider may be orphaned)", false)
+		if perr != nil {
+			return perr
+		}
+		if !proceed {
+			return fmt.Errorf("aborted: no terraform state to destroy")
+		}
 	}
 
 	var args []string = []string{
@@ -83,11 +105,11 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		if awsCfg.AccesKey == "" || awsCfg.SecretKey == "" {
 			return fmt.Errorf("AWS credentials missing: set AWS_ACCESS_KEY_%s and AWS_SECRET_KEY_%s in Bitwarden", strings.ToUpper(c.SelectedEnv), strings.ToUpper(c.SelectedEnv))
 		}
-		awsConfigurer := &awsConfigurer{D8XAWSConfig: awsCfg, authorizedKey: ""}
+		awsConfigurer := &awsConfigurer{D8XAWSConfig: awsCfg, authorizedKey: authorizedKey}
 		args = append(args, awsConfigurer.generateVariables()...)
 
 	case configs.D8XServerProviderLinode:
-		args = append(args, "-var", `authorized_keys=[""]`)
+		args = append(args, "-var", fmt.Sprintf(`authorized_keys=["%s"]`, strings.TrimSpace(authorizedKey)))
 		token := readEnvSecret(c.SelectedEnv, "LINODE_TOKEN")
 		if token == "" {
 			return fmt.Errorf("LINODE_TOKEN missing: set LINODE_TOKEN_%s in Bitwarden", strings.ToUpper(c.SelectedEnv))
@@ -126,6 +148,22 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 		fmt.Printf("%s warning: could not publish reset state to infra repo: %s\n", warning, err)
 	}
 	c.cleanupHostsAfterDestroy()
+	return nil
+}
+
+func requireTerraformState(dir string) error {
+	statePath := filepath.Join(dir, "terraform.tfstate")
+	info, err := os.Stat(statePath)
+	if err != nil || info.Size() == 0 {
+		return fmt.Errorf("no terraform state at %s. Either the env was never provisioned from this directory, or local state was deleted. Re-running provision or migrating state from another machine is required to safely destroy", statePath)
+	}
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", statePath, err)
+	}
+	if !strings.Contains(string(data), "\"resources\"") || strings.Contains(string(data), "\"resources\": []") {
+		return fmt.Errorf("terraform state at %s has no tracked resources. Destroy would be a no-op", statePath)
+	}
 	return nil
 }
 

@@ -388,24 +388,27 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
-
-	// Broker private key must be collected only once per session. Do not
-	// collect it for individual swarm-deploy or if user chooses not to deploy
-	// broker during the setup
-	if input.brokerDeployInput.privateKey == "" && ctx.Command.Name != "swarm-deploy" {
-		collect := true
-		if ctx.Command.Name == "setup" && !input.setup.deployBroker {
-			collect = false
-		}
-
-		if collect {
-			if err := input.CollectBrokerPrivateKey(); err != nil {
-				return err
-			}
-		}
+	activeStep, _ := ctx.App.Metadata["activeStep"].(string)
+	currentCommand := ctx.Command.Name
+	if activeStep != "" {
+		currentCommand = activeStep
 	}
 
+	if currentCommand == "swarm-deploy" || currentCommand == "swarm-nginx" || currentCommand == "metrics-deploy" {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
+
+	collect := true
+	if currentCommand == "setup" && !input.setup.deployBroker {
+		collect = false
+	}
+	if collect {
+		if err := input.CollectBrokerPrivateKey(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -568,7 +571,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				if err := saveAndReport(fieldName, pwd); err != nil {
+				if err := saveAndReportWithConfirm(input.TUI, bwItemName, fieldName, pwd); err != nil {
 					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
 				}
 			}
@@ -684,7 +687,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				if err := saveAndReport(fieldName, pwd); err != nil {
+				if err := saveAndReportWithConfirm(input.TUI, bwItemName, fieldName, pwd); err != nil {
 					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
 				}
 			}
@@ -991,7 +994,7 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 
 	if os.Getenv("BW_SESSION") != "" && cfg.DatabaseDSN != "" {
 		fieldName := "DATABASE_DSN_" + strings.ToUpper(c.SelectedEnv)
-		saveAndReport(fieldName, cfg.DatabaseDSN)
+		_ = saveAndReportWithConfirm(c.TUI, bwItemName, fieldName, cfg.DatabaseDSN)
 	}
 
 	return c.ConfigRWriter.Write(cfg)

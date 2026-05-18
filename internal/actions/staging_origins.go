@@ -3,10 +3,13 @@ package actions
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -18,6 +21,14 @@ import (
 const defaultGhRepo = "D8-X/backend-nginx-infra-config"
 
 const cliCommitPrefix = "[D8X CLI]- "
+
+func ghEscapePath(p string) string {
+	parts := strings.Split(p, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
+}
 
 func getGhRepo() string {
 	if repo := os.Getenv("INFRA_REPO"); repo != "" {
@@ -58,6 +69,9 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 
 	env, err := c.EnsureEnvironment(cfg)
 	if err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("staging-origins", "manager"); err != nil {
 		return err
 	}
 
@@ -252,7 +266,7 @@ func ghListDirs(token string) ([]string, error) {
 }
 
 func ghReadFile(token, path string) (*ghFileResponse, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), ghEscapePath(path))
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -285,7 +299,7 @@ func ghReadFile(token, path string) (*ghFileResponse, error) {
 }
 
 func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), ghEscapePath(path))
 
 	payload := map[string]string{
 		"message": prefixCommitMsg(commitMsg),
@@ -344,7 +358,7 @@ func ghCommitFiles(token string, files []ghCommitFile, message string) error {
 	changedFiles := make([]ghCommitFile, 0, len(files))
 	for _, f := range files {
 		existing, err := ghReadFile(token, f.Path)
-		if err == nil && existing.Content == f.Content {
+		if err == nil && normalizeContentForCompare(existing.Content) == normalizeContentForCompare(f.Content) {
 			continue
 		}
 		changedFiles = append(changedFiles, f)
@@ -431,9 +445,17 @@ func ghCommitFiles(token string, files []ghCommitFile, message string) error {
 	if err := ghAPI(token, "PATCH", base+"/git/refs/heads/"+branch, map[string]string{
 		"sha": newCommit.SHA,
 	}, nil); err != nil {
+		if status := ghStatusCode(err); status == 409 || status == 422 {
+			return fmt.Errorf("update ref: branch %q moved during commit (status %d). Re-run to retry on a fresh ref. Underlying: %w", branch, status, err)
+		}
 		return fmt.Errorf("update ref: %w", err)
 	}
 	return nil
+}
+
+func normalizeContentForCompare(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.TrimRight(s, "\n")
 }
 
 func ghCommitDeletes(token string, paths []string, message string) error {
@@ -510,6 +532,9 @@ func ghCommitDeletes(token string, paths []string, message string) error {
 	if err := ghAPI(token, "PATCH", base+"/git/refs/heads/"+branch, map[string]string{
 		"sha": newCommit.SHA,
 	}, nil); err != nil {
+		if status := ghStatusCode(err); status == 409 || status == 422 {
+			return fmt.Errorf("update ref: branch %q moved during commit (status %d). Re-run to retry on a fresh ref. Underlying: %w", branch, status, err)
+		}
 		return fmt.Errorf("update ref: %w", err)
 	}
 	return nil
@@ -540,6 +565,15 @@ func ghListEnvFiles(token, env string) ([]string, error) {
 	return paths, nil
 }
 
+type ghAPIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *ghAPIError) Error() string {
+	return fmt.Sprintf("GitHub API %d: %s", e.StatusCode, e.Body)
+}
+
 func ghAPI(token, method, url string, payload any, out any) error {
 	var body io.Reader
 	if payload != nil {
@@ -565,7 +599,7 @@ func ghAPI(token, method, url string, payload any, out any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(respBody))
+		return &ghAPIError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 	if out != nil {
 		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -575,11 +609,19 @@ func ghAPI(token, method, url string, payload any, out any) error {
 	return nil
 }
 
+func ghStatusCode(err error) int {
+	var apiErr *ghAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode
+	}
+	return 0
+}
+
 func ghDeleteFile(token, path, sha, commitMsg string) error {
 	if sha == "" {
 		return fmt.Errorf("ghDeleteFile requires a sha")
 	}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), ghEscapePath(path))
 
 	payload := map[string]string{
 		"message": prefixCommitMsg(commitMsg),
@@ -664,12 +706,7 @@ func buildOriginsFile(origins []string) string {
 }
 
 func contains(list []string, item string) bool {
-	for _, v := range list {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, item)
 }
 
 func remove(list []string, item string) []string {

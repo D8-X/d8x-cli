@@ -38,6 +38,7 @@ func RunD8XCli() {
 		Usage:                CmdUsage,
 		Description:          MainDescription,
 		EnableBashCompletion: true,
+		Metadata:             map[string]any{"container": container},
 		CommandNotFound: func(ctx *cli.Context, s string) {
 			fmt.Printf("Unknown command %s\n", s)
 		},
@@ -358,28 +359,72 @@ func isHelpOrVersionInvocation(args []string) bool {
 	return false
 }
 
+var stepActions = map[string]cli.ActionFunc{}
+
 func withNextStep(name string, action cli.ActionFunc) cli.ActionFunc {
-	return func(ctx *cli.Context) error {
-		if err := action(ctx); err != nil {
+	wrapped := func(ctx *cli.Context) error {
+		printStepBanner(name)
+		if ctx.App.Metadata == nil {
+			ctx.App.Metadata = map[string]any{}
+		}
+		prev := ctx.App.Metadata["activeStep"]
+		ctx.App.Metadata["activeStep"] = name
+		err := action(ctx)
+		ctx.App.Metadata["activeStep"] = prev
+		if err != nil {
 			return err
 		}
-		printRemainingSteps(name)
-		return nil
+		return promptAndDispatchNextStep(ctx, name)
 	}
+	stepActions[name] = wrapped
+	return wrapped
 }
 
-func printRemainingSteps(current string) {
-	idx := -1
-	for i, s := range setupSequence {
-		if s.name == current {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 || idx+1 >= len(setupSequence) {
+func printStepBanner(name string) {
+	idx, ok := stepIndex(name)
+	if !ok {
 		return
 	}
-	next := setupSequence[idx+1]
+	s := setupSequence[idx]
+	banner := styles.PurpleBgText.Copy().Padding(0, 2).Render(
+		fmt.Sprintf(" STEP %d/%d: %s ", idx+1, len(setupSequence), s.name),
+	)
 	fmt.Println()
-	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Next step: \"d8x setup %s\" (%s)", next.name, next.desc)))
+	fmt.Println(banner)
+	fmt.Println(styles.ItalicText.Render(s.desc))
+	fmt.Println()
+}
+
+func promptAndDispatchNextStep(ctx *cli.Context, current string) error {
+	container, ok := ctx.App.Metadata["container"].(*actions.Container)
+	idx, found := stepIndex(current)
+	if !found || idx+1 >= len(setupSequence) {
+		return nil
+	}
+	next := setupSequence[idx+1]
+	nextAction := stepActions[next.name]
+	if nextAction == nil || !ok || container == nil {
+		fmt.Println()
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Next: \"d8x setup %s\" (%s)", next.name, next.desc)))
+		return nil
+	}
+	question := fmt.Sprintf("Continue to STEP %d/%d: %s?", idx+2, len(setupSequence), next.name)
+	proceed, err := container.TUI.NewPrompt(question, true)
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Stopped before \"d8x setup %s\". Run it later to continue.", next.name)))
+		return nil
+	}
+	return nextAction(ctx)
+}
+
+func stepIndex(name string) (int, bool) {
+	for i, s := range setupSequence {
+		if s.name == name {
+			return i, true
+		}
+	}
+	return 0, false
 }

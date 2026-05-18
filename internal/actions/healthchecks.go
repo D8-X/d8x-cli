@@ -162,9 +162,8 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 				}
 			}
 			if brokerHostname != "" {
-				apiKey := os.Getenv("NGINX_API_KEY")
-				rpcURL := fmt.Sprintf("https://%s/rpc", brokerHostname)
-				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' -X POST -H 'Content-Type: application/json' -H 'X-Api-Key: %s' -d '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' %s`, apiKey, rpcURL)
+				rpcHealthURL := fmt.Sprintf("https://%s/health", brokerHostname)
+				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' %s`, rpcHealthURL)
 				out, err = brokerConn.ExecCommand(curlCmd)
 				code := strings.TrimSpace(string(out))
 				icon := notok
@@ -175,7 +174,7 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 				} else if err == nil {
 					codeDisplay = styles.ErrorText.Render(code)
 				}
-				fmt.Printf("  %s %-20s %s  %s\n", icon, "rpc-proxy", codeDisplay, rpcURL)
+				fmt.Printf("  %s %-20s %s  %s\n", icon, "rpc-proxy", codeDisplay, rpcHealthURL)
 			}
 		}
 	}

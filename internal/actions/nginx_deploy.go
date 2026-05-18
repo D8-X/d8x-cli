@@ -52,18 +52,25 @@ func deployNginxFull(cfg nginxDeployConfig) error {
 		fmt.Printf("  %s\n", f.dest)
 	}
 
-	// 3. Set nginx file limits
-	sshExecSudo(sshConn, password, "mkdir -p /etc/systemd/system/nginx.service.d")
-	sshWriteFileSudo(sshConn, password, "/etc/systemd/system/nginx.service.d/nofiles.conf", "[Service]\nLimitNOFILE=700000\n")
-	sshExecSudo(sshConn, password, "systemctl daemon-reload")
+	if _, err := sshExecSudo(sshConn, password, "mkdir -p /etc/systemd/system/nginx.service.d"); err != nil {
+		return fmt.Errorf("mkdir nginx.service.d: %w", err)
+	}
+	if err := sshWriteFileSudo(sshConn, password, "/etc/systemd/system/nginx.service.d/nofiles.conf", "[Service]\nLimitNOFILE=700000\n"); err != nil {
+		return fmt.Errorf("writing nofiles.conf: %w", err)
+	}
+	if _, err := sshExecSudo(sshConn, password, "systemctl daemon-reload"); err != nil {
+		return fmt.Errorf("systemctl daemon-reload: %w", err)
+	}
 
 	fmt.Println("Testing nginx config...")
-	if out, err := sshConn.ExecCommand(fmt.Sprintf("echo '%s' | sudo -S nginx -t 2>&1", password)); err != nil {
+	if out, err := sshExecSudo(sshConn, password, "nginx -t 2>&1"); err != nil {
 		return fmt.Errorf("nginx config test failed:\n%s", string(out))
 	}
 
 	fmt.Println("Reloading nginx...")
-	sshExecSudo(sshConn, password, "systemctl reload nginx")
+	if out, err := sshExecSudo(sshConn, password, "systemctl reload nginx"); err != nil {
+		return fmt.Errorf("nginx reload failed:\n%s", string(out))
+	}
 
 	fmt.Println(styles.SuccessText.Render("Nginx deployed and reloaded."))
 	return nil
@@ -96,17 +103,22 @@ func fetchAndBuildNginxConfig(token, env string) (*nginxDeployConfig, error) {
 	}, nil
 }
 
-func sshExecSudo(sshConn conn.SSHConnection, password, cmd string) {
-	sshConn.ExecCommand(fmt.Sprintf("echo '%s' | sudo -S %s", password, cmd))
+func shQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func sshExecSudo(sshConn conn.SSHConnection, password, cmd string) ([]byte, error) {
+	full := fmt.Sprintf("printf '%%s\\n' %s | sudo -S %s", shQuote(password), cmd)
+	return sshConn.ExecCommand(full)
 }
 
 func sshWriteFileSudo(sshConn conn.SSHConnection, password, dest, content string) error {
 	encoded := base64.StdEncoding.EncodeToString([]byte(content))
-	tmpCmd := fmt.Sprintf("echo '%s' | base64 -d > /tmp/d8x_deploy_tmp", encoded)
+	tmpCmd := fmt.Sprintf("printf '%%s' %s | base64 -d > /tmp/d8x_deploy_tmp", shQuote(encoded))
 	if _, err := sshConn.ExecCommand(tmpCmd); err != nil {
 		return fmt.Errorf("writing tmp file for %s: %w", dest, err)
 	}
-	mvCmd := fmt.Sprintf("echo '%s' | sudo -S mv /tmp/d8x_deploy_tmp %s", password, dest)
+	mvCmd := fmt.Sprintf("printf '%%s\\n' %s | sudo -S mv /tmp/d8x_deploy_tmp %s", shQuote(password), shQuote(dest))
 	if _, err := sshConn.ExecCommand(mvCmd); err != nil {
 		return fmt.Errorf("moving to %s: %w", dest, err)
 	}
@@ -118,10 +130,12 @@ func extractAllServerNames(sitesConf string) []string {
 	var names []string
 	for _, line := range strings.Split(sitesConf, "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "server_name ") {
-			name := strings.TrimPrefix(line, "server_name ")
-			name = strings.TrimSuffix(name, ";")
-			name = strings.TrimSpace(name)
+		if !strings.HasPrefix(line, "server_name ") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "server_name ")
+		rest = strings.TrimSuffix(strings.TrimSpace(rest), ";")
+		for _, name := range strings.Fields(rest) {
 			if name != "" && !seen[name] {
 				seen[name] = true
 				names = append(names, name)

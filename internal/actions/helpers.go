@@ -92,7 +92,13 @@ func workPath(rel string) string {
 
 func ensureWorkDir(rel string) (string, error) {
 	path := workPath(rel)
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	dir := filepath.Dir(path)
+	if info, err := os.Stat(dir); err == nil && !info.IsDir() {
+		if err := os.Remove(dir); err != nil {
+			return "", fmt.Errorf("removing stale file at %s: %w", dir, err)
+		}
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}
 	return path, nil

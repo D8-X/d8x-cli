@@ -287,7 +287,7 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 // noLinodeDbCheck displays some information to users when external db is used.
 func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
-	if i.DbId == "" && !c.Input.BrokerOnly() {
+	if i.DbId == "" && c.Input != nil && !c.Input.BrokerOnly() {
 		fmt.Println(
 			styles.AlertImportant.Render(
 				"Make sure you configure external database to allow connections from Linode cluster!",
@@ -295,10 +295,15 @@ func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
 		)
 
 		fmt.Printf(`You should configure your external database to allow connection from provisioned cluster.
-Make sure to refer to %s inventory file or visit your server provider's dashboard to 
+Make sure to refer to %s inventory file or visit your server provider's dashboard to
 find the public ip addresses of your servers.
 `, configs.DEFAULT_HOSTS_FILE)
 
+		if c.HostsCfg == nil {
+			fmt.Println(styles.AlertImportant.Render("hosts.cfg not loaded; cannot list IPs"))
+			c.TUI.NewConfirmation("Press enter to confirm...")
+			return
+		}
 		workers, _ := c.HostsCfg.GetWorkerIps()
 		manager, _ := c.HostsCfg.GetMangerPublicIp()
 		broker, _ := c.HostsCfg.GetBrokerPublicIp()

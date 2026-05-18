@@ -1,8 +1,11 @@
 package actions
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -70,6 +73,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("broker-deploy", "broker"); err != nil {
+		return err
+	}
 
 	if err := c.Input.CollectBrokerDeployInput(ctx); err != nil {
 		return fmt.Errorf("collecting broker deploy input: %w", err)
@@ -99,10 +105,10 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	c.TUI.NewConfirmation(
-		"Review broker-server/chainConfig.json and broker-server/rpc.json on the infra repo before proceeding:\n" +
-			styles.AlertImportant.Render(fmt.Sprintf("%s/broker-server/chainConfig.json\n%s/broker-server/rpc.json", c.SelectedEnv, c.SelectedEnv)),
-	)
+	chainConfigContent, rpcContent, err = c.reviewBrokerConfigs(chainConfigContent, rpcContent)
+	if err != nil {
+		return err
+	}
 
 	fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
 	var redisPw string
@@ -146,6 +152,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("establishing ssh connection: %w", err)
 	}
+	defer sshClient.Close()
 	if err := sshClient.CopyFilesOverSftp(
 		conn.SftpCopySrcDest{Content: chainConfigContent, Dst: "./broker/chainConfig.json"},
 		conn.SftpCopySrcDest{Content: rpcContent, Dst: "./broker/rpc.json"},
@@ -203,10 +210,17 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 			return err
 		}
 	}
-	cmd := "cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%d BROKER_PRIVATE_IP=%s PRIVY_APP_ID=%s RATE_LIMIT=%s ENFORCE_MODE=%s docker compose up -d"
-	out, err = sshClient.ExecCommand(
-		fmt.Sprintf(cmd, bsd.brokerFeeTBPS, redisPw, cfg.ChainId, brokerPrivateIp, privyAppId, rateLimit, enforceMode),
+	cmd := fmt.Sprintf(
+		"cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%s BROKER_PRIVATE_IP=%s PRIVY_APP_ID=%s RATE_LIMIT=%s ENFORCE_MODE=%s docker compose up -d",
+		shQuote(bsd.brokerFeeTBPS),
+		shQuote(redisPw),
+		shQuote(strconv.Itoa(int(cfg.ChainId))),
+		shQuote(brokerPrivateIp),
+		shQuote(privyAppId),
+		shQuote(rateLimit),
+		shQuote(enforceMode),
 	)
+	out, err = sshClient.ExecCommand(cmd)
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err
@@ -241,6 +255,9 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("broker-nginx", "broker"); err != nil {
+		return err
+	}
 
 	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
 		return err
@@ -266,6 +283,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("SSH connection to broker: %w", err)
 	}
+	defer sshConn.Close()
 
 	// Fetch broker nginx config from GitHub
 	fmt.Println(styles.ItalicText.Render("Fetching broker nginx config from GitHub..."))
@@ -306,11 +324,12 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	}
 	fmt.Println("  /etc/nginx/sites-enabled/broker")
 
-	// Test and reload
-	if out, err := sshConn.ExecCommand(fmt.Sprintf("echo '%s' | sudo -S nginx -t 2>&1", password)); err != nil {
+	if out, err := sshExecSudo(sshConn, password, "nginx -t 2>&1"); err != nil {
 		return fmt.Errorf("nginx config test failed:\n%s", string(out))
 	}
-	sshExecSudo(sshConn, password, "systemctl reload nginx")
+	if out, err := sshExecSudo(sshConn, password, "systemctl reload nginx"); err != nil {
+		return fmt.Errorf("nginx reload failed:\n%s", string(out))
+	}
 	fmt.Println(styles.SuccessText.Render("Broker nginx deployed and reloaded."))
 
 	cfg.Services[configs.D8XServiceBrokerServer] = configs.D8XService{
@@ -336,21 +355,24 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 		}
 
 		fmt.Printf("  Issuing cert for %s...\n", brokerServerName)
-		cmd := fmt.Sprintf("echo '%s' | sudo -S certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", password, brokerServerName, emailForCertbot)
-		out, err := sshConn.ExecCommand(cmd)
-		if err != nil {
+		certCmd := fmt.Sprintf("certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", shQuote(brokerServerName), shQuote(emailForCertbot))
+		out, certErr := sshExecSudo(sshConn, password, certCmd)
+		certIssued := certErr == nil
+		if !certIssued {
 			fmt.Printf("  %s certbot failed: %s\n", notok, strings.TrimSpace(string(out)))
 		} else {
 			fmt.Printf("  %s %s\n", ok, brokerServerName)
+			sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer")
+			if val, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				val.UsesHTTPS = true
+				cfg.Services[configs.D8XServiceBrokerServer] = val
+			}
+			cfg.BrokerCertbotDeployed = true
+			fmt.Println(styles.SuccessText.Render("Broker SSL setup done!"))
 		}
-
-		sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer")
-		if val, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
-			val.UsesHTTPS = true
-			cfg.Services[configs.D8XServiceBrokerServer] = val
+		if !certIssued {
+			fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("certbot did not issue a cert for %s. Re-run \"d8x setup broker-nginx\" once DNS/email is fixed.", brokerServerName)))
 		}
-		cfg.BrokerCertbotDeployed = true
-		fmt.Println(styles.SuccessText.Render("Broker SSL setup done!"))
 	}
 
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
@@ -377,11 +399,13 @@ func (c *Container) brokerServerKeyVolSetup(sshClient conn.SSHConnection, pk str
 	// Prepend 0x prefix for pk
 	pk = "0x" + strings.TrimPrefix(pk, "0x")
 
+	if err := sshClient.CopyFilesOverSftp(
+		conn.SftpCopySrcDest{Content: []byte(pk), Dst: "./broker/keyfile.txt"},
+	); err != nil {
+		return nil, fmt.Errorf("staging keyfile: %w", err)
+	}
 	cmd := fmt.Sprintf("cd ./broker && docker volume create %s", BROKER_KEY_VOL_NAME)
-	cmd = fmt.Sprintf("%s && echo -n '%s' > ./keyfile.txt", cmd, pk)
 	cmd = fmt.Sprintf("%s && docker run --rm -v $PWD:/source -v %s:/dest -w /source alpine cp ./keyfile.txt /dest", cmd, BROKER_KEY_VOL_NAME)
-
-	// Remove keyfile once volume is created
 	cmd = fmt.Sprintf("%s && rm ./keyfile.txt", cmd)
 
 	return sshClient.ExecCommand(cmd)
@@ -422,3 +446,109 @@ func convertPercentToTBPS(p string) (string, error) {
 
 	return strconv.FormatFloat(tbps, 'f', 0, 64), nil
 }
+
+func (c *Container) reviewBrokerConfigs(chainConfig, rpc []byte) ([]byte, []byte, error) {
+	files := []struct {
+		repoPath string
+		content  *[]byte
+	}{
+		{"broker-server/chainConfig.json", &chainConfig},
+		{"broker-server/rpc.json", &rpc},
+	}
+	for {
+		for _, f := range files {
+			fmt.Println()
+			fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2).Render(c.SelectedEnv + "/" + f.repoPath))
+			fmt.Println(string(*f.content))
+		}
+		fmt.Println()
+		labels := []string{
+			"Proceed with these values",
+			"Edit broker-server/chainConfig.json",
+			"Edit broker-server/rpc.json",
+			"Abort",
+		}
+		selected, err := c.TUI.NewSelection(labels, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(selected) == 0 {
+			continue
+		}
+		switch selected[0] {
+		case labels[0]:
+			return *files[0].content, *files[1].content, nil
+		case labels[3]:
+			return nil, nil, fmt.Errorf("aborted: broker-server review")
+		case labels[1]:
+			if err := c.editInfraRepoFile(files[0].repoPath, files[0].content); err != nil {
+				fmt.Println(styles.AlertImportant.Render(err.Error()))
+			}
+		case labels[2]:
+			if err := c.editInfraRepoFile(files[1].repoPath, files[1].content); err != nil {
+				fmt.Println(styles.AlertImportant.Render(err.Error()))
+			}
+		}
+	}
+}
+
+func (c *Container) editInfraRepoFile(repoRelPath string, content *[]byte) error {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		for _, candidate := range []string{"nano", "vim", "vi"} {
+			if _, err := exec.LookPath(candidate); err == nil {
+				editor = candidate
+				break
+			}
+		}
+	}
+	if editor == "" {
+		return fmt.Errorf("no editor available: set $EDITOR (e.g. \"export EDITOR=nano\") and try again")
+	}
+
+	tmpPath, err := ensureWorkDir(filepath.Join(c.SelectedEnv, repoRelPath))
+	if err != nil {
+		return fmt.Errorf("prepare temp file: %w", err)
+	}
+	if err := os.WriteFile(tmpPath, *content, 0600); err != nil {
+		return fmt.Errorf("write temp file: %w", err)
+	}
+
+	cmd := exec.Command(editor, tmpPath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	editorErr := cmd.Run()
+
+	edited, err := os.ReadFile(tmpPath)
+	if err != nil {
+		if editorErr != nil {
+			return fmt.Errorf("editor failed and temp file unreadable: %w", editorErr)
+		}
+		return fmt.Errorf("read edited file: %w", err)
+	}
+	if editorErr != nil && bytes.Equal(edited, *content) {
+		return fmt.Errorf("editor exited with error and no changes were saved: %w", editorErr)
+	}
+	var probe any
+	if err := json.Unmarshal(edited, &probe); err != nil {
+		return fmt.Errorf("edited %s is not valid JSON: %w", repoRelPath, err)
+	}
+	if bytes.Equal(edited, *content) {
+		fmt.Println(styles.ItalicText.Render("No changes."))
+		return nil
+	}
+
+	repoPath := c.SelectedEnv + "/" + repoRelPath
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN missing, cannot push %s", repoPath)
+	}
+	if err := ghCommitFiles(token, []ghCommitFile{{Path: repoPath, Content: string(edited)}}, fmt.Sprintf("update %s (modified during \"d8x setup broker-deploy\")", repoPath)); err != nil {
+		return fmt.Errorf("push %s: %w", repoPath, err)
+	}
+	fmt.Printf("%s pushed %s to infra repo\n", ok, repoPath)
+	*content = edited
+	return nil
+}
+

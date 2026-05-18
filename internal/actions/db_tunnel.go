@@ -83,18 +83,22 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	fmt.Println(styles.GrayText.Render("Press Ctrl+C to exit"))
 
 	for {
-		conn, err := l.Accept()
+		clientConn, err := l.Accept()
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-
-		dbConn, err := managerConn.GetClient().Dial("tcp", pgCfg.Host+":"+strconv.Itoa(int(pgCfg.Port)))
-		if err != nil {
-			return fmt.Errorf("dialing database on manager: %w", err)
-		}
-
-		go cpIo(dbConn, conn)
-		go cpIo(conn, dbConn)
+		go func() {
+			defer clientConn.Close()
+			dbConn, err := managerConn.GetClient().Dial("tcp", pgCfg.Host+":"+strconv.Itoa(int(pgCfg.Port)))
+			if err != nil {
+				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("dialing database on manager: %s", err)))
+				return
+			}
+			defer dbConn.Close()
+			done := make(chan struct{}, 2)
+			go func() { cpIo(dbConn, clientConn); done <- struct{}{} }()
+			go func() { cpIo(clientConn, dbConn); done <- struct{}{} }()
+			<-done
+		}()
 	}
 }

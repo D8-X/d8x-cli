@@ -35,6 +35,9 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	if cfg.ServerProvider == "" {
 		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first")
 	}
+	if err := c.RequireProvisionedHosts("metrics-deploy", "manager"); err != nil {
+		return err
+	}
 
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -49,6 +52,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	defer manager.Close()
 
 	loads := []struct {
 		envRelPath, embeddedSrc, remoteDst string
@@ -96,7 +100,9 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		"sleep 5; docker compose -f docker-swarm-metrics.yml up -d",
 	}
 	cmd := strings.Join(cmdLines, ";")
+	prometheusDeployed := true
 	if err := manager.ExecCommandPiped(cmd); err != nil {
+		prometheusDeployed = false
 		fmt.Println(
 			styles.ErrorText.Render(
 				fmt.Sprintf("Deploying metrics: %s", err.Error()),
@@ -109,7 +115,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	// Block access of cadvisor port for public ip servers providers
 	switch cfg.ServerProvider {
 	case configs.D8XServerProviderLinode:
-		workerIps, err := c.HostsCfg.GetWorkerIps()
+		workerPrivIps, err := c.HostsCfg.GetWorkerPrivateIps()
 		if err != nil {
 			return err
 		}
@@ -120,42 +126,41 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		}
 
 		wg := sync.WaitGroup{}
-		for _, workerIp := range workerIps {
-			workerIp := workerIp
+		for _, ip := range workerPrivIps {
+			ip := ip
 			wg.Add(1)
-			go func(ip string) {
-				sh, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+			go func(workerPrivIp string) {
+				defer wg.Done()
+				sh, err := conn.NewSSHConnectionWithBastion(manager.GetClient(), workerPrivIp, c.DefaultClusterUserName, c.SshKeyPath)
 				if err != nil {
 					fmt.Println(
 						styles.ErrorText.Render(
-							fmt.Sprintf("Connecting to worker %s: %s", ip, err.Error()),
+							fmt.Sprintf("Connecting to worker %s via manager bastion: %s", workerPrivIp, err.Error()),
 						),
 					)
+					return
 				}
-				check := "iptables -L -t raw | grep ':%d'"
-				check = fmt.Sprintf(check, CADVISOR_PORT)
-				// We only want to run additional iptables insert if cadvisor
-				// port was not found in grep. Here we'll add a drop rule to the
-				// raw table when destination port is our worker's public IP.
-				cmd := fmt.Sprintf(check+" || iptables -I PREROUTING 1 -t raw -p tcp -d %s --dport %d -j DROP && iptables-save > /etc/iptables/rules.v4", ip, CADVISOR_PORT)
+				defer sh.Close()
+				check := fmt.Sprintf("iptables -L -t raw | grep ':%d'", CADVISOR_PORT)
+				inner := fmt.Sprintf("%s || iptables -I PREROUTING 1 -t raw -p tcp -d %s --dport %d -j DROP && iptables-save > /etc/iptables/rules.v4", check, workerPrivIp, CADVISOR_PORT)
 				out, err := sh.ExecCommand(
-					fmt.Sprintf(`echo '%s' | sudo -S bash -c '%s'`, pwd, cmd),
+					fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c %s`, shQuote(pwd), shQuote(inner)),
 				)
 				if err != nil {
 					fmt.Println(string(out))
 					fmt.Println(
-						styles.ErrorText.Render("[" + ip + "] Error blocking cadvisor port on worker: " + err.Error()),
+						styles.ErrorText.Render("[" + workerPrivIp + "] Error blocking cadvisor port on worker: " + err.Error()),
 					)
 				}
-
-				wg.Done()
-			}(workerIp)
+			}(ip)
 		}
 		wg.Wait()
 
 	}
 
-	// Update cfg
+	if !prometheusDeployed {
+		return fmt.Errorf("metrics deploy aborted: prometheus stack failed to start")
+	}
 	cfg.MetricsDeployed = true
 
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
@@ -174,13 +179,27 @@ func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []str
 		return nil, err
 	}
 
-	// We want to edit targets and remarshall the yaml
 	targets := make([]string, len(workers))
 	for i, w := range workers {
 		targets[i] = w + ":" + strconv.Itoa(CADVISOR_PORT)
 	}
-	// This is horrible, but it works if we don't change our default prometheus config
-	mp["scrape_configs"].([]any)[0].(map[any]any)["static_configs"].([]any)[0].(map[any]any)["targets"] = targets
+	scrapes, ok := mp["scrape_configs"].([]any)
+	if !ok || len(scrapes) == 0 {
+		return nil, fmt.Errorf("prometheus.yml: missing scrape_configs[]")
+	}
+	job, ok := scrapes[0].(map[any]any)
+	if !ok {
+		return nil, fmt.Errorf("prometheus.yml: scrape_configs[0] not a map")
+	}
+	statics, ok := job["static_configs"].([]any)
+	if !ok || len(statics) == 0 {
+		return nil, fmt.Errorf("prometheus.yml: missing static_configs[]")
+	}
+	entry, ok := statics[0].(map[any]any)
+	if !ok {
+		return nil, fmt.Errorf("prometheus.yml: static_configs[0] not a map")
+	}
+	entry["targets"] = targets
 
 	return yaml.Marshal(mp)
 }
@@ -192,6 +211,9 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 		return err
 	}
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("grafana-tunnel", "manager"); err != nil {
 		return err
 	}
 	if !cfg.MetricsDeployed {
@@ -247,18 +269,22 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 	}
 
 	for {
-		conn, err := l.Accept()
+		clientConn, err := l.Accept()
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-
-		grafanaConn, err := managerConn.GetClient().Dial("tcp", "127.0.0.1:"+strconv.Itoa(grafanaPort))
-		if err != nil {
-			return fmt.Errorf("dialing grafana service on manager: %w", err)
-		}
-
-		go cpFn(grafanaConn, conn)
-		go cpFn(conn, grafanaConn)
+		go func() {
+			defer clientConn.Close()
+			grafanaConn, err := managerConn.GetClient().Dial("tcp", "127.0.0.1:"+strconv.Itoa(grafanaPort))
+			if err != nil {
+				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("dialing grafana service on manager: %s", err)))
+				return
+			}
+			defer grafanaConn.Close()
+			done := make(chan struct{}, 2)
+			go func() { cpFn(grafanaConn, clientConn); done <- struct{}{} }()
+			go func() { cpFn(clientConn, grafanaConn); done <- struct{}{} }()
+			<-done
+		}()
 	}
 }

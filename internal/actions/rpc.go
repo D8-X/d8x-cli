@@ -298,6 +298,7 @@ func (c *Container) editRpcConfigParsed(rpcConfig []RPCConfigEntry, chainId uint
 
 			rpcConfig[i] = entry
 			found = true
+			break
 		}
 	}
 

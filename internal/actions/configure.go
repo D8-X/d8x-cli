@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
+	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/crypto/bcrypt"
@@ -28,6 +29,9 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	}
 	if cfg.ServerProvider == "" {
 		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" which sets it for new envs")
+	}
+	if err := c.RequireProvisionedHosts("configure"); err != nil {
+		return err
 	}
 
 	// Update hosts.cfg for linode provider in case d8x config was changed
@@ -93,6 +97,11 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("writing ansible inventory: %w", err)
 	}
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := appendWorkerProxyJump(inventoryPath, c.HostsCfg, c.DefaultClusterUserName, privKeyPath); err != nil {
+			fmt.Printf("  %s could not add worker ProxyJump to inventory: %s\n", notok, err)
+		}
+	}
 
 	args := []string{
 		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, privKeyPath),
@@ -107,13 +116,10 @@ func (c *Container) Configure(ctx *cli.Context) error {
 
 	switch cfg.ServerProvider {
 	case configs.D8XServerProviderAWS:
-		// For AWS, we don't want to setup UFW, since firewall is already handled by
-		// AWS itself
 		args = append(args, "--extra-vars", "no_ufw=true")
 
 	case configs.D8XServerProviderLinode:
-		// For linode - pass become_pass for subsequent configuration runs.
-		if cfg.ConfigDetails.Done {
+		if c.UserPassword != "" {
 			args = append(args,
 				"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, c.UserPassword),
 			)
@@ -175,6 +181,100 @@ func (c *Container) fetchSetupPlaybook() (string, error) {
 		return "", fmt.Errorf("writing temp playbook: %w", err)
 	}
 	return path, nil
+}
+
+func appendWorkerProxyJump(inventoryPath string, hosts files.HostsFileInteractor, clusterUser, privKeyPath string) error {
+	workers, err := hosts.GetWorkerIps()
+	if err != nil || len(workers) == 0 {
+		return nil
+	}
+	privateIps, _ := hosts.GetWorkerPrivateIps()
+	managerIp, err := hosts.GetMangerPublicIp()
+	if err != nil || managerIp == "" {
+		return fmt.Errorf("manager public IP not found")
+	}
+	existing, err := os.ReadFile(inventoryPath)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(existing), "[workers:vars]") {
+		return nil
+	}
+	managerHasClusterUser := false
+	for _, line := range strings.Split(string(existing), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), managerIp) && strings.Contains(line, "ansible_user=") {
+			managerHasClusterUser = true
+			break
+		}
+	}
+	proxyUser := clusterUser
+	if !managerHasClusterUser {
+		proxyUser = "root"
+	}
+	if strings.ContainsAny(privKeyPath, "'\"$`\\ ") {
+		return fmt.Errorf("ssh key path %q contains unsafe characters; move it to a path without spaces or shell metacharacters", privKeyPath)
+	}
+
+	publicToPrivate := map[string]string{}
+	for i, pub := range workers {
+		if i < len(privateIps) && privateIps[i] != "" {
+			publicToPrivate[pub] = privateIps[i]
+		}
+	}
+	if len(publicToPrivate) > 0 {
+		rewritten, err := rewriteWorkersToPrivate(string(existing), publicToPrivate)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(inventoryPath, []byte(rewritten), 0644); err != nil {
+			return err
+		}
+		existing = []byte(rewritten)
+	}
+
+	proxyCommand := fmt.Sprintf(`ssh -i %s -W %%h:%%p -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -q %s@%s`, privKeyPath, proxyUser, managerIp)
+	prefix := ""
+	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
+		prefix = "\n"
+	}
+	block := fmt.Sprintf("%s\n[workers:vars]\nansible_ssh_common_args='-o ProxyCommand=\"%s\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'\n", prefix, proxyCommand)
+	f, err := os.OpenFile(inventoryPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.WriteString(block); err != nil {
+		return err
+	}
+	return nil
+}
+
+func rewriteWorkersToPrivate(inventory string, publicToPrivate map[string]string) (string, error) {
+	lines := strings.Split(inventory, "\n")
+	inWorkers := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inWorkers = trimmed == "[workers]"
+			continue
+		}
+		if !inWorkers || trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		priv, ok := publicToPrivate[fields[0]]
+		if !ok {
+			continue
+		}
+		if strings.Contains(line, "ansible_host=") {
+			continue
+		}
+		lines[i] = line + " ansible_host=" + priv
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 func generatePassword(n int) (string, error) {
