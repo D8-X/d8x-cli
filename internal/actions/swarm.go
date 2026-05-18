@@ -39,23 +39,35 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 
 func (c *Container) EditSwarmEnvBytes(envContent []byte, cfg *configs.D8XConfig) ([]byte, error) {
 	envFileLines := strings.Split(string(envContent), "\n")
-	findReplaceOrCreateEnvs := map[string]string{
+	managed := map[string]string{
 		"SDK_CONFIG_NAME":    c.cachedChainJson.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
 		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
 		"REDIS_PASSWORD":     cfg.SwarmRedisPassword,
 		"REMOTE_BROKER_HTTP": cfg.SwarmRemoteBrokerHTTPUrl,
 		"DATABASE_DSN":       cfg.DatabaseDSN,
 	}
+	findReplaceOrCreateEnvs := map[string]string{}
+	for k, v := range managed {
+		findReplaceOrCreateEnvs[k] = v
+	}
+	for k, v := range c.gatherSwarmEnvOverridesFromBitwarden() {
+		if _, isManaged := managed[k]; isManaged {
+			fmt.Printf("%s Bitwarden override for %q ignored (managed by reconciliation pipeline)\n", warning, k)
+			continue
+		}
+		findReplaceOrCreateEnvs[k] = v
+	}
 	prependEnvs := []string{}
-	for env, value := range findReplaceOrCreateEnvs {
+	for key, value := range findReplaceOrCreateEnvs {
 		if value == "" {
 			continue
 		}
 		envFound := false
-		envVal := env + "=" + value
-		fmt.Printf("Setting %s \n", envVal)
+		envVal := key + "=" + value
+		fmt.Printf("Setting %s=%s\n", key, redactSecret(key, value))
 		for lineIndex, line := range envFileLines {
-			if strings.HasPrefix(line, env) {
+			trimmed := strings.TrimLeft(line, " \t")
+			if strings.HasPrefix(trimmed, key+"=") || strings.HasPrefix(trimmed, key+" =") {
 				envFound = true
 				envFileLines[lineIndex] = envVal
 				break
@@ -69,6 +81,25 @@ func (c *Container) EditSwarmEnvBytes(envContent []byte, cfg *configs.D8XConfig)
 		envFileLines = append(prependEnvs, envFileLines...)
 	}
 	return []byte(strings.Join(envFileLines, "\n")), nil
+}
+
+func (c *Container) gatherSwarmEnvOverridesFromBitwarden() map[string]string {
+	out := map[string]string{}
+	if c.BitwardenFields == nil || c.SelectedEnv == "" {
+		return out
+	}
+	prefix := "SWARM_ENV_" + strings.ToUpper(c.SelectedEnv) + "_"
+	for field, value := range c.BitwardenFields {
+		if value == "" || !strings.HasPrefix(field, prefix) {
+			continue
+		}
+		key := strings.TrimPrefix(field, prefix)
+		if key == "" {
+			continue
+		}
+		out[key] = value
+	}
+	return out
 }
 
 // UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
