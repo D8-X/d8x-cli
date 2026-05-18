@@ -587,8 +587,6 @@ func writeRemoteFile(sshConn conn.SSHConnection, remotePath string, content []by
 }
 
 func rpcsForChain(entries []RPCConfigEntry, chainId uint) (httpUrls, wsUrls []string) {
-	seenH := map[string]struct{}{}
-	seenW := map[string]struct{}{}
 	for _, e := range entries {
 		if e.ChainId != chainId {
 			continue
@@ -597,20 +595,14 @@ func rpcsForChain(entries []RPCConfigEntry, chainId uint) (httpUrls, wsUrls []st
 			if u == "" {
 				continue
 			}
-			if _, ok := seenH[u]; !ok {
-				seenH[u] = struct{}{}
-				httpUrls = append(httpUrls, u)
-			}
+			httpUrls = append(httpUrls, u)
 		}
 		if e.WsRpcs != nil {
 			for _, u := range *e.WsRpcs {
 				if u == "" {
 					continue
 				}
-				if _, ok := seenW[u]; !ok {
-					seenW[u] = struct{}{}
-					wsUrls = append(wsUrls, u)
-				}
+				wsUrls = append(wsUrls, u)
 			}
 		}
 	}
