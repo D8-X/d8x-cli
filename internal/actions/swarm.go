@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,13 +16,56 @@ import (
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/styles"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/urfave/cli/v2"
 )
+
+func readManagerFile(sshConn conn.SSHConnection, path string) ([]byte, bool, error) {
+	cmd := fmt.Sprintf(`if [ -f %s ]; then printf 'D8X_EXISTS\n'; base64 %s; else printf 'D8X_MISSING\n'; fi`, shQuote(path), shQuote(path))
+	out, err := sshConn.ExecCommand(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+	s := string(out)
+	nl := strings.IndexByte(s, '\n')
+	if nl < 0 {
+		return nil, false, fmt.Errorf("unexpected output reading %s", path)
+	}
+	marker := strings.TrimSpace(s[:nl])
+	rest := s[nl+1:]
+	switch marker {
+	case "D8X_EXISTS":
+		raw := strings.Join(strings.Fields(rest), "")
+		content, derr := base64.StdEncoding.DecodeString(raw)
+		if derr != nil {
+			return nil, true, fmt.Errorf("decoding base64 of %s: %w", path, derr)
+		}
+		return content, true, nil
+	case "D8X_MISSING":
+		return nil, false, nil
+	default:
+		return nil, false, fmt.Errorf("unexpected marker %q reading %s", marker, path)
+	}
+}
 
 // Stack name that will be used when creating/destroying or managing swarm
 // cluster deployment.
 // TODO - store this in config and make this configurable via flags
 var dockerStackName = "stack"
+
+type managedSwarmFile struct {
+	dst            string
+	repoPath       string
+	embeddedSrc    string
+	dockerConfig   string
+	managerContent []byte
+	managerExists  bool
+	baseContent    []byte
+	baseSource     string
+	content        []byte
+	status         string
+	accepted       bool
+}
 
 // EditSwarmEnv edits the .env file for swarm deployment with user provided and
 // provisioning values.
@@ -88,16 +133,15 @@ func (c *Container) gatherSwarmEnvOverridesFromBitwarden() map[string]string {
 	if c.BitwardenFields == nil || c.SelectedEnv == "" {
 		return out
 	}
-	prefix := "SWARM_ENV_" + strings.ToUpper(c.SelectedEnv) + "_"
-	for field, value := range c.BitwardenFields {
-		if value == "" || !strings.HasPrefix(field, prefix) {
-			continue
+	envExample, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
+	if err != nil {
+		return out
+	}
+	suffix := "_" + strings.ToUpper(c.SelectedEnv)
+	for key := range parseEnvBytes(envExample) {
+		if v, ok := c.BitwardenFields[key+suffix]; ok && v != "" {
+			out[key] = v
 		}
-		key := strings.TrimPrefix(field, prefix)
-		if key == "" {
-			continue
-		}
-		out[key] = value
 	}
 	return out
 }
@@ -615,100 +659,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 
-	envContent, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
-	if err != nil {
-		return fmt.Errorf("loading embedded trader-backend env template: %w", err)
-	}
-	rpcMain, err := c.loadInfraRepoFile("trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json")
-	if err != nil {
-		return err
-	}
-	rpcHist, err := c.loadInfraRepoFile("trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json")
-	if err != nil {
-		return err
-	}
-	prices, err := c.loadInfraRepoFile("candles/prices.config.json", "embedded/candles/prices.config.json")
-	if err != nil {
-		return err
-	}
-	rpcConf, err := c.loadInfraRepoFile("candles/rpc_conf.json", "embedded/candles/rpc_conf.json")
-	if err != nil {
-		return err
-	}
-	swarmStack, err := c.loadInfraRepoFile("docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml")
-	if err != nil {
-		return err
-	}
-
-	chainIdStr := strconv.Itoa(int(cfg.ChainId))
-	shouldUpdateConfigs := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || cfg.SwarmRedisPassword != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
-
-	if c.Input.swarmDeployInput.guideConfig || shouldUpdateConfigs {
-		envContent, err = c.EditSwarmEnvBytes(envContent, cfg)
-		if err != nil {
-			return fmt.Errorf("editing .env content: %w", err)
-		}
-
-		if len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 {
-			for i, slot := range []struct {
-				name    string
-				content *[]byte
-			}{
-				{"trader-backend/rpc.main.json", &rpcMain},
-				{"trader-backend/rpc.history.json", &rpcHist},
-			} {
-				httpRpcs, wsRpcs := DistributeRpcs(i, chainIdStr, cfg)
-				fmt.Printf("Updating %s config...\n", slot.name)
-				updated, uerr := c.editRpcConfigUrlsBytes(*slot.content, cfg.ChainId, wsRpcs, httpRpcs)
-				if uerr != nil {
-					fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not update %s: %+v", slot.name, uerr)))
-					continue
-				}
-				*slot.content = updated
-			}
-		}
-
-		userProvidedHttpEndpoints := cfg.UserSuppliedPriceFeedEndpoints
-		slices.Sort(userProvidedHttpEndpoints)
-		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
-		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(chainIdStr)
-		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
-		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
-			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
-		}
-
-		if len(priceServiceHTTPSEndpoints) > 0 {
-			updated, uerr := UpdateConfigBytes(prices, UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints))
-			if uerr != nil {
-				return fmt.Errorf("updating candles prices config: %w", uerr)
-			}
-			prices = updated
-		}
-	}
-
-	if showConfigConfirmation {
-		fmt.Println(styles.AlertImportant.Render("Review the configuration below before deploying."))
-		c.printDeploySummaryBytes(envContent, cfg, managerIp)
-		fmt.Println("The following configuration files will be copied to the 'manager node':")
-		for _, dst := range []string{
-			"./trader-backend/.env",
-			"./trader-backend/rpc.main.json",
-			"./trader-backend/rpc.history.json",
-			"./candles/prices.config.json",
-			"./candles/rpc_conf.json",
-			"./docker-stack.yml",
-		} {
-			fmt.Println("  " + dst)
-		}
-		proceed, err := c.TUI.NewPrompt("Proceed with deployment using the values above?", false)
-		if err != nil {
-			return err
-		}
-		if !proceed {
-			return fmt.Errorf("aborted: deployment declined at confirmation step")
-		}
-	}
-
 	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
@@ -724,7 +674,216 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	}
 	defer managerSSHConn.Close()
 
-	// Stack might exist, prompt user to remove it
+	managedFiles := []*managedSwarmFile{
+		{dst: "./trader-backend/.env", repoPath: "trader-backend/.env", embeddedSrc: "embedded/trader-backend/env.example"},
+		{dst: "./trader-backend/rpc.main.json", repoPath: "trader-backend/rpc.main.json", embeddedSrc: "embedded/trader-backend/rpc.main.json", dockerConfig: "cfg_rpc"},
+		{dst: "./trader-backend/rpc.history.json", repoPath: "trader-backend/rpc.history.json", embeddedSrc: "embedded/trader-backend/rpc.history.json", dockerConfig: "cfg_rpc_history"},
+		{dst: "./candles/prices.config.json", repoPath: "candles/prices.config.json", embeddedSrc: "embedded/candles/prices.config.json", dockerConfig: "cfg_prices"},
+		{dst: "./candles/rpc_conf.json", repoPath: "candles/rpc_conf.json", embeddedSrc: "embedded/candles/rpc_conf.json", dockerConfig: "cfg_rpc_candles"},
+		{dst: "./docker-stack.yml", repoPath: "docker-swarm-stack.yml", embeddedSrc: "embedded/docker-swarm-stack.yml"},
+	}
+
+	for _, mf := range managedFiles {
+		cur, exists, rerr := readManagerFile(managerSSHConn, mf.dst)
+		if rerr != nil {
+			return fmt.Errorf("reading %s on manager: %w", mf.dst, rerr)
+		}
+		mf.managerContent = cur
+		mf.managerExists = exists
+	}
+
+	token := os.Getenv("GITHUB_TOKEN")
+	for _, mf := range managedFiles {
+		loaded := false
+		if token != "" && c.SelectedEnv != "" {
+			f, gErr := ghReadFile(token, c.SelectedEnv+"/"+mf.repoPath)
+			if gErr == nil {
+				mf.baseContent = []byte(f.Content)
+				mf.baseSource = fmt.Sprintf("%s/%s on infra repo", c.SelectedEnv, mf.repoPath)
+				loaded = true
+			}
+		}
+		if !loaded && mf.managerExists {
+			mf.baseContent = mf.managerContent
+			mf.baseSource = fmt.Sprintf("manager:%s (no override on infra repo; preserving live state)", mf.dst)
+			loaded = true
+		}
+		if !loaded {
+			data, eErr := configs.EmbededConfigs.ReadFile(mf.embeddedSrc)
+			if eErr != nil {
+				return fmt.Errorf("reading embedded %s: %w", mf.embeddedSrc, eErr)
+			}
+			mf.baseContent = data
+			mf.baseSource = "embedded template (fresh deploy)"
+		}
+		mf.content = mf.baseContent
+	}
+
+	chainIdStr := strconv.Itoa(int(cfg.ChainId))
+	shouldUpdateConfigs := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || cfg.SwarmRedisPassword != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
+
+	if c.Input.swarmDeployInput.guideConfig || shouldUpdateConfigs {
+		envMF := managedFiles[0]
+		patched, perr := c.EditSwarmEnvBytes(envMF.content, cfg)
+		if perr != nil {
+			return fmt.Errorf("editing .env content: %w", perr)
+		}
+		envMF.content = patched
+
+		if len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 {
+			rpcSlots := []*managedSwarmFile{managedFiles[1], managedFiles[2]}
+			for i, mf := range rpcSlots {
+				httpRpcs, wsRpcs := DistributeRpcs(i, chainIdStr, cfg)
+				fmt.Printf("Patching %s with RPCs from config.json (base: %s)...\n", mf.repoPath, mf.baseSource)
+				patched, uerr := c.editRpcConfigUrlsBytes(mf.content, cfg.ChainId, wsRpcs, httpRpcs)
+				if uerr != nil {
+					fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not update %s: %+v", mf.repoPath, uerr)))
+					continue
+				}
+				mf.content = patched
+			}
+		}
+
+		userProvidedHttpEndpoints := cfg.UserSuppliedPriceFeedEndpoints
+		slices.Sort(userProvidedHttpEndpoints)
+		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
+		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(chainIdStr)
+		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
+		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
+			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
+		}
+		if len(priceServiceHTTPSEndpoints) > 0 {
+			pricesMF := managedFiles[3]
+			patched, uerr := UpdateConfigBytes(pricesMF.content, UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints))
+			if uerr != nil {
+				return fmt.Errorf("updating candles prices config: %w", uerr)
+			}
+			pricesMF.content = patched
+		}
+	}
+
+	for _, mf := range managedFiles {
+		switch {
+		case !mf.managerExists:
+			mf.status = "new"
+			mf.accepted = true
+		case bytes.Equal(mf.managerContent, mf.content):
+			mf.status = "unchanged"
+		default:
+			mf.status = "changed"
+		}
+	}
+
+	if showConfigConfirmation {
+		fmt.Println(styles.AlertImportant.Render("Review the configuration below before deploying."))
+		c.printDeploySummaryBytes(managedFiles[0].content, cfg, managerIp)
+
+		fmt.Println()
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("Per-file plan for manager %s:", managerIp)))
+		for _, mf := range managedFiles {
+			statusLabel := "?"
+			switch mf.status {
+			case "new":
+				statusLabel = "NEW (create)"
+			case "unchanged":
+				statusLabel = "UNCHANGED (skip)"
+			case "changed":
+				statusLabel = "CHANGED"
+			}
+			fmt.Println()
+			fmt.Printf("%s [%s, %d bytes]\n", styles.CommandTitleText.Render(mf.dst), statusLabel, len(mf.content))
+			fmt.Printf("  base: %s\n", mf.baseSource)
+			switch mf.status {
+			case "new":
+				fmt.Println(styles.ItalicText.Render("  ---- new content ----"))
+				for _, line := range strings.Split(strings.TrimRight(string(mf.content), "\n"), "\n") {
+					fmt.Println("  " + line)
+				}
+				fmt.Println(styles.ItalicText.Render("  ---- end ----"))
+			case "changed":
+				ud, derr := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+					A:        difflib.SplitLines(string(mf.managerContent)),
+					B:        difflib.SplitLines(string(mf.content)),
+					FromFile: "manager:" + mf.dst,
+					ToFile:   "new",
+					Context:  3,
+				})
+				if derr != nil {
+					fmt.Println(styles.ErrorText.Render("  (diff render failed: " + derr.Error() + ")"))
+				} else {
+					fmt.Println(styles.ItalicText.Render("  ---- diff ----"))
+					for _, line := range strings.Split(strings.TrimRight(ud, "\n"), "\n") {
+						fmt.Println("  " + line)
+					}
+					fmt.Println(styles.ItalicText.Render("  ---- end ----"))
+				}
+				accept, perr := c.TUI.NewPrompt(fmt.Sprintf("Overwrite manager:%s?", mf.dst), false)
+				if perr != nil {
+					return perr
+				}
+				mf.accepted = accept
+				if !accept {
+					fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Keeping manager:%s as-is; will skip copy and not recreate its docker config.", mf.dst)))
+				}
+			}
+		}
+	} else {
+		for _, mf := range managedFiles {
+			if mf.status == "changed" {
+				mf.accepted = true
+			}
+		}
+	}
+
+	if showConfigConfirmation {
+		var willCopy, willRecreate, willKeep []string
+		for _, mf := range managedFiles {
+			switch {
+			case mf.accepted && mf.status == "new":
+				willCopy = append(willCopy, fmt.Sprintf("create %s", mf.dst))
+				if mf.dockerConfig != "" {
+					willRecreate = append(willRecreate, mf.dockerConfig)
+				}
+			case mf.accepted && mf.status == "changed":
+				willCopy = append(willCopy, fmt.Sprintf("overwrite %s", mf.dst))
+				if mf.dockerConfig != "" {
+					willRecreate = append(willRecreate, mf.dockerConfig)
+				}
+			case !mf.accepted && mf.status == "changed":
+				willKeep = append(willKeep, mf.dst)
+			}
+		}
+		fmt.Println()
+		fmt.Println(styles.AlertImportant.Render("Final deployment plan:"))
+		if len(willCopy) == 0 {
+			fmt.Println("  no SFTP writes")
+		} else {
+			fmt.Println("  SFTP writes on manager:")
+			for _, s := range willCopy {
+				fmt.Println("    - " + s)
+			}
+		}
+		if len(willRecreate) == 0 {
+			fmt.Println("  no docker config rebuilds")
+		} else {
+			fmt.Printf("  docker config rm/create: %s\n", strings.Join(willRecreate, ", "))
+		}
+		if len(willKeep) > 0 {
+			fmt.Println("  keep as-is on manager:")
+			for _, s := range willKeep {
+				fmt.Println("    - " + s)
+			}
+		}
+		fmt.Printf("  then run \"docker stack deploy -c ./docker-stack.yml %s\" on the manager\n", dockerStackName)
+		proceed, err := c.TUI.NewPrompt("Proceed with the plan above?", false)
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			return fmt.Errorf("aborted: deployment declined at final confirmation")
+		}
+	}
+
 	if _, err := managerSSHConn.ExecCommand(
 		fmt.Sprintf("printf '%%s\\n' %s | sudo -S docker stack ls | grep %s >/dev/null 2>&1", shQuote(pwd), shQuote(dockerStackName)),
 	); err == nil {
@@ -749,57 +908,56 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	}
 	sudoPipe := fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c `, shQuote(pwd))
 
-	managedConfigNames := []string{
-		"cfg_rpc",
-		"cfg_rpc_history",
-		"cfg_prices",
-		"cfg_rpc_candles",
-	}
-	// Lines of docker config commands which we will concat into single
-	// bash -c ssh call
-	dockerConfigsCMD := []string{
-		`docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1`,
-		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
-		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
-		`docker config create cfg_rpc_candles ./candles/rpc_conf.json >/dev/null 2>&1`,
-		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
+	copyList := []conn.SftpCopySrcDest{}
+	for _, mf := range managedFiles {
+		if !mf.accepted {
+			continue
+		}
+		copyList = append(copyList, conn.SftpCopySrcDest{Content: mf.content, Dst: mf.dst})
 	}
 
-	copyList := []conn.SftpCopySrcDest{
-		{Content: envContent, Dst: "./trader-backend/.env"},
-		{Content: rpcMain, Dst: "./trader-backend/rpc.main.json"},
-		{Content: rpcHist, Dst: "./trader-backend/rpc.history.json"},
-		{Content: prices, Dst: "./candles/prices.config.json"},
-		{Content: rpcConf, Dst: "./candles/rpc_conf.json"},
-		{Content: swarmStack, Dst: "./docker-stack.yml"},
+	var rebuildConfigNames []string
+	var dockerConfigsCMD []string
+	for _, mf := range managedFiles {
+		if mf.dockerConfig == "" {
+			continue
+		}
+		if !mf.accepted {
+			continue
+		}
+		rebuildConfigNames = append(rebuildConfigNames, mf.dockerConfig)
+		dockerConfigsCMD = append(dockerConfigsCMD, fmt.Sprintf("docker config create %s %s >/dev/null 2>&1", mf.dockerConfig, mf.dst))
 	}
 
-	// Copy files to remote
-	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
-	if err := managerSSHConn.CopyFilesOverSftp(
-		copyList...,
-	); err != nil {
-		return fmt.Errorf("copying configuration files to manager: %w", err)
-	} else {
+	if len(copyList) > 0 {
+		fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
+		if err := managerSSHConn.CopyFilesOverSftp(copyList...); err != nil {
+			return fmt.Errorf("copying configuration files to manager: %w", err)
+		}
 		fmt.Println(styles.SuccessText.Render("configuration files copied to manager"))
+	} else {
+		fmt.Println(styles.ItalicText.Render("All configuration files already match manager state; skipping SFTP copy."))
 	}
 
-	// Recreate configs
-	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
-	out, err := managerSSHConn.ExecCommand(
-		"echo -e '" + strings.Join(managedConfigNames, "\n") + `' | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
-	)
-	fmt.Println(string(out))
-	if err != nil {
-		return fmt.Errorf("creating docker configs: %w", err)
+	if len(dockerConfigsCMD) > 0 {
+		fmt.Println(styles.ItalicText.Render("Recreating docker configs for changed files..."))
+		out, err := managerSSHConn.ExecCommand(
+			"echo -e '" + strings.Join(rebuildConfigNames, "\n") + `' | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
+		)
+		fmt.Println(string(out))
+		if err != nil {
+			return fmt.Errorf("creating docker configs: %w", err)
+		}
+		fmt.Println(styles.SuccessText.Render("docker configs recreated on manager node"))
+	} else {
+		fmt.Println(styles.ItalicText.Render("No docker configs need recreating."))
 	}
-	fmt.Println(styles.SuccessText.Render("docker configs were created on manager node!"))
 
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
 	deployInner := fmt.Sprintf(`docker compose --env-file ./trader-backend/.env -f ./docker-stack.yml config | sed -E 's/published: "([0-9]+)"/published: \1/g' | sed -E 's/^name: .*$/ /' | docker stack deploy -c - %s`, dockerStackName)
 	swarmDeployCMD := sudoPipe + shQuote(deployInner)
-	out, err = managerSSHConn.ExecCommand(swarmDeployCMD)
+	out, err := managerSSHConn.ExecCommand(swarmDeployCMD)
 	fmt.Println(string(out))
 	if err != nil {
 		return fmt.Errorf("swarm deployment failed: %w", err)

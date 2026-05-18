@@ -21,6 +21,63 @@ import (
 const BROKER_KEY_VOL_NAME = "keyvol"
 
 
+func (c *Container) EditBrokerEnvBytes(envContent []byte, managed map[string]string) ([]byte, error) {
+	envFileLines := strings.Split(string(envContent), "\n")
+	finalKeys := map[string]string{}
+	for k, v := range managed {
+		finalKeys[k] = v
+	}
+	for k, v := range c.gatherBrokerEnvOverridesFromBitwarden() {
+		if _, isManaged := managed[k]; isManaged {
+			fmt.Printf("%s Bitwarden override for %q ignored (managed by broker-deploy pipeline)\n", warning, k)
+			continue
+		}
+		finalKeys[k] = v
+	}
+	prependEnvs := []string{}
+	for key, value := range finalKeys {
+		if value == "" {
+			continue
+		}
+		envFound := false
+		envVal := key + "=" + value
+		fmt.Printf("Setting %s=%s\n", key, redactSecret(key, value))
+		for lineIndex, line := range envFileLines {
+			trimmed := strings.TrimLeft(line, " \t")
+			if strings.HasPrefix(trimmed, key+"=") || strings.HasPrefix(trimmed, key+" =") {
+				envFound = true
+				envFileLines[lineIndex] = envVal
+				break
+			}
+		}
+		if !envFound {
+			prependEnvs = append(prependEnvs, envVal)
+		}
+	}
+	if len(prependEnvs) > 0 {
+		envFileLines = append(prependEnvs, envFileLines...)
+	}
+	return []byte(strings.Join(envFileLines, "\n")), nil
+}
+
+func (c *Container) gatherBrokerEnvOverridesFromBitwarden() map[string]string {
+	out := map[string]string{}
+	if c.BitwardenFields == nil || c.SelectedEnv == "" {
+		return out
+	}
+	envExample, err := configs.EmbededConfigs.ReadFile("embedded/broker-server/env.example")
+	if err != nil {
+		return out
+	}
+	suffix := "_" + strings.ToUpper(c.SelectedEnv)
+	for key := range parseEnvBytes(envExample) {
+		if v, ok := c.BitwardenFields[key+suffix]; ok && v != "" {
+			out[key] = v
+		}
+	}
+	return out
+}
+
 func (c *Container) LoadBrokerDeployConfigs() (rpc, chainConfig, dockerCompose []byte, err error) {
 	rpc, err = c.loadInfraRepoFile("broker-server/rpc.json", "embedded/broker-server/rpc.json")
 	if err != nil {
@@ -140,52 +197,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		}
 	}
 
-	// Retrieve required information from user input
 	pk := c.Input.brokerDeployInput.privateKey
 	bsd.brokerFeeTBPS = c.Input.brokerDeployInput.feeTBPS
 
-	// Upload the files and exec in ./broker directory
-	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
-	sshClient, err := c.CreateSSHConn(
-		bsd.brokerServerIpAddr,
-		c.DefaultClusterUserName,
-		c.SshKeyPath,
-	)
-	if err != nil {
-		return fmt.Errorf("establishing ssh connection: %w", err)
-	}
-	defer sshClient.Close()
-	if err := sshClient.CopyFilesOverSftp(
-		conn.SftpCopySrcDest{Content: chainConfigContent, Dst: "./broker/chainConfig.json"},
-		conn.SftpCopySrcDest{Content: rpcContent, Dst: "./broker/rpc.json"},
-		conn.SftpCopySrcDest{Content: composeContent, Dst: "./broker/docker-compose.yml"},
-	); err != nil {
-		return err
-	}
-
-	if envContent, err := c.loadOptionalInfraRepoFile("broker-server/.env"); err == nil && envContent != nil {
-		if err := sshClient.CopyFilesOverSftp(
-			conn.SftpCopySrcDest{Content: envContent, Dst: "./broker/.env"},
-		); err != nil {
-			return err
-		}
-	}
-
-	// Prepare the volume with unencrypted keyfile for storing private key which
-	// will be encrypted on broker-server startup
-	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-	out, err := c.brokerServerKeyVolSetup(sshClient, pk)
-	if err != nil {
-		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server volume deployment ^^^"))
-		return err
-	}
-
-	// Exec broker-server deployment cmd
 	brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
 	if err != nil || brokerPrivateIp == "" {
 		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 	}
-	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
+
 	envSuffix := strings.ToUpper(c.SelectedEnv)
 	privyAppId := ""
 	rateLimit := ""
@@ -212,17 +231,56 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 			return err
 		}
 	}
-	cmd := fmt.Sprintf(
-		"cd ./broker && BROKER_FEE_TBPS=%s REDIS_PW=%s CHAIN_ID=%s BROKER_PRIVATE_IP=%s PRIVY_APP_ID=%s RATE_LIMIT=%s ENFORCE_MODE=%s docker compose up -d",
-		shQuote(bsd.brokerFeeTBPS),
-		shQuote(redisPw),
-		shQuote(strconv.Itoa(int(cfg.ChainId))),
-		shQuote(brokerPrivateIp),
-		shQuote(privyAppId),
-		shQuote(rateLimit),
-		shQuote(enforceMode),
+
+	envTemplate, err := configs.EmbededConfigs.ReadFile("embedded/broker-server/env.example")
+	if err != nil {
+		return fmt.Errorf("loading embedded broker env template: %w", err)
+	}
+	if infraEnv, ierr := c.loadOptionalInfraRepoFile("broker-server/.env"); ierr == nil && infraEnv != nil {
+		envTemplate = infraEnv
+	}
+	managedBrokerEnv := map[string]string{
+		"REDIS_PW":          redisPw,
+		"BROKER_FEE_TBPS":   bsd.brokerFeeTBPS,
+		"CHAIN_ID":          strconv.Itoa(int(cfg.ChainId)),
+		"BROKER_PRIVATE_IP": brokerPrivateIp,
+		"PRIVY_APP_ID":      privyAppId,
+		"RATE_LIMIT":        rateLimit,
+		"ENFORCE_MODE":      enforceMode,
+	}
+	brokerEnvBytes, err := c.EditBrokerEnvBytes(envTemplate, managedBrokerEnv)
+	if err != nil {
+		return fmt.Errorf("building broker .env: %w", err)
+	}
+
+	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
+	sshClient, err := c.CreateSSHConn(
+		bsd.brokerServerIpAddr,
+		c.DefaultClusterUserName,
+		c.SshKeyPath,
 	)
-	out, err = sshClient.ExecCommand(cmd)
+	if err != nil {
+		return fmt.Errorf("establishing ssh connection: %w", err)
+	}
+	defer sshClient.Close()
+	if err := sshClient.CopyFilesOverSftp(
+		conn.SftpCopySrcDest{Content: chainConfigContent, Dst: "./broker/chainConfig.json"},
+		conn.SftpCopySrcDest{Content: rpcContent, Dst: "./broker/rpc.json"},
+		conn.SftpCopySrcDest{Content: composeContent, Dst: "./broker/docker-compose.yml"},
+		conn.SftpCopySrcDest{Content: brokerEnvBytes, Dst: "./broker/.env"},
+	); err != nil {
+		return err
+	}
+
+	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
+	out, err := c.brokerServerKeyVolSetup(sshClient, pk)
+	if err != nil {
+		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server volume deployment ^^^"))
+		return err
+	}
+
+	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
+	out, err = sshClient.ExecCommand("cd ./broker && docker compose up -d")
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err

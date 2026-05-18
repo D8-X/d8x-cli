@@ -143,21 +143,23 @@ var infraRepoManagedFiles = []infraRepoFile{
 }
 
 func (c *Container) loadInfraRepoFile(envRelPath, embeddedSrc string) ([]byte, error) {
+	data, _, err := c.loadInfraRepoFileWithSource(envRelPath, embeddedSrc)
+	return data, err
+}
+
+func (c *Container) loadInfraRepoFileWithSource(envRelPath, embeddedSrc string) ([]byte, bool, error) {
 	token := os.Getenv("GITHUB_TOKEN")
 	if token != "" && c.SelectedEnv != "" {
 		f, err := ghReadFile(token, c.SelectedEnv+"/"+envRelPath)
 		if err == nil {
-			return []byte(f.Content), nil
-		}
-		if !strings.Contains(err.Error(), "404") {
-			fmt.Printf("  %s could not fetch %s/%s from infra repo (%s); using embedded fallback\n", warning, c.SelectedEnv, envRelPath, err)
+			return []byte(f.Content), true, nil
 		}
 	}
 	data, err := configs.EmbededConfigs.ReadFile(embeddedSrc)
 	if err != nil {
-		return nil, fmt.Errorf("reading embedded %s: %w", embeddedSrc, err)
+		return nil, false, fmt.Errorf("reading embedded %s: %w", embeddedSrc, err)
 	}
-	return data, nil
+	return data, false, nil
 }
 
 func (c *Container) loadOptionalInfraRepoFile(envRelPath string) ([]byte, error) {
