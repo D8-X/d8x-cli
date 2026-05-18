@@ -39,10 +39,12 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	}
 	needUnlock := session == ""
 	if !needUnlock {
-		probe, err := exec.Command("bw", "get", "item", bwItemName, "--session", session).CombinedOutput()
-		if err != nil {
+		probe, err := exec.Command("bw", "status", "--session", session).Output()
+		var probeStatus struct {
+			Status string `json:"status"`
+		}
+		if err != nil || json.Unmarshal(probe, &probeStatus) != nil || probeStatus.Status != "unlocked" {
 			fmt.Println(styles.ItalicText.Render("Existing BW_SESSION appears stale; re-authenticating..."))
-			_ = probe
 			needUnlock = true
 			session = ""
 			clearCachedBWSession()
@@ -97,6 +99,11 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	if c.BitwardenFields == nil {
 		c.BitwardenFields = make(map[string]string)
 	}
+
+	if syncOut, err := exec.Command("bw", "sync", "--session", session).CombinedOutput(); err != nil {
+		fmt.Printf("%s bw sync failed (%s); proceeding with cached vault contents\n", warning, strings.TrimSpace(string(syncOut)))
+	}
+
 	count := 0
 	itemsSeen := 0
 	var fetchErr error
