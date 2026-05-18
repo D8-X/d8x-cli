@@ -495,10 +495,30 @@ func (c *Container) applyRemoteRpcChanges(
 			fmt.Printf("  %s service %s now using %s\n", ok, stackSvc, newName)
 		}
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  refreshing canonical config %s for future \"swarm-deploy\" runs...", r.configName)))
-		_, _ = sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, r.configName))
-		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, r.configName, r.remotePath)); err != nil {
+		if rmOut, rmErr := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, r.configName)); rmErr != nil {
+			rmMsg := strings.TrimSpace(string(rmOut))
+			fmt.Printf("  %s docker config rm %s failed: %s\n", warning, r.configName, rmMsg)
+			pinners, lsErr := sshConn.ExecCommand(fmt.Sprintf(
+				`docker service ls --format '{{.Name}}' | while read s; do docker service inspect "$s" --format '{{range .Spec.TaskTemplate.ContainerSpec.Configs}}{{.ConfigName}}{{"\n"}}{{end}}' | grep -Fxq %s && echo "$s"; done`,
+				shQuote(r.configName),
+			))
+			if lsErr == nil {
+				attached := strings.TrimSpace(string(pinners))
+				if attached != "" {
+					fmt.Printf("  %s services still pinning %s:\n", warning, r.configName)
+					for _, svc := range strings.Split(attached, "\n") {
+						svc = strings.TrimSpace(svc)
+						if svc != "" {
+							fmt.Printf("    - %s\n", svc)
+						}
+					}
+					fmt.Printf("  detach with: docker service update --config-rm %s <svc>, then re-run \"d8x setup rpc\"\n", r.configName)
+				}
+			}
+			fmt.Printf("  %s live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, newName)
+		} else if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, r.configName, r.remotePath)); err != nil {
 			fmt.Println(string(out))
-			fmt.Printf("  %s could not refresh canonical %s; live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, r.configName, newName)
+			fmt.Printf("  %s could not recreate canonical %s; live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, r.configName, newName)
 		} else {
 			fmt.Printf("  %s canonical %s refreshed\n", ok, r.configName)
 		}
@@ -744,13 +764,25 @@ func probeService(client *http.Client, url string) (int, time.Duration, error) {
 }
 
 func diffPools(orig, current []string) (added, removed []string) {
+	origCount := map[string]int{}
+	for _, u := range orig {
+		origCount[u]++
+	}
+	curCount := map[string]int{}
 	for _, u := range current {
-		if !slices.Contains(orig, u) {
+		curCount[u]++
+	}
+	seen := map[string]int{}
+	for _, u := range current {
+		seen[u]++
+		if seen[u] > origCount[u] {
 			added = append(added, u)
 		}
 	}
+	seen = map[string]int{}
 	for _, u := range orig {
-		if !slices.Contains(current, u) {
+		seen[u]++
+		if seen[u] > curCount[u] {
 			removed = append(removed, u)
 		}
 	}
