@@ -22,6 +22,14 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Init error: %v", err)))
 	}
 
+	env, err := c.EnsureEnvironment(cfg)
+	if err != nil {
+		return err
+	}
+	if err := c.ensureSSHKey(env); err != nil {
+		return err
+	}
+
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
 		keepConfig, err := c.TUI.NewPrompt(
