@@ -7,11 +7,10 @@ Deploys the D8X trader backend as a Docker Swarm stack.
 1. Selects environment
 2. Generates swarm Redis password (20 chars) if not set
 3. Saves Redis password to Bitwarden as `SWARM_REDIS_PW_{ENV}`
-4. Sets up NFS shared storage on manager, mounts on workers
-5. Copies `.env` and RPC configs to manager via SFTP
-6. Creates Docker configs and volumes
-7. Deploys `docker-swarm-stack.yml` on manager
-8. Verifies ingress network
+4. Copies `.env` and RPC configs to manager via SFTP
+5. Creates Docker configs
+6. Deploys `docker-swarm-stack.yml` on manager
+7. Verifies ingress network
 
 ## Requirements
 

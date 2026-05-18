@@ -712,34 +712,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if _, err := c.HostsCfg.GetWorkerIps(); err != nil {
 		return fmt.Errorf("finding worker ip addresses: %w", err)
 	}
-	ipMgrPriv, err := c.HostsCfg.GetMangerPrivateIp()
-	if err != nil {
-		return err
-	}
-	ipWorkersPriv, err := c.HostsCfg.GetWorkerPrivateIps()
-	if err != nil {
-		return err
-	}
-	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
-	pwQ := shQuote(pwd)
-	sudoPipe := fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c `, pwQ)
-	cmd := sudoPipe + `'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general'`
-
-	configEtcExports := "#"
-	for _, ip := range ipWorkersPriv {
-		iptables := fmt.Sprintf(`iptables -A INPUT -s %[1]s -p tcp --dport 2049 -j ACCEPT && iptables -A INPUT -s %[1]s -p udp --dport 2049 -j ACCEPT`, ip)
-		cmd = cmd + " && " + sudoPipe + shQuote(iptables)
-		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
-	}
-	cmd = cmd + " && " + sudoPipe + `'mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4'`
-
-	_, err = managerSSHConn.ExecCommand(
-		cmd,
-	)
-	if err != nil {
-		return fmt.Errorf("NFS preparation on manager failed : %w", err)
-	}
-	exportsContent := []byte(configEtcExports)
+	sudoPipe := fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c `, shQuote(pwd))
 
 	managedConfigNames := []string{
 		"cfg_rpc",
@@ -761,7 +734,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		{Content: envContent, Dst: "./trader-backend/.env"},
 		{Content: rpcMain, Dst: "./trader-backend/rpc.main.json"},
 		{Content: rpcHist, Dst: "./trader-backend/rpc.history.json"},
-		{Content: exportsContent, Dst: "./trader-backend/exports"},
 		{Content: prices, Dst: "./candles/prices.config.json"},
 		{Content: rpcConf, Dst: "./candles/rpc_conf.json"},
 		{Content: swarmStack, Dst: "./docker-stack.yml"},
@@ -777,41 +749,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		fmt.Println(styles.SuccessText.Render("configuration files copied to manager"))
 	}
 
-	// enable nfs server
-	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = sudoPipe + `'cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server'`
-	_, err = managerSSHConn.ExecCommand(
-		cmd,
-	)
-	if err != nil {
-		return fmt.Errorf("starting NFS server: %w", err)
-	}
-
-	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
-	cmd = sudoPipe + shQuote(fmt.Sprintf("mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general", ipMgrPriv))
-
-	for _, ip := range ipWorkersPriv {
-		fmt.Println(styles.ItalicText.Render("worker "), ip)
-		if err := func() error {
-			sshConnWorker, err := conn.NewSSHConnectionWithBastion(
-				managerSSHConn.GetClient(),
-				ip,
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-			if err != nil {
-				return err
-			}
-			defer sshConnWorker.Close()
-			if _, err := sshConnWorker.ExecCommand(cmd); err != nil {
-				return fmt.Errorf("failed to mount nfs dir on worker %s via manager bastion: %w", ip, err)
-			}
-			return nil
-		}(); err != nil {
-			return err
-		}
-	}
-
 	// Recreate configs
 	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
 	out, err := managerSSHConn.ExecCommand(
@@ -822,50 +759,6 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return fmt.Errorf("creating docker configs: %w", err)
 	}
 	fmt.Println(styles.SuccessText.Render("docker configs were created on manager node!"))
-
-	// docker volumes
-	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-
-	fmt.Printf("\nPrivate ip : %s\n", ipMgrPriv)
-	cmd = fmt.Sprintf(`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`, ipMgrPriv)
-	out, err = managerSSHConn.ExecCommand(
-		cmd,
-	)
-	if err != nil {
-		fmt.Println(string(out))
-		return err
-	}
-	// create volume on worker nodes
-
-	cmd = fmt.Sprintf(
-		`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`,
-		ipMgrPriv,
-	)
-	cmdDir := sudoPipe + shQuote(fmt.Sprintf("mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general", ipMgrPriv))
-
-	for _, ip := range ipWorkersPriv {
-		if err := func() error {
-			sshConnWorker, err := conn.NewSSHConnectionWithBastion(
-				managerSSHConn.GetClient(),
-				ip,
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-			if err != nil {
-				return err
-			}
-			defer sshConnWorker.Close()
-			if _, err := sshConnWorker.ExecCommand(cmdDir); err != nil {
-				return fmt.Errorf("failed to create nfs dir on worker %s via manager bastion: %w", ip, err)
-			}
-			if _, err := sshConnWorker.ExecCommand(cmd); err != nil {
-				return fmt.Errorf("creating volume on worker failed: %w", err)
-			}
-			return nil
-		}(); err != nil {
-			return err
-		}
-	}
 
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
