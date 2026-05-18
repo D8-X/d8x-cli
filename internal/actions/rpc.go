@@ -13,6 +13,22 @@ import (
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
+func uniqueStrings(in []string) []string {
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
 type ChainJsonEntry struct {
 	SDKNetwork               string `json:"sdkNetwork"`
 	DefaultPythWSEndpoint    string `json:"priceServiceWSEndpoint"`
@@ -271,29 +287,18 @@ func (c *Container) editRpcConfigParsed(rpcConfig []RPCConfigEntry, chainId uint
 
 	for i, entry := range rpcConfig {
 		if entry.ChainId == chainId {
-			// Append existing urls to our new entry
-			entry.HttpRpcs = slices.Compact(append(entry.HttpRpcs, newEntry.HttpRpcs...))
+			entry.HttpRpcs = uniqueStrings(append(entry.HttpRpcs, newEntry.HttpRpcs...))
 
-			// Make sure to remove any pre-existing empty entries
-			entry.HttpRpcs = slices.DeleteFunc(entry.HttpRpcs, func(s string) bool {
-				return s == ""
-			})
-
-			// Only append ws rpcs if they are provided. If ws values are non
-			// nil we must create WS field entry if it doesn't exist.
 			if wsRpcs != nil {
-				if entry.WsRpcs == nil {
-					entry.WsRpcs = &[]string{}
+				existing := []string{}
+				if entry.WsRpcs != nil {
+					existing = *entry.WsRpcs
 				}
-				tmp := slices.Compact(append(*entry.WsRpcs, wsRpcs...))
+				tmp := uniqueStrings(append(existing, wsRpcs...))
 				entry.WsRpcs = &tmp
-			}
-
-			if entry.WsRpcs != nil {
-				// Make sure to remove any pre-existing empty entries
-				*entry.WsRpcs = slices.DeleteFunc(*entry.WsRpcs, func(s string) bool {
-					return s == ""
-				})
+			} else if entry.WsRpcs != nil {
+				tmp := uniqueStrings(*entry.WsRpcs)
+				entry.WsRpcs = &tmp
 			}
 
 			rpcConfig[i] = entry

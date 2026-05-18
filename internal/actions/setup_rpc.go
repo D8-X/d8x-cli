@@ -94,6 +94,21 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 		histWs:   histWs,
 	}
 
+	if dupCount := countDuplicatesInPools(&pools); dupCount > 0 {
+		fmt.Printf("%s Found %d duplicate RPC URL(s) in the live pools.\n", warning, dupCount)
+		dedup, perr := c.TUI.NewPrompt("Deduplicate before proceeding?", true)
+		if perr != nil {
+			return perr
+		}
+		if dedup {
+			pools.mainHttp, _ = dedupKeepOrder(pools.mainHttp)
+			pools.mainWs, _ = dedupKeepOrder(pools.mainWs)
+			pools.histHttp, _ = dedupKeepOrder(pools.histHttp)
+			pools.histWs, _ = dedupKeepOrder(pools.histWs)
+			fmt.Println(styles.SuccessText.Render("Dedup applied to in-memory pools (will only persist if you choose Apply and deploy)."))
+		}
+	}
+
 	for {
 		printPerServicePools(chainIdStr, &pools)
 
@@ -249,6 +264,30 @@ func addUrlToPool(pool []string, url string) []string {
 	}
 	fmt.Println(styles.SuccessText.Render("  + " + url))
 	return append(pool, url)
+}
+
+func dedupKeepOrder(in []string) ([]string, int) {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	removed := 0
+	for _, v := range in {
+		if _, ok := seen[v]; ok {
+			removed++
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out, removed
+}
+
+func countDuplicatesInPools(p *perServicePools) int {
+	count := 0
+	for _, pool := range [][]string{p.mainHttp, p.mainWs, p.histHttp, p.histWs} {
+		_, removed := dedupKeepOrder(pool)
+		count += removed
+	}
+	return count
 }
 
 func uniqueUnion(a, b []string) []string {
