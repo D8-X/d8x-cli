@@ -100,11 +100,9 @@ func TestEditRpcConfigUrlsBytes_AppendsForExistingChain(t *testing.T) {
 	require.NoError(t, json.Unmarshal(out, &entries))
 	require.Len(t, entries, 1)
 	assert.Equal(t, uint(8453), entries[0].ChainId)
-	assert.Contains(t, entries[0].HttpRpcs, "https://old.rpc")
-	assert.Contains(t, entries[0].HttpRpcs, "https://new.rpc")
+	assert.Equal(t, []string{"https://old.rpc", "https://new.rpc"}, entries[0].HttpRpcs)
 	require.NotNil(t, entries[0].WsRpcs)
-	assert.Contains(t, *entries[0].WsRpcs, "wss://old.ws")
-	assert.Contains(t, *entries[0].WsRpcs, "wss://new.ws")
+	assert.Equal(t, []string{"wss://old.ws", "wss://new.ws"}, *entries[0].WsRpcs)
 }
 
 func TestEditRpcConfigUrlsBytes_AddsEntryForNewChain(t *testing.T) {
