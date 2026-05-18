@@ -23,6 +23,10 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
 	}
+	c.ProvisioningTfDir = c.tfDir()
+	if err := os.MkdirAll(c.ProvisioningTfDir, 0700); err != nil {
+		return fmt.Errorf("preparing terraform work dir: %w", err)
+	}
 	if cfg.ServerProvider == "" {
 		return fmt.Errorf("server_provider missing from %s/config.json in infra repo. Cannot determine which provider to destroy", c.SelectedEnv)
 	}
@@ -190,10 +194,11 @@ func (c *Container) fetchTerraformInputs(cfg *configs.D8XConfig) error {
 }
 
 func (c *Container) cleanupHostsAfterDestroy() {
-	if err := os.Remove(configs.DEFAULT_HOSTS_FILE); err == nil {
-		fmt.Printf("%s removed local %s\n", ok, configs.DEFAULT_HOSTS_FILE)
+	hostsPath := c.hostsCfgPath()
+	if err := os.Remove(hostsPath); err == nil {
+		fmt.Printf("%s removed local %s\n", ok, hostsPath)
 	} else if !os.IsNotExist(err) {
-		fmt.Printf("%s warning: could not remove local %s: %s\n", warning, configs.DEFAULT_HOSTS_FILE, err)
+		fmt.Printf("%s warning: could not remove local %s: %s\n", warning, hostsPath, err)
 	}
 
 	token := os.Getenv("GITHUB_TOKEN")

@@ -90,6 +90,22 @@ func workPath(rel string) string {
 	return filepath.Join(os.TempDir(), "d8x-cli", rel)
 }
 
+func (c *Container) envWorkDir() string {
+	env := c.SelectedEnv
+	if env == "" {
+		env = "default"
+	}
+	return filepath.Join(os.TempDir(), "d8x-cli", env)
+}
+
+func (c *Container) tfDir() string {
+	return filepath.Join(c.envWorkDir(), "terraform")
+}
+
+func (c *Container) hostsCfgPath() string {
+	return filepath.Join(c.envWorkDir(), "hosts.cfg")
+}
+
 func ensureWorkDir(rel string) (string, error) {
 	path := workPath(rel)
 	dir := filepath.Dir(path)

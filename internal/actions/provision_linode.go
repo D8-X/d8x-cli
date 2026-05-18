@@ -297,7 +297,7 @@ func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
 		fmt.Printf(`You should configure your external database to allow connection from provisioned cluster.
 Make sure to refer to %s inventory file or visit your server provider's dashboard to
 find the public ip addresses of your servers.
-`, configs.DEFAULT_HOSTS_FILE)
+`, c.hostsCfgPath())
 
 		if c.HostsCfg == nil {
 			fmt.Println(styles.AlertImportant.Render("hosts.cfg not loaded; cannot list IPs"))

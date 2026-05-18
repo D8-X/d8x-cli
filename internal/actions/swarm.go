@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -85,23 +86,25 @@ func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints []string) 
 }
 
 func (c *Container) CopySwarmDeployConfigs() error {
+	base := c.envWorkDir()
 	stagings := []struct {
 		envRelPath, embeddedSrc, localPath string
 	}{
-		{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json", "./trader-backend/rpc.main.json"},
-		{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json", "./trader-backend/rpc.history.json"},
-		{"candles/prices.config.json", "embedded/candles/prices.config.json", "./candles/prices.config.json"},
-		{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json", "./candles/rpc_conf.json"},
-		{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml", "./docker-swarm-stack.yml"},
+		{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json", filepath.Join(base, "trader-backend/rpc.main.json")},
+		{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json", filepath.Join(base, "trader-backend/rpc.history.json")},
+		{"candles/prices.config.json", "embedded/candles/prices.config.json", filepath.Join(base, "candles/prices.config.json")},
+		{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json", filepath.Join(base, "candles/rpc_conf.json")},
+		{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml", filepath.Join(base, "docker-swarm-stack.yml")},
 	}
 	envData, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
 	if err != nil {
 		return fmt.Errorf("reading embedded env.example: %w", err)
 	}
-	if err := os.MkdirAll("./trader-backend", 0755); err != nil {
+	envPath := filepath.Join(base, "trader-backend/.env")
+	if err := os.MkdirAll(filepath.Dir(envPath), 0700); err != nil {
 		return err
 	}
-	if err := os.WriteFile("./trader-backend/.env", envData, 0644); err != nil {
+	if err := os.WriteFile(envPath, envData, 0644); err != nil {
 		return err
 	}
 	for _, s := range stagings {
@@ -109,6 +112,7 @@ func (c *Container) CopySwarmDeployConfigs() error {
 			return fmt.Errorf("staging %s: %w", s.envRelPath, err)
 		}
 	}
+	fmt.Println(styles.ItalicText.Render("Swarm configs written to " + base))
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,8 +24,7 @@ const (
 	ServerProviderAws    SupportedServerProvider = "aws"
 )
 
-// Default terraform files directory without trailing slash
-const TF_FILES_DIR = "./terraform"
+var TF_FILES_DIR = filepath.Join(os.TempDir(), "d8x-cli", "terraform")
 
 func (c *Container) Provision(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting provisioning...")
@@ -36,6 +36,10 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	env, err := c.EnsureEnvironment(cfg)
 	if err != nil {
 		return err
+	}
+	c.ProvisioningTfDir = c.tfDir()
+	if err := os.MkdirAll(c.ProvisioningTfDir, 0700); err != nil {
+		return fmt.Errorf("preparing terraform work dir: %w", err)
 	}
 	if err := c.ensureSSHKey(env); err != nil {
 		return err
@@ -153,7 +157,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	// Set the provisioning time
 	c.provisioningTime = time.Now()
 
-	if hostsContent, herr := os.ReadFile(configs.DEFAULT_HOSTS_FILE); herr == nil {
+	if hostsContent, herr := os.ReadFile(c.hostsCfgPath()); herr == nil {
 		c.HostsCfg = files.NewMemHostsFileInteractor(hostsContent, hostsCfgGitHubPusher(c.SelectedEnv))
 	}
 
@@ -168,7 +172,7 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	}
 
 	if token := os.Getenv("GITHUB_TOKEN"); token != "" && c.SelectedEnv != "" {
-		hostsContent, err := os.ReadFile(configs.DEFAULT_HOSTS_FILE)
+		hostsContent, err := os.ReadFile(c.hostsCfgPath())
 		if err == nil {
 			path := c.SelectedEnv + "/hosts.cfg"
 			existing, _ := ghReadFile(token, path)
