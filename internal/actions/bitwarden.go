@@ -31,14 +31,23 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	}
 
 	session := os.Getenv("BW_SESSION")
+	if session == "" {
+		if cached := readCachedBWSession(); cached != "" {
+			session = cached
+			os.Setenv("BW_SESSION", session)
+		}
+	}
 	needUnlock := session == ""
 	if !needUnlock {
-		probe, err := exec.Command("bw", "get", "item", bwItemName, "--session", session).CombinedOutput()
-		if err != nil {
+		probe, err := exec.Command("bw", "status", "--session", session).Output()
+		var probeStatus struct {
+			Status string `json:"status"`
+		}
+		if err != nil || json.Unmarshal(probe, &probeStatus) != nil || probeStatus.Status != "unlocked" {
 			fmt.Println(styles.ItalicText.Render("Existing BW_SESSION appears stale; re-authenticating..."))
-			_ = probe
 			needUnlock = true
 			session = ""
+			clearCachedBWSession()
 		}
 	}
 	if needUnlock {
@@ -80,11 +89,21 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 		session = strings.TrimSpace(string(unlockOut))
 		os.Setenv("BW_SESSION", session)
+		if err := writeCachedBWSession(session); err != nil {
+			fmt.Printf("  %s could not cache BW_SESSION to disk (%s); will re-prompt next run\n", styles.ItalicText.Render("notok"), err)
+		} else {
+			fmt.Println(styles.ItalicText.Render("BW_SESSION cached for subsequent runs; no master password needed until the vault re-locks."))
+		}
 	}
 
 	if c.BitwardenFields == nil {
 		c.BitwardenFields = make(map[string]string)
 	}
+
+	if syncOut, err := exec.Command("bw", "sync", "--session", session).CombinedOutput(); err != nil {
+		fmt.Printf("%s bw sync failed (%s); proceeding with cached vault contents\n", warning, strings.TrimSpace(string(syncOut)))
+	}
+
 	count := 0
 	itemsSeen := 0
 	var fetchErr error
@@ -165,14 +184,6 @@ const (
 	BwSkippedConflict
 )
 
-func SaveSecretToBitwarden(fieldName, fieldValue string) (BwSaveResult, string, error) {
-	return saveBitwardenField(bwItemName, fieldName, fieldValue, false)
-}
-
-func SaveSecretToBitwardenPersonal(fieldName, fieldValue string) (BwSaveResult, string, error) {
-	return saveBitwardenField(bwPersonalItemName, fieldName, fieldValue, false)
-}
-
 func SaveSecretToBitwardenItem(itemName, fieldName, fieldValue string) (BwSaveResult, string, error) {
 	return saveBitwardenField(itemName, fieldName, fieldValue, false)
 }
@@ -191,12 +202,18 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	var syncStderr strings.Builder
 	syncCmd.Stderr = &syncStderr
 	if _, err := syncCmd.Output(); err != nil {
-		return BwSkippedConflict, "", fmt.Errorf("bw sync failed: %w (stderr: %s)", err, strings.TrimSpace(syncStderr.String()))
+		return BwSkippedConflict, "", wrapBWError("bw sync", err, syncStderr.String())
 	}
 
-	out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
+	getCmd := exec.Command("bw", "get", "item", itemName, "--session", session)
+	var getStderr strings.Builder
+	getCmd.Stderr = &getStderr
+	out, err := getCmd.Output()
 	if err != nil {
-		return BwSkippedConflict, "", fmt.Errorf("bitwarden item '%s' not found", itemName)
+		if bwSessionLooksExpired(getStderr.String()) {
+			return BwSkippedConflict, "", wrapBWError("bw get item", err, getStderr.String())
+		}
+		return BwSkippedConflict, "", fmt.Errorf("bitwarden item '%s' not found (stderr: %s)", itemName, strings.TrimSpace(getStderr.String()))
 	}
 
 	var raw map[string]any
@@ -271,7 +288,7 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	var editStderr strings.Builder
 	editCmd.Stderr = &editStderr
 	if _, err := editCmd.Output(); err != nil {
-		return BwSkippedConflict, existingValue, fmt.Errorf("bw edit failed: %w (stderr: %s)", err, strings.TrimSpace(editStderr.String()))
+		return BwSkippedConflict, existingValue, wrapBWError("bw edit", err, editStderr.String())
 	}
 
 	return BwSaved, existingValue, nil
@@ -300,6 +317,48 @@ func saveAndReport(fieldName, value string) error {
 
 func saveAndReportPersonal(fieldName, value string) error {
 	return saveAndReportTo(bwPersonalItemName, fieldName, value)
+}
+
+type bwOverwriteConfirmer interface {
+	NewPrompt(question string, confirmed bool) (bool, error)
+}
+
+func saveAndReportWithConfirm(tui bwOverwriteConfirmer, itemName, fieldName, value string) error {
+	result, _, err := saveBitwardenField(itemName, fieldName, value, false)
+	if err != nil {
+		fmt.Printf("  %s Could not save %s to Bitwarden item '%s': %s\n", notok, fieldName, itemName, err)
+		fmt.Printf("  %s Value (copy this somewhere safe): %s = %s\n", warning, fieldName, value)
+		return err
+	}
+	switch result {
+	case BwSaved:
+		fmt.Printf("  %s Saved to Bitwarden item '%s' as %s\n", ok, itemName, fieldName)
+		return nil
+	case BwUnchanged:
+		fmt.Printf("  %s %s already up to date in Bitwarden item '%s'\n", ok, fieldName, itemName)
+		return nil
+	case BwSkippedConflict:
+		fmt.Printf("  %s %s exists in Bitwarden item '%s' with a different value.\n", warning, fieldName, itemName)
+		overwrite, err := tui.NewPrompt(fmt.Sprintf("Overwrite the existing %s in Bitwarden?", fieldName), false)
+		if err != nil {
+			return err
+		}
+		if !overwrite {
+			fmt.Printf("  %s Keeping existing Bitwarden value for %s\n", ok, fieldName)
+			return nil
+		}
+		result, _, err := saveBitwardenField(itemName, fieldName, value, true)
+		if err != nil {
+			fmt.Printf("  %s Force-overwrite failed: %s\n", notok, err)
+			fmt.Printf("  %s Value (copy this somewhere safe): %s = %s\n", warning, fieldName, value)
+			return err
+		}
+		if result == BwSaved {
+			fmt.Printf("  %s Overwrote %s in Bitwarden item '%s'\n", ok, fieldName, itemName)
+		}
+		return nil
+	}
+	return nil
 }
 
 func saveAndReportTo(itemName, fieldName, value string) error {
@@ -333,4 +392,71 @@ func writeSSHKeyToTempFile(name, content string) (string, error) {
 		fmt.Printf("  %s could not derive public key for %s: %s\n", notok, name, err)
 	}
 	return keyPath, nil
+}
+
+func bwSessionCachePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".d8x-cli", "session"), nil
+}
+
+func readCachedBWSession() string {
+	p, err := bwSessionCachePath()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func writeCachedBWSession(session string) error {
+	p, err := bwSessionCachePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0700); err != nil {
+		return err
+	}
+	return os.WriteFile(p, []byte(session), 0600)
+}
+
+func clearCachedBWSession() {
+	if p, err := bwSessionCachePath(); err == nil {
+		_ = os.Remove(p)
+	}
+}
+
+func bwSessionLooksExpired(stderr string) bool {
+	lower := strings.ToLower(stderr)
+	for _, marker := range []string{
+		"session is invalid",
+		"vault is locked",
+		"session has expired",
+		"invalid master password",
+		"you are not logged in",
+		"not authenticated",
+		"unauthorized",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func wrapBWError(stage string, err error, stderr string) error {
+	if bwSessionLooksExpired(stderr) {
+		clearCachedBWSession()
+		_ = os.Unsetenv("BW_SESSION")
+		return fmt.Errorf("%s: bitwarden session expired or vault locked — re-run the command to unlock again (stderr: %s)", stage, strings.TrimSpace(stderr))
+	}
+	if stderr != "" {
+		return fmt.Errorf("%s: %w (stderr: %s)", stage, err, strings.TrimSpace(stderr))
+	}
+	return fmt.Errorf("%s: %w", stage, err)
 }

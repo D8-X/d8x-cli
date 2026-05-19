@@ -1,87 +1,42 @@
 # Maintenance
 
-## Updates
+## Day-to-day commands
 
-```bash
-d8x update
-```
+| Command | What it does |
+| --- | --- |
+| `d8x update` | Select swarm and/or broker services and roll them to the latest image |
+| `d8x health` | Check HTTP endpoints, swarm services, broker RPC proxy |
+| `d8x setup staging-origins` | Add/remove whitelisted staging origins; commits to infra repo and deploys |
+| `d8x setup rpc` | Add/remove RPC URLs; route to `api`, `history`, or both. See [setup-rpc.md](setup-rpc.md) |
+| `d8x setup swarm-nginx` | Redeploy swarm nginx + SSL |
+| `d8x setup broker-nginx` | Redeploy broker nginx + SSL |
+| `d8x ssh manager\|broker\|worker-N` | Open an SSH session |
+| `d8x ip manager\|broker` | Print the node's public IP |
+| `d8x grafana-tunnel [PORT]` | Tunnel to Grafana (default local port 8080) |
+| `d8x db-tunnel [PORT]` | Tunnel to Postgres (default local port 5432). See [database.md](database.md) |
+| `d8x backup-db [--output-dir DIR]` | `pg_dump` backup. See [database.md](database.md) |
+| `d8x fix-ingress` | Reset the swarm ingress network if requests are 503ing |
 
-Select swarm and/or broker services to update to the latest image version.
-
-## Health Check
-
-```bash
-d8x health
-```
-
-Checks all HTTP endpoints, Docker swarm services, and broker RPC proxy.
-
-## Staging Origins
-
-```bash
-d8x setup staging-origins
-```
-
-Add or remove whitelisted staging origins. Changes are committed to the infra repo and deployed to the server.
-
-## RPC URLs
-
-```bash
-d8x setup rpc
-```
-
-Add or remove RPC URLs for the selected chain. Routes each URL to `api`, `history`, or both, then rolls the affected services. See [docs/setup-rpc.md](setup-rpc.md).
-
-## SSH Access
-
-```bash
-d8x ssh manager
-d8x ssh broker
-d8x ssh worker-1
-```
-
-## Database
-
-```bash
-d8x db-tunnel                      # SSH tunnel to database on local port 5432
-d8x db-tunnel 5433                 # use custom local port
-d8x backup-db                      # backup to current directory
-d8x backup-db --output-dir ./bak   # backup to specific directory
-```
-
-Tunnels run in the foreground. `Ctrl+C` to stop.
-
-## Monitoring
-
-```bash
-d8x grafana-tunnel     # tunnel to Grafana on port 8080
-```
-
-## Nginx Reconfiguration
-
-```bash
-d8x setup swarm-nginx  # redeploy swarm nginx + SSL
-d8x setup broker-nginx # redeploy broker nginx + SSL
-```
+Tunnels run in the foreground; `Ctrl+C` to stop.
 
 ## Troubleshooting
 
-SSH into the server and check logs:
+Logs and service status (on the manager):
 
 ```bash
 d8x ssh manager
 docker service ls
-docker service logs stack_api -f
+docker service logs stack_api -f       # or stack_history, stack_candles, ...
 ```
 
-For broker:
+Broker logs (on the broker host):
 
 ```bash
 d8x ssh broker
 cd broker && docker compose logs -f
 ```
 
-If swarm ingress is stuck (503 errors):
+If swarm ingress is stuck (503s on the api/ws endpoints):
 
 ```bash
 d8x fix-ingress

@@ -3,10 +3,13 @@ package actions
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/components"
@@ -17,11 +20,28 @@ import (
 
 const defaultGhRepo = "D8-X/backend-nginx-infra-config"
 
+const cliCommitPrefix = "[D8X CLI]- "
+
+func ghEscapePath(p string) string {
+	parts := strings.Split(p, "/")
+	for i, part := range parts {
+		parts[i] = url.PathEscape(part)
+	}
+	return strings.Join(parts, "/")
+}
+
 func getGhRepo() string {
 	if repo := os.Getenv("INFRA_REPO"); repo != "" {
 		return repo
 	}
 	return defaultGhRepo
+}
+
+func prefixCommitMsg(msg string) string {
+	if strings.HasPrefix(msg, cliCommitPrefix) {
+		return msg
+	}
+	return cliCommitPrefix + msg
 }
 
 type ghFileResponse struct {
@@ -49,6 +69,9 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 
 	env, err := c.EnsureEnvironment(cfg)
 	if err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("staging-origins", "manager"); err != nil {
 		return err
 	}
 
@@ -142,11 +165,9 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 				oldContent = stagingFile.Content
 			}
 			if stagingContent != oldContent {
-				newSHA, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath+" - d8x setup staging-origins")
-				if err != nil {
+				if _, err := ghWriteFile(token, stagingPath, stagingContent, currentSHA, "update "+stagingPath); err != nil {
 					return fmt.Errorf("pushing to GitHub: %w", err)
 				}
-				currentSHA = newSHA
 				fmt.Println(styles.SuccessText.Render("Pushed staging_origins.map to GitHub."))
 			} else {
 				fmt.Println(styles.ItalicText.Render("No changes to staging origins, skipping GitHub push."))
@@ -245,7 +266,7 @@ func ghListDirs(token string) ([]string, error) {
 }
 
 func ghReadFile(token, path string) (*ghFileResponse, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), ghEscapePath(path))
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -278,10 +299,10 @@ func ghReadFile(token, path string) (*ghFileResponse, error) {
 }
 
 func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), ghEscapePath(path))
 
 	payload := map[string]string{
-		"message": commitMsg,
+		"message": prefixCommitMsg(commitMsg),
 		"content": base64.StdEncoding.EncodeToString([]byte(content)),
 	}
 	if sha != "" {
@@ -322,14 +343,288 @@ func ghWriteFile(token, path, content, sha, commitMsg string) (string, error) {
 	return result.Content.SHA, nil
 }
 
+type ghCommitFile struct {
+	Path    string
+	Content string
+}
+
+func ghCommitFiles(token string, files []ghCommitFile, message string) error {
+	if len(files) == 0 {
+		return nil
+	}
+	repo := getGhRepo()
+	base := fmt.Sprintf("https://api.github.com/repos/%s", repo)
+
+	changedFiles := make([]ghCommitFile, 0, len(files))
+	for _, f := range files {
+		existing, err := ghReadFile(token, f.Path)
+		if err == nil && normalizeContentForCompare(existing.Content) == normalizeContentForCompare(f.Content) {
+			continue
+		}
+		changedFiles = append(changedFiles, f)
+	}
+	if len(changedFiles) == 0 {
+		return nil
+	}
+
+	var repoInfo struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := ghAPI(token, "GET", base, nil, &repoInfo); err != nil {
+		return fmt.Errorf("get repo: %w", err)
+	}
+	branch := repoInfo.DefaultBranch
+	if branch == "" {
+		branch = "main"
+	}
+
+	var refResp struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/ref/heads/"+branch, nil, &refResp); err != nil {
+		return fmt.Errorf("get ref: %w", err)
+	}
+	headSHA := refResp.Object.SHA
+
+	var commitInfo struct {
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/commits/"+headSHA, nil, &commitInfo); err != nil {
+		return fmt.Errorf("get head commit: %w", err)
+	}
+	baseTreeSHA := commitInfo.Tree.SHA
+
+	treeItems := make([]map[string]any, 0, len(changedFiles))
+	for _, f := range changedFiles {
+		var blob struct {
+			SHA string `json:"sha"`
+		}
+		if err := ghAPI(token, "POST", base+"/git/blobs", map[string]string{
+			"content":  f.Content,
+			"encoding": "utf-8",
+		}, &blob); err != nil {
+			return fmt.Errorf("create blob for %s: %w", f.Path, err)
+		}
+		treeItems = append(treeItems, map[string]any{
+			"path": f.Path,
+			"mode": "100644",
+			"type": "blob",
+			"sha":  blob.SHA,
+		})
+	}
+
+	var treeResp struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/trees", map[string]any{
+		"base_tree": baseTreeSHA,
+		"tree":      treeItems,
+	}, &treeResp); err != nil {
+		return fmt.Errorf("create tree: %w", err)
+	}
+
+	if treeResp.SHA == baseTreeSHA {
+		return nil
+	}
+
+	var newCommit struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/commits", map[string]any{
+		"message": prefixCommitMsg(message),
+		"tree":    treeResp.SHA,
+		"parents": []string{headSHA},
+	}, &newCommit); err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+
+	if err := ghAPI(token, "PATCH", base+"/git/refs/heads/"+branch, map[string]string{
+		"sha": newCommit.SHA,
+	}, nil); err != nil {
+		if status := ghStatusCode(err); status == 409 || status == 422 {
+			return fmt.Errorf("update ref: branch %q moved during commit (status %d). Re-run to retry on a fresh ref. Underlying: %w", branch, status, err)
+		}
+		return fmt.Errorf("update ref: %w", err)
+	}
+	return nil
+}
+
+func normalizeContentForCompare(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	return strings.TrimRight(s, "\n")
+}
+
+func ghCommitDeletes(token string, paths []string, message string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	repo := getGhRepo()
+	base := fmt.Sprintf("https://api.github.com/repos/%s", repo)
+
+	var repoInfo struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := ghAPI(token, "GET", base, nil, &repoInfo); err != nil {
+		return fmt.Errorf("get repo: %w", err)
+	}
+	branch := repoInfo.DefaultBranch
+	if branch == "" {
+		branch = "main"
+	}
+
+	var refResp struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/ref/heads/"+branch, nil, &refResp); err != nil {
+		return fmt.Errorf("get ref: %w", err)
+	}
+	headSHA := refResp.Object.SHA
+
+	var commitInfo struct {
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := ghAPI(token, "GET", base+"/git/commits/"+headSHA, nil, &commitInfo); err != nil {
+		return fmt.Errorf("get head commit: %w", err)
+	}
+	baseTreeSHA := commitInfo.Tree.SHA
+
+	treeItems := make([]map[string]any, 0, len(paths))
+	for _, p := range paths {
+		treeItems = append(treeItems, map[string]any{
+			"path": p,
+			"mode": "100644",
+			"type": "blob",
+			"sha":  nil,
+		})
+	}
+
+	var treeResp struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/trees", map[string]any{
+		"base_tree": baseTreeSHA,
+		"tree":      treeItems,
+	}, &treeResp); err != nil {
+		return fmt.Errorf("create tree: %w", err)
+	}
+	if treeResp.SHA == baseTreeSHA {
+		return nil
+	}
+
+	var newCommit struct {
+		SHA string `json:"sha"`
+	}
+	if err := ghAPI(token, "POST", base+"/git/commits", map[string]any{
+		"message": prefixCommitMsg(message),
+		"tree":    treeResp.SHA,
+		"parents": []string{headSHA},
+	}, &newCommit); err != nil {
+		return fmt.Errorf("create commit: %w", err)
+	}
+	if err := ghAPI(token, "PATCH", base+"/git/refs/heads/"+branch, map[string]string{
+		"sha": newCommit.SHA,
+	}, nil); err != nil {
+		if status := ghStatusCode(err); status == 409 || status == 422 {
+			return fmt.Errorf("update ref: branch %q moved during commit (status %d). Re-run to retry on a fresh ref. Underlying: %w", branch, status, err)
+		}
+		return fmt.Errorf("update ref: %w", err)
+	}
+	return nil
+}
+
+func ghListEnvFiles(token, env string) ([]string, error) {
+	repo := getGhRepo()
+	var treeResp struct {
+		Tree []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"tree"`
+	}
+	url := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/HEAD?recursive=1", repo)
+	if err := ghAPI(token, "GET", url, nil, &treeResp); err != nil {
+		return nil, err
+	}
+	prefix := env + "/"
+	var paths []string
+	for _, e := range treeResp.Tree {
+		if e.Type != "blob" {
+			continue
+		}
+		if strings.HasPrefix(e.Path, prefix) {
+			paths = append(paths, e.Path)
+		}
+	}
+	return paths, nil
+}
+
+type ghAPIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *ghAPIError) Error() string {
+	return fmt.Sprintf("GitHub API %d: %s", e.StatusCode, e.Body)
+}
+
+func ghAPI(token, method, url string, payload any, out any) error {
+	var body io.Reader
+	if payload != nil {
+		b, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = strings.NewReader(string(b))
+	}
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return &ghAPIError{StatusCode: resp.StatusCode, Body: string(respBody)}
+	}
+	if out != nil {
+		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ghStatusCode(err error) int {
+	var apiErr *ghAPIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode
+	}
+	return 0
+}
+
 func ghDeleteFile(token, path, sha, commitMsg string) error {
 	if sha == "" {
 		return fmt.Errorf("ghDeleteFile requires a sha")
 	}
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), path)
+	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), ghEscapePath(path))
 
 	payload := map[string]string{
-		"message": commitMsg,
+		"message": prefixCommitMsg(commitMsg),
 		"sha":     sha,
 	}
 	body, err := json.Marshal(payload)
@@ -411,12 +706,7 @@ func buildOriginsFile(origins []string) string {
 }
 
 func contains(list []string, item string) bool {
-	for _, v := range list {
-		if v == item {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(list, item)
 }
 
 func remove(list []string, item string) []string {

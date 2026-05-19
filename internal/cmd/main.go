@@ -38,6 +38,7 @@ func RunD8XCli() {
 		Usage:                CmdUsage,
 		Description:          MainDescription,
 		EnableBashCompletion: true,
+		Metadata:             map[string]any{"container": container},
 		CommandNotFound: func(ctx *cli.Context, s string) {
 			fmt.Printf("Unknown command %s\n", s)
 		},
@@ -62,6 +63,7 @@ func RunD8XCli() {
 
 					subcommands := []string{
 						"new-env",
+						"rm-env",
 						"provision", "prov",
 						"configure", "config",
 						"broker-deploy",
@@ -89,6 +91,11 @@ func RunD8XCli() {
 						Name:   "new-env",
 						Usage:  "Create a new environment in the infra repo",
 						Action: withNextStep("new-env", container.NewEnvironment),
+					},
+					{
+						Name:   "rm-env",
+						Usage:  "Remove a non-provisioned environment from the infra repo",
+						Action: container.RemoveEnvironment,
 					},
 					{
 						Name:        "provision",
@@ -212,12 +219,6 @@ func RunD8XCli() {
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:        flags.PrivateKeyPath,
-				EnvVars:     []string{"SSH_KEY_PATH"},
-				Destination: &container.SshKeyPath,
-				Usage:       "SSH key path (loaded from Bitwarden as SSH_KEY_{ENV})",
-			},
-			&cli.StringFlag{
 				Name:        flags.User,
 				Value:       configs.DEFAULT_USER_NAME,
 				Destination: &container.DefaultClusterUserName,
@@ -258,8 +259,7 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
-			arg := ctx.Args().First()
-			if arg != "help" && arg != "" && !ctx.Bool("help") && !ctx.Bool("version") {
+			if !isHelpOrVersionInvocation(os.Args) {
 				container.LoadSecretsFromBitwarden()
 			}
 
@@ -329,28 +329,102 @@ var setupSequence = []struct {
 	{"metrics-deploy", "Deploy prometheus and grafana on the manager node (optional)"},
 }
 
-func withNextStep(name string, action cli.ActionFunc) cli.ActionFunc {
-	return func(ctx *cli.Context) error {
-		if err := action(ctx); err != nil {
-			return err
-		}
-		printRemainingSteps(name)
-		return nil
-	}
+var valueTakingFlags = map[string]struct{}{
+	"--password": {}, "-password": {},
+	"--user": {}, "-user": {},
+	"--github-token": {}, "-github-token": {},
+	"--nginx-api-key": {}, "-nginx-api-key": {},
+	"--chdir": {}, "-chdir": {},
 }
 
-func printRemainingSteps(current string) {
-	idx := -1
-	for i, s := range setupSequence {
-		if s.name == current {
-			idx = i
-			break
+func isHelpOrVersionInvocation(args []string) bool {
+	if len(args) <= 1 {
+		return true
+	}
+	skipNext := false
+	for _, a := range args[1:] {
+		if skipNext {
+			skipNext = false
+			continue
+		}
+		if _, ok := valueTakingFlags[a]; ok {
+			skipNext = true
+			continue
+		}
+		switch a {
+		case "help", "h", "--help", "-h", "--version", "-v":
+			return true
 		}
 	}
-	if idx < 0 || idx+1 >= len(setupSequence) {
+	return false
+}
+
+var stepActions = map[string]cli.ActionFunc{}
+
+func withNextStep(name string, action cli.ActionFunc) cli.ActionFunc {
+	wrapped := func(ctx *cli.Context) error {
+		printStepBanner(name)
+		if ctx.App.Metadata == nil {
+			ctx.App.Metadata = map[string]any{}
+		}
+		prev := ctx.App.Metadata["activeStep"]
+		ctx.App.Metadata["activeStep"] = name
+		err := action(ctx)
+		ctx.App.Metadata["activeStep"] = prev
+		if err != nil {
+			return err
+		}
+		return promptAndDispatchNextStep(ctx, name)
+	}
+	stepActions[name] = wrapped
+	return wrapped
+}
+
+func printStepBanner(name string) {
+	idx, ok := stepIndex(name)
+	if !ok {
 		return
 	}
-	next := setupSequence[idx+1]
+	s := setupSequence[idx]
+	banner := styles.PurpleBgText.Copy().Padding(0, 2).Render(
+		fmt.Sprintf(" STEP %d/%d: %s ", idx+1, len(setupSequence), s.name),
+	)
 	fmt.Println()
-	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Next step: \"d8x setup %s\" (%s)", next.name, next.desc)))
+	fmt.Println(banner)
+	fmt.Println(styles.ItalicText.Render(s.desc))
+	fmt.Println()
+}
+
+func promptAndDispatchNextStep(ctx *cli.Context, current string) error {
+	container, ok := ctx.App.Metadata["container"].(*actions.Container)
+	idx, found := stepIndex(current)
+	if !found || idx+1 >= len(setupSequence) {
+		return nil
+	}
+	next := setupSequence[idx+1]
+	nextAction := stepActions[next.name]
+	if nextAction == nil || !ok || container == nil {
+		fmt.Println()
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Next: \"d8x setup %s\" (%s)", next.name, next.desc)))
+		return nil
+	}
+	question := fmt.Sprintf("Continue to STEP %d/%d: %s?", idx+2, len(setupSequence), next.name)
+	proceed, err := container.TUI.NewPrompt(question, true)
+	if err != nil {
+		return err
+	}
+	if !proceed {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Stopped before \"d8x setup %s\". Run it later to continue.", next.name)))
+		return nil
+	}
+	return nextAction(ctx)
+}
+
+func stepIndex(name string) (int, bool) {
+	for i, s := range setupSequence {
+		if s.name == name {
+			return i, true
+		}
+	}
+	return 0, false
 }

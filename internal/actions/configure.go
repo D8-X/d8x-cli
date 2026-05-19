@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
@@ -26,6 +27,12 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
 	}
+	if cfg.ServerProvider == "" {
+		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" which sets it for new envs")
+	}
+	if err := c.RequireProvisionedHosts("configure"); err != nil {
+		return err
+	}
 
 	// Update hosts.cfg for linode provider in case d8x config was changed
 	// manually
@@ -35,11 +42,8 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		}
 	}
 
-	// Copy the playbooks file
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/playbooks/setup.ansible.yaml", Dst: "./playbooks/setup.ansible.yaml", Overwrite: true},
-	); err != nil {
+	playbookPath, err := c.fetchSetupPlaybook()
+	if err != nil {
 		return err
 	}
 
@@ -58,10 +62,22 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		c.UserPassword = password
 	}
 
-	fmt.Printf("  Server password: %s\n", c.UserPassword)
 	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
 		fieldName := "SERVER_PASSWORD_" + strings.ToUpper(c.SelectedEnv)
-		saveAndReport(fieldName, c.UserPassword)
+		result, _, err := SaveSecretToBitwardenItem(bwItemName, fieldName, c.UserPassword)
+		switch {
+		case err != nil:
+			fmt.Printf("  %s could not save %s to Bitwarden: %s\n", notok, fieldName, err)
+			fmt.Printf("  %s server password (capture now, Bitwarden save failed): %s\n", warning, c.UserPassword)
+		case result == BwSkippedConflict:
+			fmt.Printf("  %s %s already exists in Bitwarden with a different value; not overwriting. This run is using a freshly generated password: %s\n", warning, fieldName, c.UserPassword)
+		case result == BwSaved:
+			fmt.Printf("  %s server password saved to Bitwarden as %s\n", ok, fieldName)
+		case result == BwUnchanged:
+			fmt.Printf("  %s server password already in Bitwarden as %s (reused)\n", ok, fieldName)
+		}
+	} else {
+		fmt.Printf("  %s BW_SESSION not set; server password not saved to Bitwarden. Capture it now: %s\n", warning, c.UserPassword)
 	}
 
 	configureUser := cfg.GetAnsibleUser()
@@ -76,11 +92,15 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		return fmt.Errorf("generating hashed password: %w", err)
 	}
 	hashedPassword := string(h)
-	fmt.Printf("hashed user password: %s\n", hashedPassword)
 
 	inventoryPath, err := writeHostsToTempFile(c.HostsCfg)
 	if err != nil {
 		return fmt.Errorf("writing ansible inventory: %w", err)
+	}
+	if cfg.ServerProvider == configs.D8XServerProviderLinode {
+		if err := appendWorkerProxyJump(inventoryPath, c.HostsCfg, c.DefaultClusterUserName, privKeyPath); err != nil {
+			fmt.Printf("  %s could not add worker ProxyJump to inventory: %s\n", notok, err)
+		}
 	}
 
 	args := []string{
@@ -91,18 +111,15 @@ func (c *Container) Configure(ctx *cli.Context) error {
 		"--extra-vars", fmt.Sprintf(`default_user_password='%s'`, hashedPassword),
 		"-i", inventoryPath,
 		"-u", configureUser,
-		"./playbooks/setup.ansible.yaml",
+		playbookPath,
 	}
 
 	switch cfg.ServerProvider {
 	case configs.D8XServerProviderAWS:
-		// For AWS, we don't want to setup UFW, since firewall is already handled by
-		// AWS itself
 		args = append(args, "--extra-vars", "no_ufw=true")
 
 	case configs.D8XServerProviderLinode:
-		// For linode - pass become_pass for subsequent configuration runs.
-		if cfg.ConfigDetails.Done {
+		if c.UserPassword != "" {
 			args = append(args,
 				"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, c.UserPassword),
 			)
@@ -137,19 +154,140 @@ func (c *Container) Configure(ctx *cli.Context) error {
 	return nil
 }
 
+func (c *Container) fetchSetupPlaybook() (string, error) {
+	var content []byte
+	token := os.Getenv("GITHUB_TOKEN")
+	if token != "" && c.SelectedEnv != "" {
+		file, err := ghReadFile(token, c.SelectedEnv+"/setup.ansible.yaml")
+		if err == nil {
+			content = []byte(file.Content)
+		} else if !strings.Contains(err.Error(), "404") {
+			fmt.Printf("  %s could not fetch %s/setup.ansible.yaml from infra repo (%s); falling back to embedded playbook\n", warning, c.SelectedEnv, err)
+		}
+	}
+	if content == nil {
+		embedded, err := configs.GetSetupAnsiblePlaybook()
+		if err != nil {
+			return "", fmt.Errorf("loading embedded setup.ansible.yaml: %w", err)
+		}
+		content = embedded
+	}
+	dir := filepath.Join(os.TempDir(), "d8x-cli")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("creating temp playbook dir: %w", err)
+	}
+	path := filepath.Join(dir, "setup.ansible.yaml")
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		return "", fmt.Errorf("writing temp playbook: %w", err)
+	}
+	return path, nil
+}
+
+func appendWorkerProxyJump(inventoryPath string, hosts files.HostsFileInteractor, clusterUser, privKeyPath string) error {
+	workers, err := hosts.GetWorkerIps()
+	if err != nil || len(workers) == 0 {
+		return nil
+	}
+	privateIps, _ := hosts.GetWorkerPrivateIps()
+	managerIp, err := hosts.GetMangerPublicIp()
+	if err != nil || managerIp == "" {
+		return fmt.Errorf("manager public IP not found")
+	}
+	existing, err := os.ReadFile(inventoryPath)
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(existing), "[workers:vars]") {
+		return nil
+	}
+	managerHasClusterUser := false
+	for _, line := range strings.Split(string(existing), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), managerIp) && strings.Contains(line, "ansible_user=") {
+			managerHasClusterUser = true
+			break
+		}
+	}
+	proxyUser := clusterUser
+	if !managerHasClusterUser {
+		proxyUser = "root"
+	}
+	if strings.ContainsAny(privKeyPath, "'\"$`\\ ") {
+		return fmt.Errorf("ssh key path %q contains unsafe characters; move it to a path without spaces or shell metacharacters", privKeyPath)
+	}
+
+	publicToPrivate := map[string]string{}
+	for i, pub := range workers {
+		if i < len(privateIps) && privateIps[i] != "" {
+			publicToPrivate[pub] = privateIps[i]
+		}
+	}
+	if len(publicToPrivate) > 0 {
+		rewritten, err := rewriteWorkersToPrivate(string(existing), publicToPrivate)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(inventoryPath, []byte(rewritten), 0644); err != nil {
+			return err
+		}
+		existing = []byte(rewritten)
+	}
+
+	proxyCommand := fmt.Sprintf(`ssh -i %s -W %%h:%%p -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -q %s@%s`, privKeyPath, proxyUser, managerIp)
+	prefix := ""
+	if len(existing) > 0 && !strings.HasSuffix(string(existing), "\n") {
+		prefix = "\n"
+	}
+	block := fmt.Sprintf("%s\n[workers:vars]\nansible_ssh_common_args='-o ProxyCommand=\"%s\" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'\n", prefix, proxyCommand)
+	f, err := os.OpenFile(inventoryPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.WriteString(block); err != nil {
+		return err
+	}
+	return nil
+}
+
+func rewriteWorkersToPrivate(inventory string, publicToPrivate map[string]string) (string, error) {
+	lines := strings.Split(inventory, "\n")
+	inWorkers := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inWorkers = trimmed == "[workers]"
+			continue
+		}
+		if !inWorkers || trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		priv, ok := publicToPrivate[fields[0]]
+		if !ok {
+			continue
+		}
+		if strings.Contains(line, "ansible_host=") {
+			continue
+		}
+		lines[i] = line + " ansible_host=" + priv
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
 func generatePassword(n int) (string, error) {
 	set := "_1234567890-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	l := len(set)
-	pwd := ""
-
+	l := int64(len(set))
+	var pwd strings.Builder
+	pwd.Grow(n)
 	for i := 0; i < n; i++ {
-		n, err := rand.Int(rand.Reader, big.NewInt(int64(l)))
+		idx, err := rand.Int(rand.Reader, big.NewInt(l))
 		if err != nil {
 			return "", err
 		}
-		pwd += string(set[n.Int64()])
+		pwd.WriteByte(set[idx.Int64()])
 	}
-
-	return pwd, nil
-
+	return pwd.String(), nil
 }

@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"gopkg.in/yaml.v2"
@@ -19,9 +17,6 @@ import (
 
 // Port that we expose cadvisor on
 var CADVISOR_PORT = 4003
-
-// Stack name for metrics services deployed on manager
-var dockerMetricsStackName = "metrics"
 
 // DeployMetrics copies prometheus config and redeploys prometheus service.
 // Prometheus deployment is separated from main swarm deployment because we want
@@ -35,6 +30,12 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		return err
 	}
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+	if cfg.ServerProvider == "" {
+		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first")
+	}
+	if err := c.RequireProvisionedHosts("metrics-deploy", "manager"); err != nil {
 		return err
 	}
 
@@ -51,46 +52,42 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	defer manager.Close()
 
-	filesToCopy := []files.EmbedCopierOp{
-		// Metrics (grafana/prometheus) stack
-		{Src: "embedded/docker-swarm-metrics.yml", Dst: "./docker-swarm-metrics.yml", Overwrite: true},
-		// Prometheus config
-		{Src: "embedded/prometheus.yml", Dst: "./prometheus.yml", Overwrite: true},
-
-		// All things grafana
-		{Src: "embedded/grafana", Dst: "./grafana", Overwrite: true, Dir: true},
+	loads := []struct {
+		envRelPath, embeddedSrc, remoteDst string
+	}{
+		{"docker-swarm-metrics.yml", "embedded/docker-swarm-metrics.yml", "./docker-swarm-metrics.yml"},
+		{"prometheus.yml", "embedded/prometheus.yml", "./prometheus.yml"},
+		{"grafana/datasource-prometheus.yml", "embedded/grafana/datasource-prometheus.yml", "./grafana/datasource-prometheus.yml"},
+		{"grafana/chart.json", "embedded/grafana/chart.json", "./grafana/chart.json"},
+		{"grafana/chart-cadvisor.json", "embedded/grafana/chart-cadvisor.json", "./grafana/chart-cadvisor.json"},
+		{"grafana/dashboards.yml", "embedded/grafana/dashboards.yml", "./grafana/dashboards.yml"},
 	}
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, filesToCopy...); err != nil {
-		return fmt.Errorf("copying configs to local file system: %w", err)
+	contents := make(map[string][]byte, len(loads))
+	for _, l := range loads {
+		data, err := c.loadInfraRepoFile(l.envRelPath, l.embeddedSrc)
+		if err != nil {
+			return fmt.Errorf("loading %s: %w", l.envRelPath, err)
+		}
+		contents[l.envRelPath] = data
 	}
 
-	// Configure the ip addresses of prometheus targets
 	workerIPs, err := c.HostsCfg.GetWorkerPrivateIps()
 	if err != nil {
 		return err
 	}
-	prometheusYaml, err := os.ReadFile("./prometheus.yml")
+	prometheusWithTargets, err := c.processPrometheusYaml(contents["prometheus.yml"], workerIPs)
 	if err != nil {
 		return err
 	}
-	if prometheusWithTargets, err := c.processPrometheusYaml(prometheusYaml, workerIPs); err != nil {
-		return err
-	} else {
-		if err := os.WriteFile("./prometheus.yml", prometheusWithTargets, 0666); err != nil {
-			return err
-		}
+	contents["prometheus.yml"] = prometheusWithTargets
+
+	sftpOps := make([]conn.SftpCopySrcDest, 0, len(loads))
+	for _, l := range loads {
+		sftpOps = append(sftpOps, conn.SftpCopySrcDest{Content: contents[l.envRelPath], Dst: l.remoteDst})
 	}
-
-	if err := manager.CopyFilesOverSftp(
-		conn.SftpCopySrcDest{Src: "./prometheus.yml", Dst: "./prometheus.yml"},
-		conn.SftpCopySrcDest{Src: "./docker-swarm-metrics.yml", Dst: "./docker-swarm-metrics.yml"},
-
-		conn.SftpCopySrcDest{Src: "./grafana/datasource-prometheus.yml", Dst: "./grafana/datasource-prometheus.yml"},
-		conn.SftpCopySrcDest{Src: "./grafana/chart.json", Dst: "./grafana/chart.json"},
-		conn.SftpCopySrcDest{Src: "./grafana/chart-cadvisor.json", Dst: "./grafana/chart-cadvisor.json"},
-		conn.SftpCopySrcDest{Src: "./grafana/dashboards.yml", Dst: "./grafana/dashboards.yml"},
-	); err != nil {
+	if err := manager.CopyFilesOverSftp(sftpOps...); err != nil {
 		return fmt.Errorf("copying prometheus config to manager: %w", err)
 	}
 
@@ -103,7 +100,9 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		"sleep 5; docker compose -f docker-swarm-metrics.yml up -d",
 	}
 	cmd := strings.Join(cmdLines, ";")
+	prometheusDeployed := true
 	if err := manager.ExecCommandPiped(cmd); err != nil {
+		prometheusDeployed = false
 		fmt.Println(
 			styles.ErrorText.Render(
 				fmt.Sprintf("Deploying metrics: %s", err.Error()),
@@ -116,7 +115,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	// Block access of cadvisor port for public ip servers providers
 	switch cfg.ServerProvider {
 	case configs.D8XServerProviderLinode:
-		workerIps, err := c.HostsCfg.GetWorkerIps()
+		workerPrivIps, err := c.HostsCfg.GetWorkerPrivateIps()
 		if err != nil {
 			return err
 		}
@@ -127,42 +126,41 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 		}
 
 		wg := sync.WaitGroup{}
-		for _, workerIp := range workerIps {
-			workerIp := workerIp
+		for _, ip := range workerPrivIps {
+			ip := ip
 			wg.Add(1)
-			go func(ip string) {
-				sh, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
+			go func(workerPrivIp string) {
+				defer wg.Done()
+				sh, err := conn.NewSSHConnectionWithBastion(manager.GetClient(), workerPrivIp, c.DefaultClusterUserName, c.SshKeyPath)
 				if err != nil {
 					fmt.Println(
 						styles.ErrorText.Render(
-							fmt.Sprintf("Connecting to worker %s: %s", ip, err.Error()),
+							fmt.Sprintf("Connecting to worker %s via manager bastion: %s", workerPrivIp, err.Error()),
 						),
 					)
+					return
 				}
-				check := "iptables -L -t raw | grep ':%d'"
-				check = fmt.Sprintf(check, CADVISOR_PORT)
-				// We only want to run additional iptables insert if cadvisor
-				// port was not found in grep. Here we'll add a drop rule to the
-				// raw table when destination port is our worker's public IP.
-				cmd := fmt.Sprintf(check+" || iptables -I PREROUTING 1 -t raw -p tcp -d %s --dport %d -j DROP && iptables-save > /etc/iptables/rules.v4", ip, CADVISOR_PORT)
+				defer sh.Close()
+				check := fmt.Sprintf("iptables -L -t raw | grep ':%d'", CADVISOR_PORT)
+				inner := fmt.Sprintf("%s || iptables -I PREROUTING 1 -t raw -p tcp -d %s --dport %d -j DROP && iptables-save > /etc/iptables/rules.v4", check, workerPrivIp, CADVISOR_PORT)
 				out, err := sh.ExecCommand(
-					fmt.Sprintf(`echo '%s' | sudo -S bash -c '%s'`, pwd, cmd),
+					fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c %s`, shQuote(pwd), shQuote(inner)),
 				)
 				if err != nil {
 					fmt.Println(string(out))
 					fmt.Println(
-						styles.ErrorText.Render("[" + ip + "] Error blocking cadvisor port on worker: " + err.Error()),
+						styles.ErrorText.Render("[" + workerPrivIp + "] Error blocking cadvisor port on worker: " + err.Error()),
 					)
 				}
-
-				wg.Done()
-			}(workerIp)
+			}(ip)
 		}
 		wg.Wait()
 
 	}
 
-	// Update cfg
+	if !prometheusDeployed {
+		return fmt.Errorf("metrics deploy aborted: prometheus stack failed to start")
+	}
 	cfg.MetricsDeployed = true
 
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
@@ -181,13 +179,27 @@ func (c *Container) processPrometheusYaml(promYamlContents []byte, workers []str
 		return nil, err
 	}
 
-	// We want to edit targets and remarshall the yaml
 	targets := make([]string, len(workers))
 	for i, w := range workers {
 		targets[i] = w + ":" + strconv.Itoa(CADVISOR_PORT)
 	}
-	// This is horrible, but it works if we don't change our default prometheus config
-	mp["scrape_configs"].([]any)[0].(map[any]any)["static_configs"].([]any)[0].(map[any]any)["targets"] = targets
+	scrapes, ok := mp["scrape_configs"].([]any)
+	if !ok || len(scrapes) == 0 {
+		return nil, fmt.Errorf("prometheus.yml: missing scrape_configs[]")
+	}
+	job, ok := scrapes[0].(map[any]any)
+	if !ok {
+		return nil, fmt.Errorf("prometheus.yml: scrape_configs[0] not a map")
+	}
+	statics, ok := job["static_configs"].([]any)
+	if !ok || len(statics) == 0 {
+		return nil, fmt.Errorf("prometheus.yml: missing static_configs[]")
+	}
+	entry, ok := statics[0].(map[any]any)
+	if !ok {
+		return nil, fmt.Errorf("prometheus.yml: static_configs[0] not a map")
+	}
+	entry["targets"] = targets
 
 	return yaml.Marshal(mp)
 }
@@ -199,6 +211,9 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 		return err
 	}
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("grafana-tunnel", "manager"); err != nil {
 		return err
 	}
 	if !cfg.MetricsDeployed {
@@ -254,18 +269,22 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 	}
 
 	for {
-		conn, err := l.Accept()
+		clientConn, err := l.Accept()
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-
-		grafanaConn, err := managerConn.GetClient().Dial("tcp", "127.0.0.1:"+strconv.Itoa(grafanaPort))
-		if err != nil {
-			return fmt.Errorf("dialing grafana service on manager: %w", err)
-		}
-
-		go cpFn(grafanaConn, conn)
-		go cpFn(conn, grafanaConn)
+		go func() {
+			defer clientConn.Close()
+			grafanaConn, err := managerConn.GetClient().Dial("tcp", "127.0.0.1:"+strconv.Itoa(grafanaPort))
+			if err != nil {
+				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("dialing grafana service on manager: %s", err)))
+				return
+			}
+			defer grafanaConn.Close()
+			done := make(chan struct{}, 2)
+			go func() { cpFn(grafanaConn, clientConn); done <- struct{}{} }()
+			go func() { cpFn(clientConn, grafanaConn); done <- struct{}{} }()
+			<-done
+		}()
 	}
 }

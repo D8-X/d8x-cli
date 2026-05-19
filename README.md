@@ -30,7 +30,7 @@ The CLI will prompt for the master password. To avoid re-entering it on every co
 export BW_SESSION=$(bw unlock --raw)
 ```
 
-Secrets can also be passed via a `.env` file in the current working directory or CLI flags.
+Bitwarden is the only source of truth for secrets. The CLI does not read secrets from `.env` files or any other local files; if a required secret is missing, the CLI prompts for it and saves it to Bitwarden for next time.
 
 ## Installation
 
@@ -107,8 +107,8 @@ See [docs/maintenance.md](docs/maintenance.md) for updates, health checks, SSH a
 | `d8x update` | Update Docker service images |
 | `d8x health` | Check all services and endpoints |
 | `d8x ssh manager\|broker\|worker-N` | SSH into a server |
-| `d8x db-tunnel` | Create SSH tunnel to the database |
-| `d8x backup-db` | Backup the database via SSH |
+| `d8x db-tunnel` | Create SSH tunnel to the database. See [docs/database.md](docs/database.md) |
+| `d8x backup-db` | Backup the database via SSH. See [docs/database.md](docs/database.md) |
 | `d8x grafana-tunnel` | Tunnel to Grafana dashboard |
 | `d8x ip manager\|broker` | Show server IPs |
 | `d8x fix-ingress` | Fix Docker Swarm ingress network |

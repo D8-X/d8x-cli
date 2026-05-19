@@ -38,6 +38,9 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	if _, err := c.EnsureEnvironment(cfg); err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("rpc", "manager"); err != nil {
+		return err
+	}
 	if cfg.ChainId == 0 {
 		return fmt.Errorf("no chain_id known for this environment. Run \"setup swarm-deploy\" first")
 	}

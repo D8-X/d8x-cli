@@ -3,11 +3,10 @@ package actions
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -326,8 +325,7 @@ func (input *InputCollector) PostProvisioningHook() error {
 		return err
 	}
 
-	// Attempt to parse aws_rds credentials file
-	if err := collectAwsRdsDsnString(cfg); err != nil {
+	if err := collectAwsRdsDsnString(cfg, input.SelectedEnv); err != nil {
 		return err
 	}
 
@@ -390,24 +388,27 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
-
-	// Broker private key must be collected only once per session. Do not
-	// collect it for individual swarm-deploy or if user chooses not to deploy
-	// broker during the setup
-	if input.brokerDeployInput.privateKey == "" && ctx.Command.Name != "swarm-deploy" {
-		collect := true
-		if ctx.Command.Name == "setup" && !input.setup.deployBroker {
-			collect = false
-		}
-
-		if collect {
-			if err := input.CollectBrokerPrivateKey(); err != nil {
-				return err
-			}
-		}
+	activeStep, _ := ctx.App.Metadata["activeStep"].(string)
+	currentCommand := ctx.Command.Name
+	if activeStep != "" {
+		currentCommand = activeStep
 	}
 
+	if currentCommand == "swarm-deploy" || currentCommand == "swarm-nginx" || currentCommand == "metrics-deploy" {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
+
+	collect := true
+	if currentCommand == "setup" && !input.setup.deployBroker {
+		collect = false
+	}
+	if collect {
+		if err := input.CollectBrokerPrivateKey(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -570,7 +571,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				if err := saveAndReport(fieldName, pwd); err != nil {
+				if err := saveAndReportWithConfirm(input.TUI, bwItemName, fieldName, pwd); err != nil {
 					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
 				}
 			}
@@ -686,7 +687,7 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRedisPassword = pwd
 			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
-				if err := saveAndReport(fieldName, pwd); err != nil {
+				if err := saveAndReportWithConfirm(input.TUI, bwItemName, fieldName, pwd); err != nil {
 					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
 				}
 			}
@@ -868,11 +869,7 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 			chainSelection = append(chainSelection, chainName)
 		}
 
-		// Sort chains by name so we always have consistent order in the
-		// selection
-		sort.Slice(chainSelection, func(i, j int) bool {
-			return chainSelection[i] < chainSelection[j]
-		})
+		slices.Sort(chainSelection)
 
 		chains, err := c.TUI.NewSelection(chainSelection, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
@@ -989,38 +986,35 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			}
 		}
 
-	// For AWS - read it from rds credentials file
 	case configs.D8XServerProviderAWS:
-		if err := collectAwsRdsDsnString(cfg); err != nil {
+		if err := collectAwsRdsDsnString(cfg, c.SelectedEnv); err != nil {
 			return err
 		}
 	}
 
 	if os.Getenv("BW_SESSION") != "" && cfg.DatabaseDSN != "" {
 		fieldName := "DATABASE_DSN_" + strings.ToUpper(c.SelectedEnv)
-		saveAndReport(fieldName, cfg.DatabaseDSN)
+		_ = saveAndReportWithConfirm(c.TUI, bwItemName, fieldName, cfg.DatabaseDSN)
 	}
 
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// collectAwsRdsDsnString collects database dsn string from AWS RDS credentials
-// file and adds it to the given cfg. If RDS_CREDS_FILE does not exist yet it
-// will not return an error and will silently fail.
-func collectAwsRdsDsnString(cfg *configs.D8XConfig) error {
-	creds, err := os.ReadFile(RDS_CREDS_FILE)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
+func collectAwsRdsDsnString(cfg *configs.D8XConfig, env string) error {
+	credsMap := loadRDSCredsFromBitwarden(env)
+	if credsMap == nil {
+		return nil
 	}
-	credsMap := parseAwsRDSCredentialsFile(creds)
-	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
+	dbName := readEnvSecret(env, "AWS_RDS_DB_NAME")
+	if dbName == "" {
+		dbName = "history"
+	}
+	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
 		credsMap["user"],
 		credsMap["password"],
 		credsMap["host"],
 		credsMap["port"],
+		dbName,
 	)
 
 	return nil

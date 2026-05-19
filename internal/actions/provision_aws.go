@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -66,12 +67,12 @@ func (a *awsConfigurer) BuildTerraformCMD(c *Container) (*exec.Cmd, error) {
 }
 
 func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
+	credsSaved := a.uploadRDSCredsToBitwarden(c)
+
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("could not read manager public IP from hosts.cfg: %v. Skipping known_hosts update; subsequent SSH operations may prompt for host key confirmation.", err)))
-		return nil
-	}
-	if err := a.putManagerToKnownHosts(managerIp); err != nil {
+	} else if err := a.putManagerToKnownHosts(managerIp); err != nil {
 		fmt.Println(
 			styles.ErrorText.Render(
 				fmt.Sprintf("could not update ~/.ssh/known_hosts for manager %s: %v. You may need to accept the host key manually on first SSH (e.g., `ssh %s` and type 'yes').", managerIp, err, managerIp),
@@ -79,7 +80,148 @@ func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
 		)
 	}
 
+	envUpper := strings.ToUpper(c.SelectedEnv)
+	if credsSaved {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf(
+			"RDS connection details saved to Bitwarden as AWS_RDS_HOST_%s / AWS_RDS_PORT_%s / AWS_RDS_USER_%s / AWS_RDS_PASSWORD_%s.",
+			envUpper, envUpper, envUpper, envUpper,
+		)))
+	}
+
+	dbDefault := readEnvSecret(c.SelectedEnv, "AWS_RDS_DB_NAME")
+	if dbDefault == "" {
+		dbDefault = "history"
+	}
+	fmt.Println("Name of the database the history service will connect to (used as the suffix in DATABASE_DSN):")
+	dbName, ierr := c.TUI.NewInput(
+		components.TextInputOptValue(dbDefault),
+		components.TextInputOptDenyEmpty(),
+	)
+	if ierr != nil {
+		return ierr
+	}
+	dbName = strings.TrimSpace(dbName)
+
+	dbNameField := "AWS_RDS_DB_NAME_" + envUpper
+	dbNameRecorded := false
+	if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+		result, _, err := SaveSecretToBitwardenItem(bwItemName, dbNameField, dbName)
+		switch {
+		case err != nil:
+			fmt.Printf("%s warning: could not save %s to Bitwarden: %s\n", warning, dbNameField, err)
+		case result == BwSkippedConflict:
+			fmt.Printf("%s warning: %s already exists in Bitwarden with a different value; not overwriting. Edit it manually via \"bw edit\" if you want %q to take effect for future runs; for THIS session only, the operator-entered value is used.\n", warning, dbNameField, dbName)
+		default:
+			dbNameRecorded = true
+		}
+	}
+	os.Setenv(dbNameField, dbName)
+	if dbNameRecorded {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf(
+			"Database name %q recorded in Bitwarden as %s. \"d8x setup swarm-deploy\" will read this back and build DATABASE_DSN with the %q suffix.",
+			dbName, dbNameField, dbName,
+		)))
+	}
+
+	recoveryHint := fmt.Sprintf("Easiest retry: rerun \"d8x setup provision\" and accept the auto-create prompt. Manual alternative: on the manager (\"d8x ssh manager\") run a psql against the RDS host using the values from Bitwarden fields AWS_RDS_HOST_%s / AWS_RDS_PORT_%s / AWS_RDS_USER_%s / AWS_RDS_PASSWORD_%s and execute \"CREATE DATABASE %s;\".", envUpper, envUpper, envUpper, envUpper, dbName)
+
+	create, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-create the %q database on RDS now? (decline only if you'll create it manually on the manager before \"d8x setup swarm-deploy\")", dbName), true)
+	if perr != nil {
+		return perr
+	}
+	if create {
+		if err := a.createRDSDatabases(c, dbName); err != nil {
+			recordedNote := fmt.Sprintf("The name %q is still recorded in Bitwarden as %s, so the DSN built by \"d8x setup swarm-deploy\" will point at it.", dbName, dbNameField)
+			if !dbNameRecorded {
+				recordedNote = fmt.Sprintf("The name %q was NOT recorded in Bitwarden (see the warning above). Fix that or expect \"d8x setup swarm-deploy\" to fall back to the default \"history\" suffix.", dbName)
+			}
+			fmt.Printf("%s warning: could not auto-create %q on RDS: %s. %s %s\n", warning, dbName, err, recordedNote, recoveryHint)
+		}
+	} else {
+		recordedNote := fmt.Sprintf("The name %q is recorded in Bitwarden as %s, so the DSN will point at %q.", dbName, dbNameField, dbName)
+		if !dbNameRecorded {
+			recordedNote = fmt.Sprintf("The name %q was NOT recorded in Bitwarden (see the warning above); \"d8x setup swarm-deploy\" will fall back to the default \"history\" suffix unless you set %s manually.", dbName, dbNameField)
+		}
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf(
+			"Skipping auto-create. %s Before running \"d8x setup swarm-deploy\", create it manually. %s",
+			recordedNote, recoveryHint,
+		)))
+	}
+
 	return nil
+}
+
+func (a *awsConfigurer) uploadRDSCredsToBitwarden(c *Container) bool {
+	if os.Getenv("BW_SESSION") == "" {
+		fmt.Println(styles.ItalicText.Render("BW_SESSION not set; not uploading RDS credentials to Bitwarden. They remain in ./aws_rds_postgres.txt only. Unlock Bitwarden (\"bw unlock\") and rerun \"d8x setup provision\" to persist them."))
+		return false
+	}
+	if c.SelectedEnv == "" {
+		return false
+	}
+	creds, err := os.ReadFile(RDS_CREDS_FILE)
+	if err != nil {
+		fmt.Printf("%s warning: could not read %s after terraform: %s. RDS credentials not uploaded to Bitwarden.\n", warning, RDS_CREDS_FILE, err)
+		return false
+	}
+	credsMap := parseAwsRDSCredentialsFile(creds)
+	envUpper := strings.ToUpper(c.SelectedEnv)
+	fields := []struct {
+		key       string
+		fieldName string
+	}{
+		{"host", "AWS_RDS_HOST_" + envUpper},
+		{"port", "AWS_RDS_PORT_" + envUpper},
+		{"user", "AWS_RDS_USER_" + envUpper},
+		{"password", "AWS_RDS_PASSWORD_" + envUpper},
+	}
+	savedAll := true
+	for _, f := range fields {
+		v := credsMap[f.key]
+		if v == "" {
+			savedAll = false
+			continue
+		}
+		result, _, err := SaveSecretToBitwardenItem(bwItemName, f.fieldName, v)
+		switch {
+		case err != nil:
+			fmt.Printf("%s warning: could not save %s to Bitwarden: %s\n", warning, f.fieldName, err)
+			savedAll = false
+		case result == BwSkippedConflict:
+			fmt.Printf("%s warning: %s already exists in Bitwarden with a different value; not overwriting.\n", warning, f.fieldName)
+			savedAll = false
+		default:
+			os.Setenv(f.fieldName, v)
+		}
+	}
+	if savedAll {
+		if err := os.Remove(RDS_CREDS_FILE); err != nil && !errors.Is(err, os.ErrNotExist) {
+			fmt.Printf("%s warning: RDS credentials saved to Bitwarden but could not delete local %s: %s\n", warning, RDS_CREDS_FILE, err)
+		}
+	}
+	return savedAll
+}
+
+func loadRDSCredsFromBitwarden(env string) map[string]string {
+	if env == "" {
+		return nil
+	}
+	envUpper := strings.ToUpper(env)
+	keys := map[string]string{
+		"host":     "AWS_RDS_HOST_" + envUpper,
+		"port":     "AWS_RDS_PORT_" + envUpper,
+		"user":     "AWS_RDS_USER_" + envUpper,
+		"password": "AWS_RDS_PASSWORD_" + envUpper,
+	}
+	out := map[string]string{}
+	for k, fieldName := range keys {
+		v := os.Getenv(fieldName)
+		if v == "" {
+			return nil
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // putManagerToKnownHosts attempts to put managerIpAddress to current user's
@@ -252,18 +394,15 @@ func parseAwsRDSCredentialsFile(contents []byte) map[string]string {
 	return credsMap
 }
 
-// createRDSDatabases automatically creates new databases on provisioned RDS
-// postgres instance.
 func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName string) error {
-	// Get RDS credentials
-	creds, err := os.ReadFile(RDS_CREDS_FILE)
-	if err != nil {
-		return err
+	credsMap := loadRDSCredsFromBitwarden(c.SelectedEnv)
+	if credsMap == nil {
+		return fmt.Errorf("RDS credentials not found in Bitwarden; unlock Bitwarden and rerun \"d8x setup provision\" so they get persisted to AWS_RDS_HOST/PORT/USER/PASSWORD_%s", strings.ToUpper(c.SelectedEnv))
 	}
-	credsMap := parseAwsRDSCredentialsFile(creds)
 
+	envUpper := strings.ToUpper(c.SelectedEnv)
 	fmt.Println(styles.ItalicText.Render(
-		fmt.Sprintf("Creating database %s on %s ...", historyDbName, credsMap["host"]),
+		fmt.Sprintf("Creating empty database %q on RDS host %s (using credentials from Bitwarden field AWS_RDS_USER_%s / AWS_RDS_PASSWORD_%s) ...", historyDbName, credsMap["host"], envUpper, envUpper),
 	))
 
 	ip, err := c.HostsCfg.GetMangerPublicIp()
@@ -283,7 +422,6 @@ func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName string) e
 		return fmt.Errorf("could not convert port to int: %w", err)
 	}
 
-	// pgx.ConnConfig must be created via ParseConfig!
 	pgCnfg, err := pgx.ParseConfig("postgresql://user:passwd@" + credsMap["host"] + ":5432/postgres?sslmode=allow")
 	if err != nil {
 		return err
@@ -304,16 +442,17 @@ func (a *awsConfigurer) createRDSDatabases(c *Container, historyDbName string) e
 	if _, err := pgConn.Exec(context.Background(), "CREATE DATABASE "+historyDbName); err != nil {
 		fmt.Println(
 			styles.ErrorText.Render(
-				fmt.Sprintf("creating history database: %v", err),
+				fmt.Sprintf("CREATE DATABASE %q failed on %s: %v", historyDbName, credsMap["host"], err),
 			),
 		)
-	} else {
-		fmt.Println(
-			styles.SuccessText.Render(
-				fmt.Sprintf("History database %s was created!", historyDbName),
-			),
-		)
+		return err
 	}
+	fmt.Println(
+		styles.SuccessText.Render(
+			fmt.Sprintf("Created empty database %q on %s. The history container will connect here and migrate its own schema on first boot. After \"d8x setup swarm-deploy\" persists DATABASE_DSN_%s to Bitwarden, you can connect anytime via \"d8x db-tunnel\".", historyDbName, credsMap["host"], envUpper),
+		),
+	)
 
 	return nil
 }
+
