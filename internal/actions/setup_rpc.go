@@ -633,13 +633,25 @@ func writeRemoteFile(sshConn conn.SSHConnection, remotePath string, content []by
 			return err
 		}
 	}
-	f, err := s.Create(remotePath)
+	tmpPath := remotePath + ".tmp"
+	f, err := s.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(content)
-	return err
+	if _, err := f.Write(content); err != nil {
+		_ = f.Close()
+		_ = s.Remove(tmpPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = s.Remove(tmpPath)
+		return err
+	}
+	if err := s.PosixRename(tmpPath, remotePath); err != nil {
+		_ = s.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func rpcsForChain(entries []RPCConfigEntry, chainId uint) (httpUrls, wsUrls []string) {
