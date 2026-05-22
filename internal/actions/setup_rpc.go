@@ -57,6 +57,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	defer sshConn.Close()
 	fmt.Printf("  %s connected as %s\n", ok, c.DefaultClusterUserName)
 
 	fmt.Printf("\n%s Fetching live RPC config from manager\n", arrow)
