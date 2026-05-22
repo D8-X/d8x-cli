@@ -336,9 +336,7 @@ func promptUrl(c *Container, kind string) (string, error) {
 		errMsg = "url must start with http:// or https://"
 	case "ws":
 		placeholder = "wss://your-rpc-provider.com"
-		validator = func(s string) bool {
-			return strings.HasPrefix(s, "ws://") || strings.HasPrefix(s, "wss://")
-		}
+		validator = ValidateWs
 		errMsg = "url must start with ws:// or wss://"
 	}
 	url, err := c.TUI.NewInput(
