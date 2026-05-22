@@ -79,13 +79,6 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	fmt.Printf("  %s api: %d HTTP, %d WS\n", ok, len(mainHttp), len(mainWs))
 	fmt.Printf("  %s history: %d HTTP, %d WS\n", ok, len(histHttp), len(histWs))
 
-	orig := perServicePools{
-		mainHttp: append([]string{}, mainHttp...),
-		mainWs:   append([]string{}, mainWs...),
-		histHttp: append([]string{}, histHttp...),
-		histWs:   append([]string{}, histWs...),
-	}
-
 	fmt.Printf("\n%s Interactive edit (changes applied only on \"Apply and deploy\")\n", arrow)
 
 	pools := perServicePools{
@@ -108,6 +101,13 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 			pools.histWs, _ = dedupKeepOrder(pools.histWs)
 			fmt.Println(styles.SuccessText.Render("Dedup applied to in-memory pools (will only persist if you choose Apply and deploy)."))
 		}
+	}
+
+	orig := perServicePools{
+		mainHttp: append([]string{}, pools.mainHttp...),
+		mainWs:   append([]string{}, pools.mainWs...),
+		histHttp: append([]string{}, pools.histHttp...),
+		histWs:   append([]string{}, pools.histWs...),
 	}
 
 	for {
