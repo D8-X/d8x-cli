@@ -689,6 +689,18 @@ func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []stri
 		}
 	}
 
+	dropped := map[int]struct{}{}
+	for i := 1; i < len(indices); i++ {
+		dropped[indices[i]] = struct{}{}
+	}
+	out := make([]RPCConfigEntry, 0, len(entries)+1)
+	for i, e := range entries {
+		if _, skip := dropped[i]; skip {
+			continue
+		}
+		out = append(out, e)
+	}
+
 	if len(indices) == 0 {
 		entry := RPCConfigEntry{
 			ChainId:  chainId,
@@ -698,23 +710,23 @@ func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []stri
 			ws := append([]string{}, wsRpcs...)
 			entry.WsRpcs = &ws
 		}
-		return append(entries, entry)
+		return append(out, entry)
 	}
 
-	keep := indices[0]
-	entries[keep].HttpRpcs = append([]string{}, httpRpcs...)
-	if hadWsField || len(wsRpcs) > 0 {
-		ws := append([]string{}, wsRpcs...)
-		entries[keep].WsRpcs = &ws
-	} else {
-		entries[keep].WsRpcs = nil
+	for i := range out {
+		if out[i].ChainId != chainId {
+			continue
+		}
+		out[i].HttpRpcs = append([]string{}, httpRpcs...)
+		if hadWsField || len(wsRpcs) > 0 {
+			ws := append([]string{}, wsRpcs...)
+			out[i].WsRpcs = &ws
+		} else {
+			out[i].WsRpcs = nil
+		}
+		break
 	}
-
-	for i := len(indices) - 1; i > 0; i-- {
-		idx := indices[i]
-		entries = append(entries[:idx], entries[idx+1:]...)
-	}
-	return entries
+	return out
 }
 
 func (c *Container) postRpcRolloutHealthCheck(cfg *configs.D8XConfig) {
