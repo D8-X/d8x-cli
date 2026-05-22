@@ -430,7 +430,8 @@ func (c *Container) applyRemoteRpcChanges(
 	fmt.Printf("  api now: %d HTTP, %d WS for chain %s\n", len(pools.mainHttp), len(pools.mainWs), chainIdStr)
 	fmt.Printf("  history now: %d HTTP, %d WS for chain %s\n", len(pools.histHttp), len(pools.histWs), chainIdStr)
 
-	rev := time.Now().Format("20060102150405")
+	rev := time.Now().Format("20060102150405.000000000")
+	rev = strings.ReplaceAll(rev, ".", "")
 
 	fmt.Printf("\n%s [1/4] backing up existing RPC files on manager\n", arrow)
 	for _, p := range []string{rpcMainRemotePath, rpcHistoryRemotePath} {
