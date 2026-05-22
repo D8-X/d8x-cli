@@ -495,30 +495,9 @@ func (c *Container) applyRemoteRpcChanges(
 			fmt.Printf("  %s service %s now using %s\n", ok, stackSvc, newName)
 		}
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  refreshing canonical config %s for future \"swarm-deploy\" runs...", r.configName)))
-		if rmOut, rmErr := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, r.configName)); rmErr != nil {
-			rmMsg := strings.TrimSpace(string(rmOut))
-			fmt.Printf("  %s docker config rm %s failed: %s\n", warning, r.configName, rmMsg)
-			pinners, lsErr := sshConn.ExecCommand(fmt.Sprintf(
-				`docker service ls --format '{{.Name}}' | while read s; do docker service inspect "$s" --format '{{range .Spec.TaskTemplate.ContainerSpec.Configs}}{{.ConfigName}}{{"\n"}}{{end}}' | grep -Fxq %s && echo "$s"; done`,
-				shQuote(r.configName),
-			))
-			if lsErr == nil {
-				attached := strings.TrimSpace(string(pinners))
-				if attached != "" {
-					fmt.Printf("  %s services still pinning %s:\n", warning, r.configName)
-					for _, svc := range strings.Split(attached, "\n") {
-						svc = strings.TrimSpace(svc)
-						if svc != "" {
-							fmt.Printf("    - %s\n", svc)
-						}
-					}
-					fmt.Printf("  detach with: docker service update --config-rm %s <svc>, then re-run \"d8x setup rpc\"\n", r.configName)
-				}
-			}
+		if err := c.refreshCanonicalRpcConfig(sshConn, r.configName, r.remotePath, r.targetPath, newName); err != nil {
+			fmt.Printf("  %s %s\n", warning, err)
 			fmt.Printf("  %s live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, newName)
-		} else if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, r.configName, r.remotePath)); err != nil {
-			fmt.Println(string(out))
-			fmt.Printf("  %s could not recreate canonical %s; live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, r.configName, newName)
 		} else {
 			fmt.Printf("  %s canonical %s refreshed\n", ok, r.configName)
 		}
@@ -530,6 +509,62 @@ func (c *Container) applyRemoteRpcChanges(
 	fmt.Printf("\n%s api uses cfg_rpc_%s (%s)\n", ok, rev, rpcMainRemotePath)
 	fmt.Printf("%s history uses cfg_rpc_history_%s (%s)\n", ok, rev, rpcHistoryRemotePath)
 	fmt.Println(styles.SuccessText.Render("RPC update applied to live cluster."))
+	return nil
+}
+
+func (c *Container) refreshCanonicalRpcConfig(sshConn conn.SSHConnection, configName, remotePath, targetPath, fallbackName string) error {
+	if _, rmErr := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, configName)); rmErr == nil {
+		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, configName, remotePath)); err != nil {
+			return fmt.Errorf("recreating canonical %s: %s", configName, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	pinnersOut, lsErr := sshConn.ExecCommand(fmt.Sprintf(
+		`docker service ls --format '{{.Name}}' | while read s; do docker service inspect "$s" --format '{{range .Spec.TaskTemplate.ContainerSpec.Configs}}{{.ConfigName}}{{"\n"}}{{end}}' | grep -Fxq %s && echo "$s"; done`,
+		shQuote(configName),
+	))
+	if lsErr != nil {
+		return fmt.Errorf("could not enumerate services pinning %s: %w", configName, lsErr)
+	}
+	var pinners []string
+	for _, svc := range strings.Split(strings.TrimSpace(string(pinnersOut)), "\n") {
+		svc = strings.TrimSpace(svc)
+		if svc != "" {
+			pinners = append(pinners, svc)
+		}
+	}
+	if len(pinners) == 0 {
+		return fmt.Errorf("docker config rm %s failed but no services pin it; manual investigation needed", configName)
+	}
+	fmt.Printf("  %s %s is still pinned by:\n", warning, configName)
+	for _, svc := range pinners {
+		fmt.Printf("    - %s\n", svc)
+	}
+	ok2, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-recover now? (rolling-restarts %d service(s) twice — detach, recreate %s, reattach)", len(pinners), configName), true)
+	if perr != nil {
+		return perr
+	}
+	if !ok2 {
+		return fmt.Errorf("auto-recover declined; run \"d8x setup rpc\" again to retry")
+	}
+	for _, svc := range pinners {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  detaching %s from %s...", configName, svc)))
+		if err := sshConn.ExecCommandPiped(fmt.Sprintf(`docker service update --config-rm %s %s`, configName, svc)); err != nil {
+			return fmt.Errorf("detaching %s from %s: %w", configName, svc, err)
+		}
+	}
+	if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, configName)); err != nil {
+		return fmt.Errorf("docker config rm %s after detach: %s", configName, strings.TrimSpace(string(out)))
+	}
+	if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, configName, remotePath)); err != nil {
+		return fmt.Errorf("recreating %s: %s", configName, strings.TrimSpace(string(out)))
+	}
+	for _, svc := range pinners {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  reattaching %s -> %s on %s...", configName, targetPath, svc)))
+		if err := sshConn.ExecCommandPiped(fmt.Sprintf(`docker service update --config-add source=%s,target=%s %s`, configName, targetPath, svc)); err != nil {
+			return fmt.Errorf("reattaching %s to %s: %w", configName, svc, err)
+		}
+	}
 	return nil
 }
 
