@@ -179,26 +179,35 @@ func addUrlPerService(c *Container, pools *perServicePools, kind string) error {
 	if url == "" {
 		return nil
 	}
+	apply := func(label string, pool []string) []string {
+		next, added := addUrlToPool(pool, url)
+		if added {
+			fmt.Println(styles.SuccessText.Render("  + " + url))
+		} else {
+			fmt.Println(styles.ItalicText.Render(label + ": already present, ignoring"))
+		}
+		return next
+	}
 	switch target[0] {
 	case "api only":
 		if kind == "http" {
-			pools.mainHttp = addUrlToPool(pools.mainHttp, url)
+			pools.mainHttp = apply("api", pools.mainHttp)
 		} else {
-			pools.mainWs = addUrlToPool(pools.mainWs, url)
+			pools.mainWs = apply("api", pools.mainWs)
 		}
 	case "history only":
 		if kind == "http" {
-			pools.histHttp = addUrlToPool(pools.histHttp, url)
+			pools.histHttp = apply("history", pools.histHttp)
 		} else {
-			pools.histWs = addUrlToPool(pools.histWs, url)
+			pools.histWs = apply("history", pools.histWs)
 		}
 	case "both":
 		if kind == "http" {
-			pools.mainHttp = addUrlToPool(pools.mainHttp, url)
-			pools.histHttp = addUrlToPool(pools.histHttp, url)
+			pools.mainHttp = apply("api", pools.mainHttp)
+			pools.histHttp = apply("history", pools.histHttp)
 		} else {
-			pools.mainWs = addUrlToPool(pools.mainWs, url)
-			pools.histWs = addUrlToPool(pools.histWs, url)
+			pools.mainWs = apply("api", pools.mainWs)
+			pools.histWs = apply("history", pools.histWs)
 		}
 	}
 	return nil
@@ -258,13 +267,11 @@ func deleteUrlsPerService(c *Container, pools *perServicePools, kind string) err
 	return err
 }
 
-func addUrlToPool(pool []string, url string) []string {
+func addUrlToPool(pool []string, url string) ([]string, bool) {
 	if slices.Contains(pool, url) {
-		fmt.Println(styles.ItalicText.Render("already present in this service, ignoring"))
-		return pool
+		return pool, false
 	}
-	fmt.Println(styles.SuccessText.Render("  + " + url))
-	return append(pool, url)
+	return append(pool, url), true
 }
 
 func dedupKeepOrder(in []string) ([]string, int) {
