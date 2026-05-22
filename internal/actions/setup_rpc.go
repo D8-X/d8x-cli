@@ -182,7 +182,7 @@ func addUrlPerService(c *Container, pools *perServicePools, kind string) error {
 	apply := func(label string, pool []string) []string {
 		next, added := addUrlToPool(pool, url)
 		if added {
-			fmt.Println(styles.SuccessText.Render("  + " + url))
+			fmt.Println(styles.SuccessText.Render("  + " + label + ": " + url))
 		} else {
 			fmt.Println(styles.ItalicText.Render(label + ": already present, ignoring"))
 		}
