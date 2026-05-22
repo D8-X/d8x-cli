@@ -547,7 +547,7 @@ func (c *Container) refreshCanonicalRpcConfig(sshConn conn.SSHConnection, config
 	for _, svc := range pinners {
 		fmt.Printf("    - %s\n", svc)
 	}
-	ok2, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-recover now? (rolling-restarts %d service(s) twice — detach, recreate %s, reattach)", len(pinners), configName), true)
+	ok2, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-recover now? This rolling-restarts %d service(s) twice: detach, recreate %s, reattach.", len(pinners), configName), true)
 	if perr != nil {
 		return perr
 	}
