@@ -433,7 +433,7 @@ func (c *Container) applyRemoteRpcChanges(
 	rev := time.Now().Format("20060102150405.000000000")
 	rev = strings.ReplaceAll(rev, ".", "")
 
-	fmt.Printf("\n%s [1/4] backing up existing RPC files on manager\n", arrow)
+	fmt.Printf("\n%s Backing up existing RPC files on manager\n", arrow)
 	var backups []string
 	for _, p := range []string{rpcMainRemotePath, rpcHistoryRemotePath} {
 		bak := fmt.Sprintf("%s.bak.%s", p, rev)
@@ -450,7 +450,7 @@ func (c *Container) applyRemoteRpcChanges(
 		return fmt.Errorf("%w\nmanager backups available at: %s", err, strings.Join(backups, ", "))
 	}
 
-	fmt.Printf("\n%s [2/4] uploading new RPC files to manager\n", arrow)
+	fmt.Printf("\n%s Uploading new RPC files to manager\n", arrow)
 	fmt.Println(styles.ItalicText.Render("  writing " + rpcMainRemotePath + "..."))
 	if err := writeRemoteFile(sshConn, rpcMainRemotePath, mainBytes); err != nil {
 		return withBackupHint(fmt.Errorf("writing %s: %w", rpcMainRemotePath, err))
@@ -472,7 +472,7 @@ func (c *Container) applyRemoteRpcChanges(
 		{"cfg_rpc_history", rpcHistoryRemotePath, []string{"history"}, "/cfg_rpc_history"},
 	}
 
-	fmt.Printf("\n%s [3/4] rolling docker swarm services onto new config (revision %s)\n", arrow, rev)
+	fmt.Printf("\n%s Rolling docker swarm services onto new config (revision %s)\n", arrow, rev)
 	for _, r := range rolls {
 		newName := fmt.Sprintf("%s_%s", r.configName, rev)
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  creating docker config %s from %s...", newName, r.remotePath)))
@@ -516,7 +516,7 @@ func (c *Container) applyRemoteRpcChanges(
 		}
 	}
 
-	fmt.Printf("\n%s [4/4] verifying service health\n", arrow)
+	fmt.Printf("\n%s Verifying service health\n", arrow)
 	c.postRpcRolloutHealthCheck(cfg)
 
 	fmt.Printf("\n%s api uses cfg_rpc_%s (%s)\n", ok, rev, rpcMainRemotePath)
