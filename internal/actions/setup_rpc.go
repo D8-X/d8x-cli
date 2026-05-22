@@ -496,7 +496,7 @@ func (c *Container) applyRemoteRpcChanges(
 			fmt.Printf("  %s service %s now using %s\n", ok, stackSvc, newName)
 		}
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  refreshing canonical config %s for future \"swarm-deploy\" runs...", r.configName)))
-		if err := c.refreshCanonicalRpcConfig(sshConn, r.configName, r.remotePath, r.targetPath, newName); err != nil {
+		if err := c.refreshCanonicalRpcConfig(sshConn, r.configName, r.remotePath, r.targetPath); err != nil {
 			fmt.Printf("  %s %s\n", warning, err)
 			fmt.Printf("  %s live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, newName)
 		} else {
@@ -513,7 +513,7 @@ func (c *Container) applyRemoteRpcChanges(
 	return nil
 }
 
-func (c *Container) refreshCanonicalRpcConfig(sshConn conn.SSHConnection, configName, remotePath, targetPath, fallbackName string) error {
+func (c *Container) refreshCanonicalRpcConfig(sshConn conn.SSHConnection, configName, remotePath, targetPath string) error {
 	if _, rmErr := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, configName)); rmErr == nil {
 		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, configName, remotePath)); err != nil {
 			return fmt.Errorf("recreating canonical %s: %s", configName, strings.TrimSpace(string(out)))
