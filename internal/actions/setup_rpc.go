@@ -434,6 +434,7 @@ func (c *Container) applyRemoteRpcChanges(
 	rev = strings.ReplaceAll(rev, ".", "")
 
 	fmt.Printf("\n%s [1/4] backing up existing RPC files on manager\n", arrow)
+	var backups []string
 	for _, p := range []string{rpcMainRemotePath, rpcHistoryRemotePath} {
 		bak := fmt.Sprintf("%s.bak.%s", p, rev)
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  cp -p %s %s", p, bak)))
@@ -441,18 +442,23 @@ func (c *Container) applyRemoteRpcChanges(
 			fmt.Println(string(out))
 			return fmt.Errorf("backing up %s on manager: %w", p, cpErr)
 		}
+		backups = append(backups, bak)
 		fmt.Printf("  %s backup at %s\n", ok, bak)
+	}
+
+	withBackupHint := func(err error) error {
+		return fmt.Errorf("%w\nmanager backups available at: %s", err, strings.Join(backups, ", "))
 	}
 
 	fmt.Printf("\n%s [2/4] uploading new RPC files to manager\n", arrow)
 	fmt.Println(styles.ItalicText.Render("  writing " + rpcMainRemotePath + "..."))
 	if err := writeRemoteFile(sshConn, rpcMainRemotePath, mainBytes); err != nil {
-		return fmt.Errorf("writing %s: %w", rpcMainRemotePath, err)
+		return withBackupHint(fmt.Errorf("writing %s: %w", rpcMainRemotePath, err))
 	}
 	fmt.Printf("  %s wrote %s (%d bytes)\n", ok, rpcMainRemotePath, len(mainBytes))
 	fmt.Println(styles.ItalicText.Render("  writing " + rpcHistoryRemotePath + "..."))
 	if err := writeRemoteFile(sshConn, rpcHistoryRemotePath, histBytes); err != nil {
-		return fmt.Errorf("writing %s: %w", rpcHistoryRemotePath, err)
+		return withBackupHint(fmt.Errorf("writing %s: %w", rpcHistoryRemotePath, err))
 	}
 	fmt.Printf("  %s wrote %s (%d bytes)\n", ok, rpcHistoryRemotePath, len(histBytes))
 
@@ -472,14 +478,14 @@ func (c *Container) applyRemoteRpcChanges(
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  creating docker config %s from %s...", newName, r.remotePath)))
 		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, newName, r.remotePath)); err != nil {
 			fmt.Println(string(out))
-			return fmt.Errorf("creating docker config %s: %w", newName, err)
+			return withBackupHint(fmt.Errorf("creating docker config %s: %w", newName, err))
 		}
 		fmt.Printf("  %s created %s\n", ok, newName)
 		for _, svc := range r.services {
 			stackSvc := dockerStackName + "_" + svc
 			currentName, err := getAttachedConfigName(sshConn, stackSvc, r.targetPath)
 			if err != nil {
-				return fmt.Errorf("inspecting current config attached to %s at %s: %w", stackSvc, r.targetPath, err)
+				return withBackupHint(fmt.Errorf("inspecting current config attached to %s at %s: %w", stackSvc, r.targetPath, err))
 			}
 			if currentName == newName {
 				fmt.Printf("  %s service %s already using %s, skipping rollout\n", ok, stackSvc, newName)
@@ -497,7 +503,7 @@ func (c *Container) applyRemoteRpcChanges(
 				detachClause, newName, r.targetPath, stackSvc,
 			)
 			if err := sshConn.ExecCommandPiped(cmd); err != nil {
-				return fmt.Errorf("rolling update of %s failed: %w", stackSvc, err)
+				return withBackupHint(fmt.Errorf("rolling update of %s failed: %w", stackSvc, err))
 			}
 			fmt.Printf("  %s service %s now using %s\n", ok, stackSvc, newName)
 		}
