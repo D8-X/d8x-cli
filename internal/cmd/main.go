@@ -90,7 +90,7 @@ func RunD8XCli() {
 					{
 						Name:   "new-env",
 						Usage:  "Create a new environment in the infra repo",
-						Action: withNextStep("new-env", container.NewEnvironment),
+						Action: container.NewEnvironment,
 					},
 					{
 						Name:   "rm-env",
@@ -101,44 +101,44 @@ func RunD8XCli() {
 						Name:        "provision",
 						Aliases:     []string{"prov"},
 						Usage:       "Provision server resources with terraform",
-						Action:      withNextStep("provision", container.Provision),
+						Action:      container.Provision,
 						Description: ProvisionDescription,
 					},
 					{
 						Name:        "configure",
 						Aliases:     []string{"config"},
 						Usage:       "Configure servers with ansible",
-						Action:      withNextStep("configure", container.Configure),
+						Action:      container.Configure,
 						Description: ConfigureDescription,
 					},
 					{
 						Name:   "broker-deploy",
 						Usage:  "Deploy and configure broker-server deployment",
-						Action: withNextStep("broker-deploy", container.BrokerDeploy),
+						Action: container.BrokerDeploy,
 					},
 					{
 						Name:   "broker-nginx",
 						Usage:  "Configure and setup nginx + certbot for broker server deployment",
-						Action: withNextStep("broker-nginx", container.BrokerServerNginxCertbotSetup),
+						Action: container.BrokerServerNginxCertbotSetup,
 					},
 					{
 						Name:        "swarm-deploy",
 						Aliases:     []string{"sd"},
 						Usage:       "Deploy and configure d8x-trader-backend swarm cluster",
-						Action:      withNextStep("swarm-deploy", container.SwarmDeploy),
+						Action:      container.SwarmDeploy,
 						Description: SwarmDeployDescription,
 					},
 					{
 						Name:        "swarm-nginx",
 						Aliases:     []string{"sn"},
 						Usage:       "Configure and setup nginx + certbot for d8x-trader swarm deployment",
-						Action:      withNextStep("swarm-nginx", container.SwarmNginx),
+						Action:      container.SwarmNginx,
 						Description: SwarmNginxDescription,
 					},
 					{
 						Name:        "metrics-deploy",
 						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
-						Action:      withNextStep("metrics-deploy", container.DeployMetrics),
+						Action:      container.DeployMetrics,
 						Description: DeployMetricsDescription,
 					},
 					{
@@ -315,20 +315,6 @@ func RunD8XCli() {
 	}
 }
 
-var setupSequence = []struct {
-	name string
-	desc string
-}{
-	{"new-env", "Create the env directory in the infra repo (config + nginx + tfvars)"},
-	{"provision", "Run terraform to create the cloud servers (manager, workers, broker)"},
-	{"configure", "Run ansible to install docker, swarm, users, ssh keys on the servers"},
-	{"swarm-deploy", "Deploy the trader-backend swarm stack (api, history, redis, ...)"},
-	{"swarm-nginx", "Set up nginx plus certbot SSL in front of the swarm services"},
-	{"broker-deploy", "Deploy the broker server (signs orders) on its host"},
-	{"broker-nginx", "Set up nginx plus certbot SSL in front of the broker server"},
-	{"metrics-deploy", "Deploy prometheus and grafana on the manager node (optional)"},
-}
-
 var valueTakingFlags = map[string]struct{}{
 	"--password": {}, "-password": {},
 	"--user": {}, "-user": {},
@@ -359,72 +345,3 @@ func isHelpOrVersionInvocation(args []string) bool {
 	return false
 }
 
-var stepActions = map[string]cli.ActionFunc{}
-
-func withNextStep(name string, action cli.ActionFunc) cli.ActionFunc {
-	wrapped := func(ctx *cli.Context) error {
-		printStepBanner(name)
-		if ctx.App.Metadata == nil {
-			ctx.App.Metadata = map[string]any{}
-		}
-		prev := ctx.App.Metadata["activeStep"]
-		ctx.App.Metadata["activeStep"] = name
-		err := action(ctx)
-		ctx.App.Metadata["activeStep"] = prev
-		if err != nil {
-			return err
-		}
-		return promptAndDispatchNextStep(ctx, name)
-	}
-	stepActions[name] = wrapped
-	return wrapped
-}
-
-func printStepBanner(name string) {
-	idx, ok := stepIndex(name)
-	if !ok {
-		return
-	}
-	s := setupSequence[idx]
-	banner := styles.PurpleBgText.Copy().Padding(0, 2).Render(
-		fmt.Sprintf(" STEP %d/%d: %s ", idx+1, len(setupSequence), s.name),
-	)
-	fmt.Println()
-	fmt.Println(banner)
-	fmt.Println(styles.ItalicText.Render(s.desc))
-	fmt.Println()
-}
-
-func promptAndDispatchNextStep(ctx *cli.Context, current string) error {
-	container, ok := ctx.App.Metadata["container"].(*actions.Container)
-	idx, found := stepIndex(current)
-	if !found || idx+1 >= len(setupSequence) {
-		return nil
-	}
-	next := setupSequence[idx+1]
-	nextAction := stepActions[next.name]
-	if nextAction == nil || !ok || container == nil {
-		fmt.Println()
-		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Next: \"d8x setup %s\" (%s)", next.name, next.desc)))
-		return nil
-	}
-	question := fmt.Sprintf("Continue to STEP %d/%d: %s?", idx+2, len(setupSequence), next.name)
-	proceed, err := container.TUI.NewPrompt(question, true)
-	if err != nil {
-		return err
-	}
-	if !proceed {
-		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Stopped before \"d8x setup %s\". Run it later to continue.", next.name)))
-		return nil
-	}
-	return nextAction(ctx)
-}
-
-func stepIndex(name string) (int, bool) {
-	for i, s := range setupSequence {
-		if s.name == name {
-			return i, true
-		}
-	}
-	return 0, false
-}

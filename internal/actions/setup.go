@@ -62,6 +62,37 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		return err
 	}
 
+	total := 2
+	if c.Input.setup.deployMetrics {
+		total++
+	}
+	if c.Input.setup.deployBroker {
+		total++
+		if c.Input.runBrokerNginxCertbot {
+			total++
+		}
+	}
+	if c.Input.setup.deploySwarm {
+		total++
+		if c.Input.runSwarmNginxCertbot {
+			total++
+		}
+	}
+	step := 0
+	announce := func(name, desc string) {
+		step++
+		banner := styles.PurpleBgText.Copy().Padding(0, 2).Render(
+			fmt.Sprintf(" STEP %d/%d: %s ", step, total, name),
+		)
+		fmt.Println()
+		fmt.Println(banner)
+		if desc != "" {
+			fmt.Println(styles.ItalicText.Render(desc))
+		}
+		fmt.Println()
+	}
+
+	announce("provision", "Run terraform to create the cloud servers (manager, workers, broker)")
 	if err := c.Provision(ctx); err != nil {
 		return err
 	}
@@ -74,6 +105,7 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		c.TUI.NewTimer(waitFor, "Waiting for SSHDs to start on nodes")
 	}
 
+	announce("configure", "Run ansible to install docker, swarm, users, ssh keys on the servers")
 	// If configuration fails we might still want to proceed with other actions
 	// in case this is a retry
 	if err := c.Configure(ctx); err != nil {
@@ -91,17 +123,20 @@ func (c *Container) Setup(ctx *cli.Context) error {
 
 	// Deploy metrics stack if user wants to
 	if c.Input.setup.deployMetrics {
+		announce("metrics-deploy", "Deploy prometheus and grafana on the manager node")
 		if err := c.DeployMetrics(ctx); err != nil {
 			return err
 		}
 	}
 
 	if c.Input.setup.deployBroker {
+		announce("broker-deploy", "Deploy the broker server (signs orders) on its host")
 		if err := c.BrokerDeploy(ctx); err != nil {
 			return err
 		}
 
 		if c.Input.runBrokerNginxCertbot {
+			announce("broker-nginx", "Set up nginx and certbot SSL in front of the broker server")
 			if err := c.BrokerServerNginxCertbotSetup(ctx); err != nil {
 				return err
 			}
@@ -109,11 +144,13 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	}
 
 	if c.Input.setup.deploySwarm {
+		announce("swarm-deploy", "Deploy the trader-backend swarm stack (api, history, redis, ...)")
 		if err := c.SwarmDeploy(ctx); err != nil {
 			return err
 		}
 
 		if c.Input.runSwarmNginxCertbot {
+			announce("swarm-nginx", "Set up nginx and certbot SSL in front of the swarm services")
 			if err := c.SwarmNginx(ctx); err != nil {
 				return err
 			}
