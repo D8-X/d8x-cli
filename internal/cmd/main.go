@@ -201,15 +201,19 @@ func RunD8XCli() {
 			},
 			{
 				Name:   "backup-db",
-				Usage:  "Dump the swarm database via the manager and download it locally",
+				Usage:  "Dump the swarm database via the manager and download it locally or stream to stdout",
 				Action: container.BackupDb,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "output-dir",
 						Usage: "Backup directory path. Backup files will be saved in this directory.",
 					},
+					&cli.BoolFlag{
+						Name:  "stdout",
+						Usage: "Stream the SQL dump to stdout instead of writing a local file. Progress and status messages go to stderr.",
+					},
 				},
-				Description: "Backup database to local machine. Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
+				Description: "Backup database to local machine, or stream the dump to stdout for piping (e.g. d8x backup-db --stdout | gzip | aws s3 cp - s3://...). Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
 			},
 			{
 				Name:        "db-tunnel",

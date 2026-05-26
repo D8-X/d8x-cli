@@ -24,7 +24,23 @@ const CurrentMaximumPostgresVersion = 16
 
 // BackupDb performs database backup
 func (c *Container) BackupDb(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Backing up database...")
+	streamToStdout := ctx.Bool("stdout")
+	logW := io.Writer(os.Stdout)
+	if streamToStdout {
+		logW = os.Stderr
+	}
+	logf := func(format string, a ...interface{}) {
+		fmt.Fprintf(logW, format, a...)
+	}
+	logln := func(a ...interface{}) {
+		fmt.Fprintln(logW, a...)
+	}
+
+	if !streamToStdout {
+		styles.PrintCommandTitle("Backing up database...")
+	} else {
+		logln("Backing up database (streaming to stdout)...")
+	}
 
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
@@ -49,13 +65,11 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 		return fmt.Errorf("DATABASE_DSN_%s missing in Bitwarden — on AWS it is written by \"d8x setup provision\", on Linode by \"d8x setup swarm-deploy\", or set it manually as a field on the d8x-cli Bitwarden item", strings.ToUpper(c.SelectedEnv))
 	}
 
-	// Parse the database dsn string
 	pgCfg, err := pgx.ParseConfig(cfg.DatabaseDSN)
 	if err != nil {
 		return fmt.Errorf("parsing database connection string: %w", err)
 	}
 
-	// SSH into the manager
 	managerConn, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
 	if err != nil {
 		return fmt.Errorf("creating ssh connection to manager: %w", err)
@@ -66,8 +80,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 		return err
 	}
 
-	// Retrieve the postgres version on target database
-	fmt.Printf("Determining postgres version\n")
+	logf("Determining postgres version\n")
 	pgConn, err := pgConnTunnel(managerConn, pgCfg)
 	if err != nil {
 		return fmt.Errorf("connecting to postgres database via manager tunnel: %w", err)
@@ -85,10 +98,8 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 		versionString = majorVersion + "." + minorVersion
 
 	}
-	fmt.Printf("Postgres server at %s version: %s\n", pgCfg.Host, versionString)
+	logf("Postgres server at %s version: %s\n", pgCfg.Host, versionString)
 
-	// We default to maximum postgresq-client-x version available since it is
-	// backwards compatible.
 	cmd := "apt-cache search --names-only ^postgresql-client-* | awk '{print $1}'"
 	pgClientPackages, err := managerConn.ExecCommand(cmd)
 	maxPgVersion := CurrentMaximumPostgresVersion
@@ -98,7 +109,6 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 				strings.TrimSpace(pkgName),
 				"postgresql-client-",
 			)
-			// Parse only whole int versions
 			if version, err := strconv.ParseInt(versionStr, 10, 64); err == nil && maxPgVersion < int(version) {
 				maxPgVersion = int(version)
 			}
@@ -106,10 +116,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	}
 	aptPgClientPackage := "postgresql-client-" + strconv.Itoa(maxPgVersion)
 
-	// Make sure pg dump (postgres 15) is installed on the manager. Let's use
-	// the public postgres apt repo and set it up. It contains all latest
-	// versions of postgres
-	fmt.Printf("Ensuring pg_dump is installed on manager server (%s)\n", aptPgClientPackage)
+	logf("Ensuring pg_dump is installed on manager server (%s)\n", aptPgClientPackage)
 	installScriptSteps := []string{
 		`echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list`,
 		"wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -",
@@ -119,26 +126,20 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	for _, s := range installScriptSteps {
 		cmd := fmt.Sprintf(`echo "%s" | sudo -S bash -c '%s'`, pwd, s)
 		if out, err := managerConn.ExecCommand(cmd); err != nil {
-			fmt.Println(string(out))
+			logln(string(out))
 			return fmt.Errorf("setting up pg_dump on manager server: %w", err)
 		}
 	}
 
-	// Run pg dump for the database. Create a normal SQL (non-archive) backup
-	// file which can be used directly with psql
 	backupFileName := fmt.Sprintf("backup-%s-%s.dump.sql", cfg.GetServersLabel(), time.Now().Format("2006-01-02-15-04-05"))
 	backupCmd := "PGPASSWORD=%s pg_dump -h %s -p %d -U %s -d %s -f %s"
 	backupCmd = fmt.Sprintf(backupCmd, pgCfg.Password, pgCfg.Host, pgCfg.Port, pgCfg.User, pgCfg.Database, backupFileName)
 
-	// TODO handle different versions and incompatible pg_dump and postgres
-
-	fmt.Printf("Creating database %s backup\n", pgCfg.Database)
+	logf("Creating database %s backup\n", pgCfg.Database)
 	if err := managerConn.ExecCommandPiped(backupCmd); err != nil {
 		return fmt.Errorf("running pg_dump: %w", err)
 	}
 
-	// Use scp or similar library to copy the backup to given location on the
-	// local machine
 	scp, err := sftp.NewClient(managerConn.GetClient())
 	if err != nil {
 		return err
@@ -152,41 +153,44 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 		return err
 	}
 	sizeMb := float64(fstat.Size()) / float64(1024*1024)
-	fmt.Printf("Backup file size: %f MB\n", sizeMb)
+	logf("Backup file size: %f MB\n", sizeMb)
 
-	// Show a small download animation so user doesn't think that download
-	// process is stuck
-	stopDownloadSpinner := make(chan struct{})
-	go c.TUI.NewSpinner(stopDownloadSpinner, "Downloading backup file to local machine")
+	if streamToStdout {
+		logln("Streaming backup to stdout")
+		if _, err := io.Copy(os.Stdout, f); err != nil {
+			return err
+		}
+	} else {
+		stopDownloadSpinner := make(chan struct{})
+		go c.TUI.NewSpinner(stopDownloadSpinner, "Downloading backup file to local machine")
 
-	fullBackupPath := backupFileName
-	if outDir := ctx.String("output-dir"); outDir != "" {
-		fullBackupPath = filepath.Join(outDir, fullBackupPath)
+		fullBackupPath := backupFileName
+		if outDir := ctx.String("output-dir"); outDir != "" {
+			fullBackupPath = filepath.Join(outDir, fullBackupPath)
+		}
+		fullBackupPath, err = filepath.Abs(fullBackupPath)
+		if err != nil {
+			return err
+		}
+
+		fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(fout, f); err != nil {
+			return err
+		}
+
+		stopDownloadSpinner <- struct{}{}
+
+		info := fmt.Sprintf("Database %s backup file was downloaded and copied to %s", pgCfg.Database, fullBackupPath)
+		fmt.Println(styles.SuccessText.Render(info))
 	}
-	fullBackupPath, err = filepath.Abs(fullBackupPath)
-	if err != nil {
-		return err
-	}
 
-	// Create backup file in target path
-	fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-
-	if _, err := io.Copy(fout, f); err != nil {
-		return err
-	}
-
-	stopDownloadSpinner <- struct{}{}
-
-	info := fmt.Sprintf("Database %s backup file was downloaded and copied to %s", pgCfg.Database, fullBackupPath)
-	fmt.Println(styles.SuccessText.Render(info))
-
-	// Rm database backup from manager server
-	fmt.Println("Removing backup file from server")
+	logln("Removing backup file from server")
 	if out, err := managerConn.ExecCommand("rm " + backupFileName); err != nil {
-		fmt.Println(string(out))
+		logln(string(out))
 		return fmt.Errorf("removing backup file from manager: %w", err)
 	}
 
