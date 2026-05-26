@@ -166,7 +166,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	}
 
 	// Create backup file in target path
-	fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
