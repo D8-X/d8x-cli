@@ -35,7 +35,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
 	if err := c.RequireProvisionedHosts("rpc", "manager"); err != nil {
@@ -46,7 +46,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	}
 	chainIdStr := strconv.Itoa(int(cfg.ChainId))
 
-	fmt.Printf("%s Step 1/3: locating manager node\n", arrow)
+	fmt.Printf("%s Locating manager node\n", arrow)
 	managerIp, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
 		return fmt.Errorf("finding manager ip: %w", err)
@@ -59,7 +59,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	}
 	fmt.Printf("  %s connected as %s\n", ok, c.DefaultClusterUserName)
 
-	fmt.Printf("\n%s Step 2/3: fetching live RPC config from manager\n", arrow)
+	fmt.Printf("\n%s Fetching live RPC config from manager\n", arrow)
 	fmt.Println(styles.ItalicText.Render("  reading " + rpcMainRemotePath + "..."))
 	mainEntries, err := readRemoteRpcFile(sshConn, rpcMainRemotePath)
 	if err != nil {
@@ -85,7 +85,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 		histWs:   append([]string{}, histWs...),
 	}
 
-	fmt.Printf("\n%s Step 3/3: interactive edit (changes applied only on \"Apply and deploy\")\n", arrow)
+	fmt.Printf("\n%s Interactive edit (changes applied only on \"Apply and deploy\")\n", arrow)
 
 	pools := perServicePools{
 		mainHttp: mainHttp,

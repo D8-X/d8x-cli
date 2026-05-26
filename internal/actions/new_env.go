@@ -616,7 +616,7 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 	))
 	fmt.Println(styles.ItalicText.Render("Each section configures one file in the infra repo. Skip prompts you don't need; defaults are used otherwise."))
 
-	printConfigStep(1, 5, "trader-backend/rpc.main.json", "api service RPC list", chainID)
+	printConfigStep("trader-backend/rpc.main.json", "api service RPC list", chainID)
 	httpMain, err := c.collectCommaList("HTTP RPC URLs (comma-separated, required):", true)
 	if err != nil {
 		return nil, err
@@ -629,7 +629,7 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 		out["trader-backend/rpc.main.json"] = renderRpcMainHistory(chainID, httpMain, wsMain)
 	}
 
-	printConfigStep(2, 5, "trader-backend/rpc.history.json", "history service RPC list", chainID)
+	printConfigStep("trader-backend/rpc.history.json", "history service RPC list", chainID)
 	reuse, err := c.TUI.NewPrompt("Reuse the same RPCs as rpc.main.json?", true)
 	if err != nil {
 		return nil, err
@@ -652,7 +652,7 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 		}
 	}
 
-	printConfigStep(3, 5, "candles/rpc_conf.json", "candles WS listener RPCs", chainID)
+	printConfigStep("candles/rpc_conf.json", "candles WS listener RPCs", chainID)
 	configureCandles, err := c.TUI.NewPrompt("Configure candles RPC list now? (skip to keep embedded defaults)", true)
 	if err != nil {
 		return nil, err
@@ -676,7 +676,7 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 		}
 	}
 
-	printConfigStep(4, 5, "broker-server/rpc.json", "broker RPC list", chainID)
+	printConfigStep("broker-server/rpc.json", "broker RPC list", chainID)
 	reuseBroker, err := c.TUI.NewPrompt("Reuse rpc.main.json HTTPs for the broker?", true)
 	if err != nil {
 		return nil, err
@@ -693,7 +693,7 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 		}
 	}
 
-	printConfigStep(5, 5, "broker-server/chainConfig.json", "broker chain name", chainID)
+	printConfigStep("broker-server/chainConfig.json", "broker chain name", chainID)
 	fmt.Println("Chain name (e.g. \"base\", \"arbitrum\", \"berachain\"; skip to keep embedded defaults):")
 	chainName, err := c.TUI.NewInput(components.TextInputOptPlaceholder(""))
 	if err != nil {
@@ -706,10 +706,10 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 	return out, nil
 }
 
-func printConfigStep(step, total int, path, summary string, chainID uint) {
+func printConfigStep(path, summary string, chainID uint) {
 	fmt.Println()
 	banner := styles.PurpleBgText.Copy().Padding(0, 2).Render(
-		fmt.Sprintf(" [%d/%d] %s ", step, total, path),
+		fmt.Sprintf(" %s ", path),
 	)
 	fmt.Println(banner)
 	fmt.Println(styles.CommandTitleText.Render(fmt.Sprintf("%s for chain %d", summary, chainID)))

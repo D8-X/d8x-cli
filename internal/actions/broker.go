@@ -129,7 +129,7 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
 	if err := c.RequireProvisionedHosts("broker-deploy", "broker"); err != nil {
@@ -311,7 +311,7 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	env, err := c.EnsureEnvironment(cfg)
+	env, err := c.EnsureProvisionedEnvironment(cfg)
 	if err != nil {
 		return err
 	}

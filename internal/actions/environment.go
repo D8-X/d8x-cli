@@ -18,6 +18,14 @@ import (
 // EnsureEnvironment selects an environment, fetches hosts.cfg from the GitHub
 // repo, and configures SSH key and password for the selected environment.
 func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
+	return c.ensureEnvironment(cfg, false)
+}
+
+func (c *Container) EnsureProvisionedEnvironment(cfg *configs.D8XConfig) (string, error) {
+	return c.ensureEnvironment(cfg, true)
+}
+
+func (c *Container) ensureEnvironment(cfg *configs.D8XConfig, provisionedOnly bool) (string, error) {
 	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
 		return "", err
 	}
@@ -59,8 +67,11 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 				continue
 			}
 
-			_, hostsErr := ghReadFile(token, e+"/hosts.cfg")
-			provisioned := hostsErr == nil
+			hostsFile, hostsErr := ghReadFile(token, e+"/hosts.cfg")
+			provisioned := hostsErr == nil && strings.TrimSpace(hostsFile.Content) != ""
+			if provisionedOnly && !provisioned {
+				continue
+			}
 
 			environments = append(environments, e)
 			envConfigs = append(envConfigs, ec)
@@ -74,10 +85,17 @@ func (c *Container) EnsureEnvironment(cfg *configs.D8XConfig) (string, error) {
 			labels = append(labels, label)
 		}
 		if len(environments) == 0 {
+			if provisionedOnly {
+				return "", fmt.Errorf("no provisioned environments found in %s repo. Run \"d8x setup provision\" first", getGhRepo())
+			}
 			return "", fmt.Errorf("no environments found in %s repo", getGhRepo())
 		}
 
-		fmt.Println(styles.ItalicText.Render("Select environment:"))
+		prompt := "Select environment:"
+		if provisionedOnly {
+			prompt = "Select the provisioned environment:"
+		}
+		fmt.Println(styles.ItalicText.Render(prompt))
 		selected, err := c.TUI.NewSelection(labels, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
 			return "", err

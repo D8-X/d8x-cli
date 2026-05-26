@@ -67,7 +67,7 @@ func (c *Container) UpdateStagingOrigins(ctx *cli.Context) error {
 	}
 	apiKey := os.Getenv("NGINX_API_KEY")
 
-	env, err := c.EnsureEnvironment(cfg)
+	env, err := c.EnsureProvisionedEnvironment(cfg)
 	if err != nil {
 		return err
 	}

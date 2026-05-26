@@ -8,15 +8,7 @@ Run d8x setup --help for available setup subcommands.
 
 const SetupDescription = `Command setup performs D8X cluster setup.
 
-Subcommands (in order for a new deployment):
-	1. new-env        - create environment in infra repo
-	2. provision      - provision servers with terraform
-	3. configure      - configure servers with ansible
-	4. swarm-deploy   - deploy trader backend swarm
-	5. swarm-nginx    - deploy nginx + SSL for swarm
-	6. broker-deploy  - deploy broker server
-	7. broker-nginx   - deploy nginx + SSL for broker
-	8. staging-origins - manage nginx origin whitelist
+Run "d8x setup" with no subcommand to drive the full guided flow (it prints a STEP X/N banner before each piece). Pick a subcommand below to run one piece on its own.
 
 Infrastructure configs are stored in the backend-nginx-infra-config GitHub repo.
 Secrets are loaded from Bitwarden or .env file.
