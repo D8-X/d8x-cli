@@ -361,23 +361,68 @@ func (c *Container) TerraformDestroy(ctx *cli.Context) error {
 	printDestroyTargets(targets)
 	fmt.Println()
 
-	doCleanup, err := c.TUI.NewPrompt(fmt.Sprintf("Proceed with bookkeeping cleanup (clear deployment flags in %s/config.json, remove hosts.cfg locally and from infra repo)?", c.SelectedEnv), true)
+	const (
+		choiceHostsOnly = "Hosts-only cleanup (clear deploy flags + remove hosts.cfg; keep env dir)"
+		choiceFullEnv   = "Delete the entire env directory from the infra repo"
+		choiceSkip      = "Skip cleanup"
+	)
+	pick, err := c.TUI.NewSelection(
+		[]string{choiceHostsOnly, choiceFullEnv, choiceSkip},
+		components.SelectionOptAllowOnlySingleItem(),
+		components.SelectionOptRequireSelection(),
+	)
 	if err != nil {
 		return err
 	}
-	if !doCleanup {
+	switch pick[0] {
+	case choiceSkip:
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Cleanup skipped. %s/config.json and %s/hosts.cfg in the infra repo still reflect the pre-destroy state, and the local ./hosts.cfg is intact. Rerun \"d8x tf-destroy\" to clean them up later.", c.SelectedEnv, c.SelectedEnv)))
 		return nil
-	}
 
-	cfg.ResetDeploymentStatus()
-	if err := c.ConfigRWriter.Write(cfg); err != nil {
-		return err
+	case choiceHostsOnly:
+		cfg.ResetDeploymentStatus()
+		if err := c.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
+		if err := c.PublishRemoteConfig(cfg); err != nil {
+			fmt.Printf("%s warning: could not publish reset state to infra repo: %s\n", warning, err)
+		}
+		c.cleanupHostsAfterDestroy()
+		return nil
+
+	case choiceFullEnv:
+		token := os.Getenv("GITHUB_TOKEN")
+		if token == "" {
+			return fmt.Errorf("GITHUB_TOKEN missing, cannot delete %s/ from infra repo", c.SelectedEnv)
+		}
+		paths, err := ghListEnvFiles(token, c.SelectedEnv)
+		if err != nil {
+			return fmt.Errorf("listing files under %s/: %w", c.SelectedEnv, err)
+		}
+		if len(paths) == 0 {
+			fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Env %q already has no files on the infra repo.", c.SelectedEnv)))
+			c.cleanupHostsAfterDestroy()
+			return nil
+		}
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Will delete %d file(s) under %s/ on the infra repo:", len(paths), c.SelectedEnv)))
+		for _, p := range paths {
+			fmt.Printf("  - %s\n", p)
+		}
+		confirm, perr := c.TUI.NewPrompt(fmt.Sprintf("Delete the entire %q env directory from the infra repo?", c.SelectedEnv), false)
+		if perr != nil {
+			return perr
+		}
+		if !confirm {
+			fmt.Println(styles.ItalicText.Render("Aborted; nothing deleted from infra repo. Local ./hosts.cfg also kept."))
+			return nil
+		}
+		if err := ghCommitDeletes(token, paths, fmt.Sprintf("remove %s/ after tf-destroy", c.SelectedEnv)); err != nil {
+			return fmt.Errorf("removing %s/ from infra repo: %w", c.SelectedEnv, err)
+		}
+		fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Deleted env %q (%d files) from the infra repo.", c.SelectedEnv, len(paths))))
+		c.cleanupHostsAfterDestroy()
+		return nil
 	}
-	if err := c.PublishRemoteConfig(cfg); err != nil {
-		fmt.Printf("%s warning: could not publish reset state to infra repo: %s\n", warning, err)
-	}
-	c.cleanupHostsAfterDestroy()
 	return nil
 }
 
