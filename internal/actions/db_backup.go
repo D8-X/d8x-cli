@@ -33,6 +33,9 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("backup-db", "manager"); err != nil {
+		return err
+	}
 
 	ip, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -166,7 +169,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	}
 
 	// Create backup file in target path
-	fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0666)
+	fout, err := os.OpenFile(fullBackupPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}

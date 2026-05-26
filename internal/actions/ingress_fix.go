@@ -23,6 +23,9 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("fix-ingress", "manager"); err != nil {
+		return err
+	}
 
 	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {

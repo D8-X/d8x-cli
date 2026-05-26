@@ -63,7 +63,7 @@ func (c *Container) CopyLinodeTFFiles() error {
 	if err != nil {
 		return fmt.Errorf("fetching %s/terraform.tfvars from GitHub: %w", c.SelectedEnv, err)
 	}
-	if err := os.WriteFile(filepath.Join(c.ProvisioningTfDir, "env.auto.tfvars"), []byte(tfvars.Content), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(c.ProvisioningTfDir, "env.auto.tfvars"), []byte(tfvars.Content), 0600); err != nil {
 		return fmt.Errorf("writing env.auto.tfvars: %w", err)
 	}
 

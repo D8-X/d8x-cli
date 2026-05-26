@@ -179,7 +179,7 @@ func (c *Container) CopySwarmDeployConfigs() error {
 	if err := os.MkdirAll(filepath.Dir(envPath), 0700); err != nil {
 		return err
 	}
-	if err := os.WriteFile(envPath, envData, 0644); err != nil {
+	if err := os.WriteFile(envPath, envData, 0600); err != nil {
 		return err
 	}
 	for _, s := range stagings {
