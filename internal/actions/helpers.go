@@ -65,6 +65,11 @@ func ValidateHttp(url string) bool {
 	return strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://")
 }
 
+// ValidateWs validates if given url starts with ws:// or wss://
+func ValidateWs(url string) bool {
+	return strings.HasPrefix(url, "ws://") || strings.HasPrefix(url, "wss://")
+}
+
 
 func readEnvSecret(env, base string) string {
 	if env != "" {

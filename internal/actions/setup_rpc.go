@@ -57,6 +57,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	defer sshConn.Close()
 	fmt.Printf("  %s connected as %s\n", ok, c.DefaultClusterUserName)
 
 	fmt.Printf("\n%s Fetching live RPC config from manager\n", arrow)
@@ -78,13 +79,6 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	fmt.Printf("  %s api: %d HTTP, %d WS\n", ok, len(mainHttp), len(mainWs))
 	fmt.Printf("  %s history: %d HTTP, %d WS\n", ok, len(histHttp), len(histWs))
 
-	orig := perServicePools{
-		mainHttp: append([]string{}, mainHttp...),
-		mainWs:   append([]string{}, mainWs...),
-		histHttp: append([]string{}, histHttp...),
-		histWs:   append([]string{}, histWs...),
-	}
-
 	fmt.Printf("\n%s Interactive edit (changes applied only on \"Apply and deploy\")\n", arrow)
 
 	pools := perServicePools{
@@ -92,6 +86,28 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 		mainWs:   mainWs,
 		histHttp: histHttp,
 		histWs:   histWs,
+	}
+
+	if dupCount := countDuplicatesInPools(&pools); dupCount > 0 {
+		fmt.Printf("%s Found %d duplicate RPC URL(s) in the live pools.\n", warning, dupCount)
+		dedup, perr := c.TUI.NewPrompt("Deduplicate before proceeding?", true)
+		if perr != nil {
+			return perr
+		}
+		if dedup {
+			pools.mainHttp, _ = dedupKeepOrder(pools.mainHttp)
+			pools.mainWs, _ = dedupKeepOrder(pools.mainWs)
+			pools.histHttp, _ = dedupKeepOrder(pools.histHttp)
+			pools.histWs, _ = dedupKeepOrder(pools.histWs)
+			fmt.Println(styles.SuccessText.Render("Dedup applied to in-memory pools (will only persist if you choose Apply and deploy)."))
+		}
+	}
+
+	orig := perServicePools{
+		mainHttp: append([]string{}, pools.mainHttp...),
+		mainWs:   append([]string{}, pools.mainWs...),
+		histHttp: append([]string{}, pools.histHttp...),
+		histWs:   append([]string{}, pools.histWs...),
 	}
 
 	for {
@@ -163,26 +179,35 @@ func addUrlPerService(c *Container, pools *perServicePools, kind string) error {
 	if url == "" {
 		return nil
 	}
+	apply := func(label string, pool []string) []string {
+		next, added := addUrlToPool(pool, url)
+		if added {
+			fmt.Println(styles.SuccessText.Render("  + " + label + ": " + url))
+		} else {
+			fmt.Println(styles.ItalicText.Render(label + ": already present, ignoring"))
+		}
+		return next
+	}
 	switch target[0] {
 	case "api only":
 		if kind == "http" {
-			pools.mainHttp = addUrlToPool(pools.mainHttp, url)
+			pools.mainHttp = apply("api", pools.mainHttp)
 		} else {
-			pools.mainWs = addUrlToPool(pools.mainWs, url)
+			pools.mainWs = apply("api", pools.mainWs)
 		}
 	case "history only":
 		if kind == "http" {
-			pools.histHttp = addUrlToPool(pools.histHttp, url)
+			pools.histHttp = apply("history", pools.histHttp)
 		} else {
-			pools.histWs = addUrlToPool(pools.histWs, url)
+			pools.histWs = apply("history", pools.histWs)
 		}
 	case "both":
 		if kind == "http" {
-			pools.mainHttp = addUrlToPool(pools.mainHttp, url)
-			pools.histHttp = addUrlToPool(pools.histHttp, url)
+			pools.mainHttp = apply("api", pools.mainHttp)
+			pools.histHttp = apply("history", pools.histHttp)
 		} else {
-			pools.mainWs = addUrlToPool(pools.mainWs, url)
-			pools.histWs = addUrlToPool(pools.histWs, url)
+			pools.mainWs = apply("api", pools.mainWs)
+			pools.histWs = apply("history", pools.histWs)
 		}
 	}
 	return nil
@@ -242,13 +267,35 @@ func deleteUrlsPerService(c *Container, pools *perServicePools, kind string) err
 	return err
 }
 
-func addUrlToPool(pool []string, url string) []string {
+func addUrlToPool(pool []string, url string) ([]string, bool) {
 	if slices.Contains(pool, url) {
-		fmt.Println(styles.ItalicText.Render("already present in this service, ignoring"))
-		return pool
+		return pool, false
 	}
-	fmt.Println(styles.SuccessText.Render("  + " + url))
-	return append(pool, url)
+	return append(pool, url), true
+}
+
+func dedupKeepOrder(in []string) ([]string, int) {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(in))
+	removed := 0
+	for _, v := range in {
+		if _, ok := seen[v]; ok {
+			removed++
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out, removed
+}
+
+func countDuplicatesInPools(p *perServicePools) int {
+	count := 0
+	for _, pool := range [][]string{p.mainHttp, p.mainWs, p.histHttp, p.histWs} {
+		_, removed := dedupKeepOrder(pool)
+		count += removed
+	}
+	return count
 }
 
 func uniqueUnion(a, b []string) []string {
@@ -289,9 +336,7 @@ func promptUrl(c *Container, kind string) (string, error) {
 		errMsg = "url must start with http:// or https://"
 	case "ws":
 		placeholder = "wss://your-rpc-provider.com"
-		validator = func(s string) bool {
-			return strings.HasPrefix(s, "ws://") || strings.HasPrefix(s, "wss://")
-		}
+		validator = ValidateWs
 		errMsg = "url must start with ws:// or wss://"
 	}
 	url, err := c.TUI.NewInput(
@@ -385,9 +430,11 @@ func (c *Container) applyRemoteRpcChanges(
 	fmt.Printf("  api now: %d HTTP, %d WS for chain %s\n", len(pools.mainHttp), len(pools.mainWs), chainIdStr)
 	fmt.Printf("  history now: %d HTTP, %d WS for chain %s\n", len(pools.histHttp), len(pools.histWs), chainIdStr)
 
-	rev := time.Now().Format("20060102150405")
+	rev := time.Now().Format("20060102150405.000000000")
+	rev = strings.ReplaceAll(rev, ".", "")
 
-	fmt.Printf("\n%s [1/4] backing up existing RPC files on manager\n", arrow)
+	fmt.Printf("\n%s Backing up existing RPC files on manager\n", arrow)
+	var backups []string
 	for _, p := range []string{rpcMainRemotePath, rpcHistoryRemotePath} {
 		bak := fmt.Sprintf("%s.bak.%s", p, rev)
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  cp -p %s %s", p, bak)))
@@ -395,18 +442,23 @@ func (c *Container) applyRemoteRpcChanges(
 			fmt.Println(string(out))
 			return fmt.Errorf("backing up %s on manager: %w", p, cpErr)
 		}
+		backups = append(backups, bak)
 		fmt.Printf("  %s backup at %s\n", ok, bak)
 	}
 
-	fmt.Printf("\n%s [2/4] uploading new RPC files to manager\n", arrow)
+	withBackupHint := func(err error) error {
+		return fmt.Errorf("%w\nmanager backups available at: %s", err, strings.Join(backups, ", "))
+	}
+
+	fmt.Printf("\n%s Uploading new RPC files to manager\n", arrow)
 	fmt.Println(styles.ItalicText.Render("  writing " + rpcMainRemotePath + "..."))
 	if err := writeRemoteFile(sshConn, rpcMainRemotePath, mainBytes); err != nil {
-		return fmt.Errorf("writing %s: %w", rpcMainRemotePath, err)
+		return withBackupHint(fmt.Errorf("writing %s: %w", rpcMainRemotePath, err))
 	}
 	fmt.Printf("  %s wrote %s (%d bytes)\n", ok, rpcMainRemotePath, len(mainBytes))
 	fmt.Println(styles.ItalicText.Render("  writing " + rpcHistoryRemotePath + "..."))
 	if err := writeRemoteFile(sshConn, rpcHistoryRemotePath, histBytes); err != nil {
-		return fmt.Errorf("writing %s: %w", rpcHistoryRemotePath, err)
+		return withBackupHint(fmt.Errorf("writing %s: %w", rpcHistoryRemotePath, err))
 	}
 	fmt.Printf("  %s wrote %s (%d bytes)\n", ok, rpcHistoryRemotePath, len(histBytes))
 
@@ -420,20 +472,20 @@ func (c *Container) applyRemoteRpcChanges(
 		{"cfg_rpc_history", rpcHistoryRemotePath, []string{"history"}, "/cfg_rpc_history"},
 	}
 
-	fmt.Printf("\n%s [3/4] rolling docker swarm services onto new config (revision %s)\n", arrow, rev)
+	fmt.Printf("\n%s Rolling docker swarm services onto new config (revision %s)\n", arrow, rev)
 	for _, r := range rolls {
 		newName := fmt.Sprintf("%s_%s", r.configName, rev)
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  creating docker config %s from %s...", newName, r.remotePath)))
 		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, newName, r.remotePath)); err != nil {
 			fmt.Println(string(out))
-			return fmt.Errorf("creating docker config %s: %w", newName, err)
+			return withBackupHint(fmt.Errorf("creating docker config %s: %w", newName, err))
 		}
 		fmt.Printf("  %s created %s\n", ok, newName)
 		for _, svc := range r.services {
 			stackSvc := dockerStackName + "_" + svc
 			currentName, err := getAttachedConfigName(sshConn, stackSvc, r.targetPath)
 			if err != nil {
-				return fmt.Errorf("inspecting current config attached to %s at %s: %w", stackSvc, r.targetPath, err)
+				return withBackupHint(fmt.Errorf("inspecting current config attached to %s at %s: %w", stackSvc, r.targetPath, err))
 			}
 			if currentName == newName {
 				fmt.Printf("  %s service %s already using %s, skipping rollout\n", ok, stackSvc, newName)
@@ -451,26 +503,81 @@ func (c *Container) applyRemoteRpcChanges(
 				detachClause, newName, r.targetPath, stackSvc,
 			)
 			if err := sshConn.ExecCommandPiped(cmd); err != nil {
-				return fmt.Errorf("rolling update of %s failed: %w", stackSvc, err)
+				return withBackupHint(fmt.Errorf("rolling update of %s failed: %w", stackSvc, err))
 			}
 			fmt.Printf("  %s service %s now using %s\n", ok, stackSvc, newName)
 		}
 		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  refreshing canonical config %s for future \"swarm-deploy\" runs...", r.configName)))
-		_, _ = sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, r.configName))
-		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, r.configName, r.remotePath)); err != nil {
-			fmt.Println(string(out))
-			fmt.Printf("  %s could not refresh canonical %s; live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, r.configName, newName)
+		if err := c.refreshCanonicalRpcConfig(sshConn, r.configName, r.remotePath, r.targetPath); err != nil {
+			fmt.Printf("  %s %s\n", warning, err)
+			fmt.Printf("  %s live services use %s and remain healthy. Next \"swarm-deploy\" may need attention.\n", warning, newName)
 		} else {
 			fmt.Printf("  %s canonical %s refreshed\n", ok, r.configName)
 		}
 	}
 
-	fmt.Printf("\n%s [4/4] verifying service health\n", arrow)
+	fmt.Printf("\n%s Verifying service health\n", arrow)
 	c.postRpcRolloutHealthCheck(cfg)
 
 	fmt.Printf("\n%s api uses cfg_rpc_%s (%s)\n", ok, rev, rpcMainRemotePath)
 	fmt.Printf("%s history uses cfg_rpc_history_%s (%s)\n", ok, rev, rpcHistoryRemotePath)
 	fmt.Println(styles.SuccessText.Render("RPC update applied to live cluster."))
+	return nil
+}
+
+func (c *Container) refreshCanonicalRpcConfig(sshConn conn.SSHConnection, configName, remotePath, targetPath string) error {
+	if _, rmErr := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, configName)); rmErr == nil {
+		if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, configName, remotePath)); err != nil {
+			return fmt.Errorf("recreating canonical %s: %s", configName, strings.TrimSpace(string(out)))
+		}
+		return nil
+	}
+	pinnersOut, lsErr := sshConn.ExecCommand(fmt.Sprintf(
+		`docker service ls --format '{{.Name}}' | while read s; do docker service inspect "$s" --format '{{range .Spec.TaskTemplate.ContainerSpec.Configs}}{{.ConfigName}}{{"\n"}}{{end}}' | grep -Fxq %s && echo "$s"; done`,
+		shQuote(configName),
+	))
+	if lsErr != nil {
+		return fmt.Errorf("could not enumerate services pinning %s: %w", configName, lsErr)
+	}
+	var pinners []string
+	for _, svc := range strings.Split(strings.TrimSpace(string(pinnersOut)), "\n") {
+		svc = strings.TrimSpace(svc)
+		if svc != "" {
+			pinners = append(pinners, svc)
+		}
+	}
+	if len(pinners) == 0 {
+		return fmt.Errorf("docker config rm %s failed but no services pin it; manual investigation needed", configName)
+	}
+	fmt.Printf("  %s %s is still pinned by:\n", warning, configName)
+	for _, svc := range pinners {
+		fmt.Printf("    - %s\n", svc)
+	}
+	ok2, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-recover now? This rolling-restarts %d service(s) twice: detach, recreate %s, reattach.", len(pinners), configName), true)
+	if perr != nil {
+		return perr
+	}
+	if !ok2 {
+		return fmt.Errorf("auto-recover declined; run \"d8x setup rpc\" again to retry")
+	}
+	for _, svc := range pinners {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  detaching %s from %s...", configName, svc)))
+		if err := sshConn.ExecCommandPiped(fmt.Sprintf(`docker service update --config-rm %s %s`, configName, svc)); err != nil {
+			return fmt.Errorf("detaching %s from %s: %w", configName, svc, err)
+		}
+	}
+	if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config rm %s`, configName)); err != nil {
+		return fmt.Errorf("docker config rm %s after detach: %s", configName, strings.TrimSpace(string(out)))
+	}
+	if out, err := sshConn.ExecCommand(fmt.Sprintf(`docker config create %s %s`, configName, remotePath)); err != nil {
+		return fmt.Errorf("recreating %s: %s", configName, strings.TrimSpace(string(out)))
+	}
+	for _, svc := range pinners {
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("  reattaching %s -> %s on %s...", configName, targetPath, svc)))
+		if err := sshConn.ExecCommandPiped(fmt.Sprintf(`docker service update --config-add source=%s,target=%s %s`, configName, targetPath, svc)); err != nil {
+			return fmt.Errorf("reattaching %s to %s: %w", configName, svc, err)
+		}
+	}
 	return nil
 }
 
@@ -538,18 +645,28 @@ func writeRemoteFile(sshConn conn.SSHConnection, remotePath string, content []by
 			return err
 		}
 	}
-	f, err := s.Create(remotePath)
+	tmpPath := remotePath + ".tmp"
+	f, err := s.Create(tmpPath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(content)
-	return err
+	if _, err := f.Write(content); err != nil {
+		_ = f.Close()
+		_ = s.Remove(tmpPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = s.Remove(tmpPath)
+		return err
+	}
+	if err := s.PosixRename(tmpPath, remotePath); err != nil {
+		_ = s.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func rpcsForChain(entries []RPCConfigEntry, chainId uint) (httpUrls, wsUrls []string) {
-	seenH := map[string]struct{}{}
-	seenW := map[string]struct{}{}
 	for _, e := range entries {
 		if e.ChainId != chainId {
 			continue
@@ -558,20 +675,14 @@ func rpcsForChain(entries []RPCConfigEntry, chainId uint) (httpUrls, wsUrls []st
 			if u == "" {
 				continue
 			}
-			if _, ok := seenH[u]; !ok {
-				seenH[u] = struct{}{}
-				httpUrls = append(httpUrls, u)
-			}
+			httpUrls = append(httpUrls, u)
 		}
 		if e.WsRpcs != nil {
 			for _, u := range *e.WsRpcs {
 				if u == "" {
 					continue
 				}
-				if _, ok := seenW[u]; !ok {
-					seenW[u] = struct{}{}
-					wsUrls = append(wsUrls, u)
-				}
+				wsUrls = append(wsUrls, u)
 			}
 		}
 	}
@@ -590,6 +701,18 @@ func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []stri
 		}
 	}
 
+	dropped := map[int]struct{}{}
+	for i := 1; i < len(indices); i++ {
+		dropped[indices[i]] = struct{}{}
+	}
+	out := make([]RPCConfigEntry, 0, len(entries)+1)
+	for i, e := range entries {
+		if _, skip := dropped[i]; skip {
+			continue
+		}
+		out = append(out, e)
+	}
+
 	if len(indices) == 0 {
 		entry := RPCConfigEntry{
 			ChainId:  chainId,
@@ -599,23 +722,23 @@ func setRpcEntry(entries []RPCConfigEntry, chainId uint, httpRpcs, wsRpcs []stri
 			ws := append([]string{}, wsRpcs...)
 			entry.WsRpcs = &ws
 		}
-		return append(entries, entry)
+		return append(out, entry)
 	}
 
-	keep := indices[0]
-	entries[keep].HttpRpcs = append([]string{}, httpRpcs...)
-	if hadWsField || len(wsRpcs) > 0 {
-		ws := append([]string{}, wsRpcs...)
-		entries[keep].WsRpcs = &ws
-	} else {
-		entries[keep].WsRpcs = nil
+	for i := range out {
+		if out[i].ChainId != chainId {
+			continue
+		}
+		out[i].HttpRpcs = append([]string{}, httpRpcs...)
+		if hadWsField || len(wsRpcs) > 0 {
+			ws := append([]string{}, wsRpcs...)
+			out[i].WsRpcs = &ws
+		} else {
+			out[i].WsRpcs = nil
+		}
+		break
 	}
-
-	for i := len(indices) - 1; i > 0; i-- {
-		idx := indices[i]
-		entries = append(entries[:idx], entries[idx+1:]...)
-	}
-	return entries
+	return out
 }
 
 func (c *Container) postRpcRolloutHealthCheck(cfg *configs.D8XConfig) {
@@ -713,13 +836,25 @@ func probeService(client *http.Client, url string) (int, time.Duration, error) {
 }
 
 func diffPools(orig, current []string) (added, removed []string) {
+	origCount := map[string]int{}
+	for _, u := range orig {
+		origCount[u]++
+	}
+	curCount := map[string]int{}
 	for _, u := range current {
-		if !slices.Contains(orig, u) {
+		curCount[u]++
+	}
+	seen := map[string]int{}
+	for _, u := range current {
+		seen[u]++
+		if seen[u] > origCount[u] {
 			added = append(added, u)
 		}
 	}
+	seen = map[string]int{}
 	for _, u := range orig {
-		if !slices.Contains(current, u) {
+		seen[u]++
+		if seen[u] > curCount[u] {
 			removed = append(removed, u)
 		}
 	}

@@ -553,10 +553,10 @@ func (c *Container) populateRemoteRpcConfig(cfg *configs.D8XConfig, content []by
 	}
 
 	for chainID, rpcs := range cfg.HttpRpcList {
-		cfg.HttpRpcList[chainID] = slices.Compact(rpcs)
+		cfg.HttpRpcList[chainID] = uniqueStrings(rpcs)
 	}
 	for chainID, rpcs := range cfg.WsRpcList {
-		cfg.WsRpcList[chainID] = slices.Compact(rpcs)
+		cfg.WsRpcList[chainID] = uniqueStrings(rpcs)
 	}
 
 	return nil
