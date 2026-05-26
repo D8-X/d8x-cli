@@ -190,7 +190,7 @@ func (c *Container) stageInfraRepoFile(envRelPath, embeddedSrc, localPath string
 	if err := os.MkdirAll(filepath.Dir(localPath), 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(localPath, content, 0644)
+	return os.WriteFile(localPath, content, 0600)
 }
 
 func writeHostsToTempFile(h files.HostsFileInteractor) (string, error) {
@@ -202,7 +202,7 @@ func writeHostsToTempFile(h files.HostsFileInteractor) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0600); err != nil {
 		return "", err
 	}
 	return path, nil
