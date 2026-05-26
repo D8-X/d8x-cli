@@ -94,7 +94,7 @@ func RunD8XCli() {
 					},
 					{
 						Name:   "rm-env",
-						Usage:  "Remove a non-provisioned environment from the infra repo",
+						Usage:  "Remove an environment from the infra repo (does not touch cloud infra)",
 						Action: container.RemoveEnvironment,
 					},
 					{

@@ -17,7 +17,7 @@ var nonEnvDirs = map[string]struct{}{
 }
 
 func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Remove a non-provisioned environment from the infra repo")
+	styles.PrintCommandTitle("Remove an environment from the infra repo")
 
 	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
 		return err
@@ -29,8 +29,12 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		return fmt.Errorf("cannot list directories on infra repo: %w", err)
 	}
 
+	type envInfo struct {
+		name        string
+		provisioned bool
+	}
 	var labels []string
-	labelToEnv := map[string]string{}
+	labelToInfo := map[string]envInfo{}
 	for _, d := range allDirs {
 		if strings.HasPrefix(d, ".") {
 			continue
@@ -46,24 +50,27 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		if err := json.Unmarshal([]byte(cfgFile.Content), &ec); err != nil {
 			continue
 		}
-		if _, hostsErr := ghReadFile(token, d+"/hosts.cfg"); hostsErr == nil {
-			continue
+		hostsFile, hostsErr := ghReadFile(token, d+"/hosts.cfg")
+		provisioned := hostsErr == nil && strings.TrimSpace(hostsFile.Content) != ""
+
+		state := "not provisioned"
+		if provisioned {
+			state = "provisioned"
 		}
-		label := d
+		label := fmt.Sprintf("%s  [%s]", d, state)
 		if ec.ChainId > 0 {
-			label = fmt.Sprintf("%s  (chain %d)", d, ec.ChainId)
+			label = fmt.Sprintf("%s  (chain %d)  [%s]", d, ec.ChainId, state)
 		}
 		labels = append(labels, label)
-		labelToEnv[label] = d
+		labelToInfo[label] = envInfo{name: d, provisioned: provisioned}
 	}
 
 	if len(labels) == 0 {
-		fmt.Println(styles.ItalicText.Render("No non-provisioned environments found on the infra repo. Nothing to remove."))
-		fmt.Println(styles.ItalicText.Render("(\"setup rm-env\" only handles never-provisioned envs; for a provisioned one, run \"d8x tf-destroy\" first.)"))
+		fmt.Println(styles.ItalicText.Render("No environments found on the infra repo. Nothing to remove."))
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render("Select the environment to remove (only non-provisioned envs are shown):"))
+	fmt.Println(styles.ItalicText.Render("Select the environment to remove from the infra repo:"))
 	picked, err := c.TUI.NewSelection(
 		labels,
 		components.SelectionOptAllowOnlySingleItem(),
@@ -72,26 +79,28 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	env, ok := labelToEnv[picked[0]]
-	if !ok {
-		return fmt.Errorf("internal: selection %q not found", picked[0])
-	}
+	info := labelToInfo[picked[0]]
 
-	paths, err := ghListEnvFiles(token, env)
+	paths, err := ghListEnvFiles(token, info.name)
 	if err != nil {
-		return fmt.Errorf("listing files under %s/: %w", env, err)
+		return fmt.Errorf("listing files under %s/: %w", info.name, err)
 	}
 	if len(paths) == 0 {
-		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Environment %q has no files on the infra repo (already empty).", env)))
+		fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Environment %q has no files on the infra repo (already empty).", info.name)))
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("\nWill delete %d file(s) under %s/ on the infra repo:", len(paths), env)))
+	fmt.Println(styles.ItalicText.Render(fmt.Sprintf("\nWill delete %d file(s) under %s/ on the infra repo:", len(paths), info.name)))
 	for _, p := range paths {
 		fmt.Printf("  - %s\n", p)
 	}
 
-	confirm, err := c.TUI.NewPrompt(fmt.Sprintf("Remove the %q environment from the infra repo?", env), false)
+	if info.provisioned {
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("Warning: %q still has hosts.cfg on the infra repo (provisioned).", info.name)))
+		fmt.Println(styles.AlertImportant.Render("Deleting files here will NOT tear down cloud infra. Run \"d8x tf-destroy\" first if you want the servers gone."))
+	}
+
+	confirm, err := c.TUI.NewPrompt(fmt.Sprintf("Remove the %q environment from the infra repo?", info.name), false)
 	if err != nil {
 		return err
 	}
@@ -100,10 +109,22 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		return nil
 	}
 
-	if err := ghCommitDeletes(token, paths, fmt.Sprintf("remove %s environment", env)); err != nil {
-		return fmt.Errorf("removing environment %s: %w", env, err)
+	fmt.Printf("Type the environment name (%s) to confirm:\n", info.name)
+	typed, err := c.TUI.NewInput(
+		components.TextInputOptPlaceholder(info.name),
+		components.TextInputOptDenyEmpty(),
+	)
+	if err != nil {
+		return err
 	}
-	fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Removed environment %q (%d files) from the infra repo.", env, len(paths))))
+	if strings.TrimSpace(typed) != info.name {
+		return fmt.Errorf("typed name %q does not match %q; aborted", typed, info.name)
+	}
+
+	if err := ghCommitDeletes(token, paths, fmt.Sprintf("remove %s environment", info.name)); err != nil {
+		return fmt.Errorf("removing environment %s: %w", info.name, err)
+	}
+	fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Removed environment %q (%d files) from the infra repo.", info.name, len(paths))))
 	return nil
 }
 
