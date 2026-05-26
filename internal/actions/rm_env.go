@@ -35,6 +35,7 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 	}
 	var labels []string
 	labelToInfo := map[string]envInfo{}
+	envToInfo := map[string]envInfo{}
 	for _, d := range allDirs {
 		if strings.HasPrefix(d, ".") {
 			continue
@@ -62,7 +63,9 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 			label = fmt.Sprintf("%s  (chain %d)  [%s]", d, ec.ChainId, state)
 		}
 		labels = append(labels, label)
-		labelToInfo[label] = envInfo{name: d, provisioned: provisioned}
+		info := envInfo{name: d, provisioned: provisioned}
+		labelToInfo[label] = info
+		envToInfo[d] = info
 	}
 
 	if len(labels) == 0 {
@@ -70,16 +73,26 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render("Select the environment to remove from the infra repo:"))
-	picked, err := c.TUI.NewSelection(
-		labels,
-		components.SelectionOptAllowOnlySingleItem(),
-		components.SelectionOptRequireSelection(),
-	)
-	if err != nil {
-		return err
+	var info envInfo
+	if name := strings.TrimSpace(ctx.String("env")); name != "" {
+		got, found := envToInfo[name]
+		if !found {
+			return fmt.Errorf("env %q not found on the infra repo", name)
+		}
+		info = got
+		fmt.Printf("%s env %q selected via --env flag\n", ok, info.name)
+	} else {
+		fmt.Println(styles.ItalicText.Render("Select the environment to remove from the infra repo:"))
+		picked, err := c.TUI.NewSelection(
+			labels,
+			components.SelectionOptAllowOnlySingleItem(),
+			components.SelectionOptRequireSelection(),
+		)
+		if err != nil {
+			return err
+		}
+		info = labelToInfo[picked[0]]
 	}
-	info := labelToInfo[picked[0]]
 
 	paths, err := ghListEnvFiles(token, info.name)
 	if err != nil {
@@ -121,7 +134,7 @@ func (c *Container) RemoveEnvironment(ctx *cli.Context) error {
 		return fmt.Errorf("typed name %q does not match %q; aborted", typed, info.name)
 	}
 
-	if err := ghCommitDeletes(token, paths, fmt.Sprintf("remove %s environment", info.name)); err != nil {
+	if err := ghCommitDeletes(token, paths, fmt.Sprintf("remove %s/ from infra repo", info.name)); err != nil {
 		return fmt.Errorf("removing environment %s: %w", info.name, err)
 	}
 	fmt.Println(styles.SuccessText.Render(fmt.Sprintf("Removed environment %q (%d files) from the infra repo.", info.name, len(paths))))

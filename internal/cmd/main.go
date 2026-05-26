@@ -96,6 +96,12 @@ func RunD8XCli() {
 						Name:   "rm-env",
 						Usage:  "Remove an environment from the infra repo (does not touch cloud infra)",
 						Action: container.RemoveEnvironment,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "env",
+								Usage: "Pick the env to remove without showing the picker",
+							},
+						},
 					},
 					{
 						Name:        "provision",

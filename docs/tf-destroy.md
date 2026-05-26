@@ -45,7 +45,7 @@ Kept on purpose:
 - All Bitwarden entries, including cross-env ones like `GITHUB_TOKEN`, `NGINX_API_KEY`, and per-env ones like `AWS_ACCESS_KEY_{ENV}`, `LINODE_TOKEN_{ENV}`, `SSH_KEY_{ENV}`, `SERVER_PASSWORD_{ENV}`.
 - Your local SSH key files.
 
-You can re-provision the same environment with `d8x setup provision` and reuse the same credentials.
+You can re-provision the same environment with `d8x setup provision` and reuse the same credentials. If you're done with the env entirely, follow up with `d8x setup rm-env` to also delete its directory from the infra repo (see [rm-env.md](rm-env.md)).
 
 Cleaned up:
 

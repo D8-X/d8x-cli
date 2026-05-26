@@ -21,3 +21,5 @@ Creates a new environment in the infra repo.
 ## After this
 
 Proceed to `d8x setup provision`.
+
+Created the env by mistake? `d8x setup rm-env` deletes the directory from the infra repo (see [rm-env.md](rm-env.md)).
