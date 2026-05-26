@@ -162,7 +162,7 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 				}
 			}
 			if brokerHostname != "" {
-				rpcHealthURL := fmt.Sprintf("https://%s/health", brokerHostname)
+				rpcHealthURL := fmt.Sprintf("https://%s/rpc/health", brokerHostname)
 				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' %s`, rpcHealthURL)
 				out, err = brokerConn.ExecCommand(curlCmd)
 				code := strings.TrimSpace(string(out))
