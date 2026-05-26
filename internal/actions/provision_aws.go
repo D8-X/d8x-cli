@@ -241,16 +241,23 @@ func (a *awsConfigurer) generateTerraformCommand() *exec.Cmd {
 			a.generateVariables()...,
 		)...,
 	)
+	cmd.Env = append(os.Environ(), a.awsEnv()...)
 
 	return cmd
+}
+
+func (a *awsConfigurer) awsEnv() []string {
+	return []string{
+		"AWS_ACCESS_KEY_ID=" + a.AccesKey,
+		"AWS_SECRET_ACCESS_KEY=" + a.SecretKey,
+		"AWS_DEFAULT_REGION=" + a.Region,
+	}
 }
 
 // generateVariables generates terraform variables for aws provider
 func (a *awsConfigurer) generateVariables() []string {
 	return []string{
 		"-var", fmt.Sprintf(`server_label_prefix=%s`, a.LabelPrefix),
-		"-var", fmt.Sprintf(`aws_access_key=%s`, a.AccesKey),
-		"-var", fmt.Sprintf(`aws_secret_key=%s`, a.SecretKey),
 		"-var", fmt.Sprintf(`region=%s`, a.Region),
 		// Do not include the quotes here
 		"-var", fmt.Sprintf(`authorized_key=%s`, a.authorizedKey),
