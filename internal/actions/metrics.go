@@ -29,7 +29,7 @@ func (c *Container) DeployMetrics(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
 	if cfg.ServerProvider == "" {
@@ -210,7 +210,7 @@ func (c *Container) TunnelGrafana(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
 	if err := c.RequireProvisionedHosts("grafana-tunnel", "manager"); err != nil {

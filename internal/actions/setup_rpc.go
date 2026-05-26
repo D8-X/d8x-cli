@@ -35,7 +35,7 @@ func (c *Container) SetupRpc(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	if _, err := c.EnsureEnvironment(cfg); err != nil {
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
 	if err := c.RequireProvisionedHosts("rpc", "manager"); err != nil {
