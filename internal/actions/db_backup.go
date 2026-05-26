@@ -33,6 +33,9 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("backup-db", "manager"); err != nil {
+		return err
+	}
 
 	ip, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {

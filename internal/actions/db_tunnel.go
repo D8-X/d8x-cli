@@ -35,6 +35,9 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
 		return err
 	}
+	if err := c.RequireProvisionedHosts("db-tunnel", "manager"); err != nil {
+		return err
+	}
 
 	ip, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
