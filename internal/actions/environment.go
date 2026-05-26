@@ -67,8 +67,8 @@ func (c *Container) ensureEnvironment(cfg *configs.D8XConfig, provisionedOnly bo
 				continue
 			}
 
-			_, hostsErr := ghReadFile(token, e+"/hosts.cfg")
-			provisioned := hostsErr == nil
+			hostsFile, hostsErr := ghReadFile(token, e+"/hosts.cfg")
+			provisioned := hostsErr == nil && strings.TrimSpace(hostsFile.Content) != ""
 			if provisionedOnly && !provisioned {
 				continue
 			}
