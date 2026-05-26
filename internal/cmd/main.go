@@ -201,6 +201,7 @@ func RunD8XCli() {
 			},
 			{
 				Name:   "backup-db",
+				Usage:  "Dump the swarm database via the manager and download it locally",
 				Action: container.BackupDb,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
@@ -212,6 +213,7 @@ func RunD8XCli() {
 			},
 			{
 				Name:        "db-tunnel",
+				Usage:       "Open an SSH tunnel from a local port to the swarm database",
 				Action:      container.DbTunnel,
 				ArgsUsage:   "[local port 5432]",
 				Description: "Create a ssh tunnel to database server. Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
