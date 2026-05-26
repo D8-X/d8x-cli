@@ -120,8 +120,6 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 	}
 	wantVars := []string{
 		"-var", "server_label_prefix=prefix",
-		"-var", "aws_access_key=the_access_key",
-		"-var", "aws_secret_key=secret",
 		"-var", "region=region",
 		"-var", "authorized_key=the_key",
 		"-var", "db_instance_class=db.t4g.small",
@@ -132,4 +130,11 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 	}
 
 	assert.Equal(t, wantVars, a.generateVariables())
+
+	wantEnv := []string{
+		"AWS_ACCESS_KEY_ID=the_access_key",
+		"AWS_SECRET_ACCESS_KEY=secret",
+		"AWS_DEFAULT_REGION=region",
+	}
+	assert.Equal(t, wantEnv, a.awsEnv())
 }
