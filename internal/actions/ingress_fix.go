@@ -16,7 +16,18 @@ import (
 // recreate ingress on manager; reboot manager's docker; reboot all workers'
 // docker.
 func (c *Container) IngressFix(ctx *cli.Context) error {
-	pwd, err := c.GetPassword(ctx)
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("fix-ingress", "manager"); err != nil {
+		return err
+	}
+
+	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
@@ -61,7 +72,7 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 		fmt.Println(styles.SuccessText.Render("Successfully restarted docker on manager"))
 	}
 
-	workerIps, err := c.HostsCfg.GetWorkerIps()
+	workerIps, err := c.HostsCfg.GetWorkerPrivateIps()
 	if err != nil {
 		return err
 	}

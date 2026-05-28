@@ -22,6 +22,9 @@ type HostsFileInteractor interface {
 
 	// WriteLines writes the provided lines to hosts file
 	WriteLines([]string) error
+
+	// GetPath returns the absolute file path backing this interactor
+	GetPath() string
 }
 
 func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
@@ -111,6 +114,10 @@ func (f *fsHostFileInteractor) GetLines() ([]string, error) {
 	return f.cached.lines, nil
 }
 
+func (f *fsHostFileInteractor) GetPath() string {
+	return f.filePath
+}
+
 func (f *fsHostFileInteractor) WriteLines(lines []string) error {
 	// Write the lines to file and update the cache
 	if err := WriteHostsLinesToFile(lines, f.filePath); err != nil {
@@ -182,11 +189,26 @@ func (h *HostsFile) GetBrokerPublicIp() (string, error) {
 }
 
 func (h *HostsFile) GetBrokerPrivateIp() (string, error) {
-	ips, err := h.FindPrivateIps("broker")
-	if err != nil || len(ips) == 0 {
-		return "", fmt.Errorf("broker private ip was not found in hosts file")
+	if ips, err := h.FindPrivateIps("broker"); err == nil && len(ips) > 0 {
+		return ips[0], nil
 	}
-	return ips[0], nil
+	inBroker := false
+	for _, line := range h.lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inBroker = trimmed == "[broker]"
+			continue
+		}
+		if !inBroker || trimmed == "" {
+			continue
+		}
+		for _, field := range strings.Fields(trimmed) {
+			if strings.HasPrefix(field, "private_ip=") {
+				return strings.TrimPrefix(field, "private_ip="), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("broker private ip was not found in hosts file")
 }
 
 func (h *HostsFile) GetMangerPrivateIp() (string, error) {

@@ -1,61 +1,17 @@
 package cmd
 
 // MainDescription is the description text for d8x cli tool
-const MainDescription = `D8X Perpetual Exchange broker backend setup and management CLI tool 
+const MainDescription = `CLI for provisioning, deploying, and managing D8X trader backend infrastructure.
 
-Running d8x without any subcommands or init command will perform initalization
-of ./.d8x-config directory (--config-directory), as well as prompt you to
-install any missing dependencies such as ansible or terraform.
-
-D8X CLI relies on the following external tools: terraform, ansible. You can
-manually install them or let the cli attempt to perform the installation of
-these dependencies automatically. Note that for automatic installation you will
-need to have python3 and pip installed on your system
-
-For cluster provisioning and configuration, see the setup command and its 
-subcommands. Run d8x setup --help for more information.
+Run d8x setup --help for available setup subcommands.
 `
 
-const SetupDescription = `Command setup performs complete D8X cluster setup.
+const SetupDescription = `Command setup performs D8X cluster setup.
 
-Setup should be performed only once! Once cluster is provisioned and deployed,
-you should use one of the individual setup subcommands to perform any individual
-operations such as swarm or broker deployments. Calling setup on provisioned
-cluster might result in data corruption: password.txt overwrites, ssh key
-overwrites, misconfiguration/destruction of servers, etc.
+Run "d8x setup" with no subcommand to drive the full guided flow (it prints a STEP X/N banner before each piece). Pick a subcommand below to run one piece on its own.
 
-In essence setup calls the following subcommands in sequence:
-	- provision
-	- configure
-	- broker-deploy
-	- broker-nginx
-	- swarm-deploy
-	- swarm-nginx
-
-Command provision performs resource provisioning with terraform.
-
-Command configure performs configuration of provisioned resources with ansible.
-
-Command broker-deploy performs broker-server deployment.
-
-Command broker-nginx performs nginx + certbot setup for broker-server
-deployment.
-
-Command swarm-deploy performs d8x-trader-backend docker swarm cluster
-deployment.
-
-Command swarm-nginx performs nginx + certbot setup for d8x-trader-backend docker
-swarm deployment on manager server.
-
-See individual command's help for information and more details how each step operates.
-
-Files created by setup and it's subcommands:
-	- hosts.cfg - ansible inventory file
-	- id_ed25519 - ssh key used to access servers (added to each provisioned server)
-	- id_ed25519.pub - public key of id_ed25519 
-	- password.txt - default user password on all servers
-	- aws_rds_postgres.txt - aws postgres instance credentials (only for AWS provider)
-	- manager_ssh_jump.conf - ssh config file for manager server to be used as jump host (only for AWS provider)
+Infrastructure configs are stored in the backend-nginx-infra-config GitHub repo.
+Secrets are loaded from Bitwarden or .env file.
 `
 
 const ProvisionDescription = `Command provision performs resource provisioning with terraform.

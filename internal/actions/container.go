@@ -24,9 +24,6 @@ type SSHConnectionMaker func()
 // Container is the cli container which provides all the command and subcommand
 // actions
 type Container struct {
-	// ConfigDir is the configuration directory path
-	ConfigDir string
-
 	// Default ssh key pathname. Defaults to ./id_ed25519 for private key. For
 	// public key same name is used + .pub
 	SshKeyPath string
@@ -35,13 +32,10 @@ type Container struct {
 	// have ssh key provided via SshKeyPath added to authorized_keys
 	DefaultClusterUserName string
 
-	// Password of DefaultClusterUserName. If not provided, attempt to read
-	// password from ./password.txt will be made in Before action. If
-	// Configuration action was executed, the password value will be set.
 	UserPassword string
 
-	// Directory to the terraform files. Defaults to ./terraform but can be
-	// overriden by --tf-dir flag
+	SelectedEnv string
+
 	ProvisioningTfDir string
 
 	EmbedCopier files.EmbedFileCopier
@@ -76,6 +70,12 @@ type Container struct {
 
 	// Global input state
 	Input *InputCollector
+
+	BitwardenFields map[string]string
+
+	BitwardenStatus string
+
+	LastEnvBackupPath string
 }
 
 func NewDefaultContainer() (*Container, error) {

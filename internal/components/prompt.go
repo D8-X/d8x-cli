@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -20,7 +21,7 @@ func newPrompt(question string, confirmed bool) (bool, error) {
 	}
 
 	if v, ok := out.(exitModel); ok {
-		return false, fmt.Errorf(v.Message())
+		return false, errors.New(v.Message())
 	}
 
 	result := out.(promptModel)

@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -34,7 +35,7 @@ func newSelection(selection []string, opts ...SelectionOpts) ([]string, error) {
 	}
 
 	if v, ok := out.(exitModel); ok {
-		return nil, fmt.Errorf(v.Message())
+		return nil, errors.New(v.Message())
 	}
 
 	selected := make([]string, 0, len(selection))

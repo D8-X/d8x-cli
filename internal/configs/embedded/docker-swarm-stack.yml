@@ -231,9 +231,6 @@ networks:
     ipam:
       config:
         - subnet: 172.16.3.0/24
-volumes:
-  nfsvol:
-    external: true
 configs:
   cfg_rpc:
     external: true

@@ -1,0 +1,71 @@
+name: Update Homebrew Tap
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag (e.g. v1.4.4)"
+        required: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute SHA256 hashes
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          curl -sL "https://github.com/D8-X/d8x-cli/releases/download/${VERSION}/d8x-macos-arm64.tar.gz" -o arm64.tar.gz
+          curl -sL "https://github.com/D8-X/d8x-cli/releases/download/${VERSION}/d8x-macos-amd64.tar.gz" -o amd64.tar.gz
+          curl -sL "https://github.com/D8-X/d8x-cli/releases/download/${VERSION}/d8x-linux-amd64.tar.gz" -o linux.tar.gz
+          echo "SHA_ARM64=$(sha256sum arm64.tar.gz | cut -d' ' -f1)" >> $GITHUB_ENV
+          echo "SHA_AMD64=$(sha256sum amd64.tar.gz | cut -d' ' -f1)" >> $GITHUB_ENV
+          echo "SHA_LINUX=$(sha256sum linux.tar.gz | cut -d' ' -f1)" >> $GITHUB_ENV
+      - uses: actions/checkout@v4
+        with:
+          repository: D8-X/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - name: Update formula
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          VERSION="${VERSION#v}"
+          TAG="${{ github.event.inputs.version }}"
+          mkdir -p homebrew-tap/Formula
+          cat > homebrew-tap/Formula/d8x.rb << FORMULA
+          class D8x < Formula
+            desc "CLI for provisioning, deploying, and managing D8X trader backend infrastructure"
+            homepage "https://github.com/D8-X/d8x-cli"
+            version "${VERSION}"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/D8-X/d8x-cli/releases/download/${TAG}/d8x-macos-arm64.tar.gz"
+                sha256 "${SHA_ARM64}"
+              else
+                url "https://github.com/D8-X/d8x-cli/releases/download/${TAG}/d8x-macos-amd64.tar.gz"
+                sha256 "${SHA_AMD64}"
+              end
+            end
+
+            on_linux do
+              url "https://github.com/D8-X/d8x-cli/releases/download/${TAG}/d8x-linux-amd64.tar.gz"
+              sha256 "${SHA_LINUX}"
+            end
+
+            def install
+              bin.install "d8x"
+            end
+
+            test do
+              system "#{bin}/d8x", "--version"
+            end
+          end
+          FORMULA
+      - name: Push formula
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add Formula/d8x.rb
+          git diff --cached --quiet || git commit -m "update d8x to ${{ github.event.inputs.version }}"
+          git push

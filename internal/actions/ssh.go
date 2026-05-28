@@ -21,6 +21,9 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
+		return err
+	}
 
 	serverName := ctx.Args().First()
 	ip := ""
@@ -33,13 +36,17 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	default:
 		// Parse workers
 		if strings.HasPrefix(serverName, "worker-") {
-			ips, err := c.HostsCfg.GetWorkerIps()
-			if err != nil {
-				return err
+
+			ips, err := c.HostsCfg.GetWorkerPrivateIps()
+			if err != nil || len(ips) == 0 {
+				ips, err = c.HostsCfg.GetWorkerIps()
+				if err != nil {
+					return err
+				}
 			}
 			parsedWorkerNum, err := strconv.Atoi(strings.Split(serverName, "worker-")[1])
 			if err != nil {
-				return fmt.Errorf("Incorrect worker name was passed. Accepted values are worker-1, worker-2, worker-3, worker-*...")
+				return fmt.Errorf("incorrect worker name; accepted values are worker-1, worker-2, worker-3, worker-*")
 			}
 
 			isWorker = true
@@ -50,7 +57,7 @@ func (c *Container) SSH(ctx *cli.Context) error {
 			}
 		}
 
-		return fmt.Errorf("Incorrect server name was passed. Accepted values are manager, broker, worker-* (where * is a digit)")
+		return fmt.Errorf("incorrect server name; accepted values are manager, broker, worker-* (where * is a digit)")
 	}
 
 	if err != nil {
@@ -118,29 +125,17 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	return nil
 }
 
-// GetWorkerConnection establishes a connection to given worker. If Server
-// provider is AWS, we use manager as a bastion server
+// GetWorkerConnection establishes a connection to given worker through the
+// manager acting as a bastion. Workers are not expected to be reachable
+// directly from outside the private network.
 func (c *Container) GetWorkerConnection(workerIp string, cfg *configs.D8XConfig) (conn.SSHConnection, error) {
-	var (
-		cn      conn.SSHConnection
-		connErr error
-	)
-
-	if cfg.ServerProvider == configs.D8XServerProviderLinode {
-		cn, connErr = conn.NewSSHConnection(workerIp, c.DefaultClusterUserName, c.SshKeyPath)
-	} else {
-		managerIp, err := c.HostsCfg.GetMangerPublicIp()
-		if err != nil {
-			return nil, err
-		}
-
-		// Workers are accessible through manager for AWS
-		managerConn, errMngr := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
-		if errMngr != nil {
-			return nil, errMngr
-		}
-		cn, connErr = conn.NewSSHConnectionWithBastion(managerConn.GetClient(), workerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	managerIp, err := c.HostsCfg.GetMangerPublicIp()
+	if err != nil {
+		return nil, err
 	}
-
-	return cn, connErr
+	managerConn, err := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return nil, err
+	}
+	return conn.NewSSHConnectionWithBastion(managerConn.GetClient(), workerIp, c.DefaultClusterUserName, c.SshKeyPath)
 }

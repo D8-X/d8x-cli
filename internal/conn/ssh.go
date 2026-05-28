@@ -22,6 +22,8 @@ type SSHConnection interface {
 	CopyFilesOverSftp(srcDst ...SftpCopySrcDest) error
 
 	GetClient() *ssh.Client
+
+	Close() error
 }
 
 type SSHConnectionEstablisher func(serverIp, user, idFilePath string) (SSHConnection, error)
@@ -93,6 +95,13 @@ type sshConnection struct {
 
 func (s *sshConnection) GetClient() *ssh.Client {
 	return s.c
+}
+
+func (s *sshConnection) Close() error {
+	if s == nil || s.c == nil {
+		return nil
+	}
+	return s.c.Close()
 }
 
 func (conn *sshConnection) ExecCommand(cmd string) ([]byte, error) {

@@ -3,11 +3,10 @@ package actions
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -37,6 +36,8 @@ type InputCollector struct {
 
 	// Default ssh key path
 	SSHKeyPath string
+	// Selected environment name
+	SelectedEnv string
 	// Whenever ssh key hash changes - this will be set to true. SSH key change
 	// implies that all servers will be reprovisioned.
 	sshKeyChanged bool
@@ -324,8 +325,7 @@ func (input *InputCollector) PostProvisioningHook() error {
 		return err
 	}
 
-	// Attempt to parse aws_rds credentials file
-	if err := collectAwsRdsDsnString(cfg); err != nil {
+	if err := collectAwsRdsDsnString(cfg, input.SelectedEnv); err != nil {
 		return err
 	}
 
@@ -335,11 +335,49 @@ func (input *InputCollector) PostProvisioningHook() error {
 // CollectBrokerPrivateKey collects broker private key and stores it in input
 // state
 func (input *InputCollector) CollectBrokerPrivateKey() error {
+	envUpper := strings.ToUpper(input.SelectedEnv)
+	fieldName := "BROKER_PRIVATE_KEY_" + envUpper
+
+	if input.SelectedEnv != "" {
+		if existing := os.Getenv(fieldName); existing != "" {
+			normalized := strings.TrimPrefix(existing, "0x")
+			if addr, err := PrivateKeyToAddress(normalized); err == nil {
+				fmt.Printf("%s found broker private key in Bitwarden as %s\n", ok, fieldName)
+				fmt.Printf("  Wallet address: %s\n", addr.Hex())
+				reuse, perr := input.TUI.NewPrompt("Reuse this key?", true)
+				if perr != nil {
+					return perr
+				}
+				if reuse {
+					input.brokerDeployInput.privateKey = normalized
+					return nil
+				}
+			} else {
+				fmt.Printf("%s broker private key in Bitwarden (%s) is invalid (%s). Collecting a fresh key.\n", warning, fieldName, err)
+			}
+		}
+	}
+
 	pk, _, err := input.CollectAndValidatePrivateKey("Enter your broker private key:")
 	if err != nil {
 		return err
 	}
 	input.brokerDeployInput.privateKey = pk
+
+	if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
+		save, perr := input.TUI.NewPrompt(
+			fmt.Sprintf("Save the broker private key to Bitwarden as %s for redeploy convenience? (the key signs broker orders; only persist it if your Bitwarden vault is the right place for it)", fieldName),
+			true,
+		)
+		if perr != nil {
+			return perr
+		}
+		if save {
+			if err := saveAndReport(fieldName, pk); err != nil {
+				return fmt.Errorf("saving broker private key to Bitwarden: %w", err)
+			}
+		}
+	}
 
 	return nil
 }
@@ -350,24 +388,27 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 		return nil
 	}
 
-	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
-
-	// Broker private key must be collected only once per session. Do not
-	// collect it for individual swarm-deploy or if user chooses not to deploy
-	// broker during the setup
-	if input.brokerDeployInput.privateKey == "" && ctx.Command.Name != "swarm-deploy" {
-		collect := true
-		if ctx.Command.Name == "setup" && !input.setup.deployBroker {
-			collect = false
-		}
-
-		if collect {
-			if err := input.CollectBrokerPrivateKey(); err != nil {
-				return err
-			}
-		}
+	activeStep, _ := ctx.App.Metadata["activeStep"].(string)
+	currentCommand := ctx.Command.Name
+	if activeStep != "" {
+		currentCommand = activeStep
 	}
 
+	if currentCommand == "swarm-deploy" || currentCommand == "swarm-nginx" || currentCommand == "metrics-deploy" {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Collecting private keys...\n"))
+
+	collect := true
+	if currentCommand == "setup" && !input.setup.deployBroker {
+		collect = false
+	}
+	if collect {
+		if err := input.CollectBrokerPrivateKey(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -479,18 +520,29 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		return err
 	}
 
-	guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
+	cfg, err := input.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
-	input.swarmDeployInput.guideConfig = guideUser
-	if guideUser {
 
-		cfg, err := input.ConfigRWriter.Read()
+	chainIdStr := strconv.Itoa(int(cfg.ChainId))
+	existingConfig := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRedisPassword != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
+	if existingConfig {
+		fmt.Println(styles.ItalicText.Render("Found existing swarm deploy configuration."))
+		keepExisting, err := input.TUI.NewPrompt("Do you want to keep this configuration and only collect missing values?", true)
 		if err != nil {
 			return err
 		}
+		input.swarmDeployInput.guideConfig = !keepExisting
+	} else {
+		guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
+		if err != nil {
+			return err
+		}
+		input.swarmDeployInput.guideConfig = guideUser
+	}
 
+	if input.swarmDeployInput.guideConfig {
 		chainId, err := input.GetChainId(cfg, ctx)
 		if err != nil {
 			return err
@@ -511,13 +563,18 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			return err
 		}
 
-		// Generate redis password
 		if cfg.SwarmRedisPassword == "" {
 			pwd, err := generatePassword(20)
 			if err != nil {
 				return fmt.Errorf("generating password for redis: %w", err)
 			}
 			cfg.SwarmRedisPassword = pwd
+			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
+				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
+				if err := saveAndReportWithConfirm(input.TUI, bwItemName, fieldName, pwd); err != nil {
+					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
+				}
+			}
 		}
 
 		// Collect broker http endpoint
@@ -594,6 +651,88 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		input.swarmDeployInput.priceServiceHttpEndpoints = priceServiceHttpEndpoints
 
 		// Update the config
+		if err := input.ConfigRWriter.Write(cfg); err != nil {
+			return err
+		}
+	} else {
+		if cfg.ChainId == 0 {
+			chainId, err := input.GetChainId(cfg, ctx)
+			if err != nil {
+				return err
+			}
+			cfg.ChainId = chainId
+		}
+
+		chainIdStr := strconv.Itoa(int(cfg.ChainId))
+		if len(cfg.HttpRpcList[chainIdStr]) == 0 {
+			if err := input.CollectHTTPRPCUrls(cfg, chainIdStr); err != nil {
+				return err
+			}
+		}
+		if len(cfg.WsRpcList[chainIdStr]) == 0 {
+			if err := input.CollectWebsocketRPCUrls(cfg, chainIdStr); err != nil {
+				return err
+			}
+		}
+		if cfg.DatabaseDSN == "" {
+			if err := input.CollectDatabaseDSN(cfg); err != nil {
+				return err
+			}
+		}
+		if cfg.SwarmRedisPassword == "" {
+			pwd, err := generatePassword(20)
+			if err != nil {
+				return fmt.Errorf("generating password for redis: %w", err)
+			}
+			cfg.SwarmRedisPassword = pwd
+			if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
+				fieldName := "SWARM_REDIS_PW_" + strings.ToUpper(input.SelectedEnv)
+				if err := saveAndReportWithConfirm(input.TUI, bwItemName, fieldName, pwd); err != nil {
+					return fmt.Errorf("swarm redis password was not persisted to Bitwarden (%s): %w", fieldName, err)
+				}
+			}
+		}
+		if cfg.SwarmRemoteBrokerHTTPUrl == "" {
+			value := cfg.SwarmRemoteBrokerHTTPUrl
+			if v, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				value = v.HostName
+			}
+			if value == "" && input.brokerNginxInput.domainName != "" {
+				value = input.brokerNginxInput.domainName
+			}
+			value = EnsureHttpsPrefixExists(value)
+
+			fmt.Println("Enter remote broker http url:")
+			brokerUrl, err := input.TUI.NewInput(
+				components.TextInputOptPlaceholder("https://your-broker-domain.com"),
+				components.TextInputOptValue(value),
+				components.TextInputOptDenyEmpty(),
+				components.TextInputOptValidation(ValidateHttp, "url must start with http:// or https://"),
+			)
+			if err != nil {
+				return err
+			}
+			cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
+		}
+		if len(cfg.UserSuppliedPriceFeedEndpoints) == 0 {
+			dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+			if err != nil {
+				return err
+			}
+			if !dontAddAnotherPythEndpoint {
+				fmt.Println("Enter additional Pyth priceServiceHTTPEndpoints entry")
+				additionalEndpoint, err := input.TUI.NewInput(
+					components.TextInputOptPlaceholder("https://hermes.pyth.network"),
+					components.TextInputOptDenyEmpty(),
+				)
+				additionalEndpoint = strings.TrimSpace(additionalEndpoint)
+				if err != nil {
+					return err
+				}
+				cfg.UserSuppliedPriceFeedEndpoints = []string{additionalEndpoint}
+			}
+		}
+		input.swarmDeployInput.priceServiceHttpEndpoints = cfg.UserSuppliedPriceFeedEndpoints
 		if err := input.ConfigRWriter.Write(cfg); err != nil {
 			return err
 		}
@@ -730,11 +869,7 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 			chainSelection = append(chainSelection, chainName)
 		}
 
-		// Sort chains by name so we always have consistent order in the
-		// selection
-		sort.Slice(chainSelection, func(i, j int) bool {
-			return chainSelection[i] < chainSelection[j]
-		})
+		slices.Sort(chainSelection)
 
 		chains, err := c.TUI.NewSelection(chainSelection, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 		if err != nil {
@@ -851,33 +986,35 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			}
 		}
 
-	// For AWS - read it from rds credentials file
 	case configs.D8XServerProviderAWS:
-		if err := collectAwsRdsDsnString(cfg); err != nil {
+		if err := collectAwsRdsDsnString(cfg, c.SelectedEnv); err != nil {
 			return err
 		}
+	}
+
+	if os.Getenv("BW_SESSION") != "" && cfg.DatabaseDSN != "" {
+		fieldName := "DATABASE_DSN_" + strings.ToUpper(c.SelectedEnv)
+		_ = saveAndReportWithConfirm(c.TUI, bwItemName, fieldName, cfg.DatabaseDSN)
 	}
 
 	return c.ConfigRWriter.Write(cfg)
 }
 
-// collectAwsRdsDsnString collects database dsn string from AWS RDS credentials
-// file and adds it to the given cfg. If RDS_CREDS_FILE does not exist yet it
-// will not return an error and will silently fail.
-func collectAwsRdsDsnString(cfg *configs.D8XConfig) error {
-	creds, err := os.ReadFile(RDS_CREDS_FILE)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
-		return err
+func collectAwsRdsDsnString(cfg *configs.D8XConfig, env string) error {
+	credsMap := loadRDSCredsFromBitwarden(env)
+	if credsMap == nil {
+		return nil
 	}
-	credsMap := parseAwsRDSCredentialsFile(creds)
-	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/postgres",
+	dbName := readEnvSecret(env, "AWS_RDS_DB_NAME")
+	if dbName == "" {
+		dbName = "history"
+	}
+	cfg.DatabaseDSN = fmt.Sprintf("postgresql://%s:%s@%s:%s/%s",
 		credsMap["user"],
 		credsMap["password"],
 		credsMap["host"],
 		credsMap["port"],
+		dbName,
 	)
 
 	return nil
@@ -1105,20 +1242,42 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 			return err
 		}
 
-		// Update md5 hash of private key
-		h := md5.New()
+		// Upload SSH key to Bitwarden if session is active
 		privateKey, err := os.ReadFile(sshKeyPath)
 		if err != nil {
 			return fmt.Errorf("reading private key: %w", err)
 		}
+		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+			fieldName := "SSH_KEY_" + strings.ToUpper(c.SelectedEnv)
+			saveAndReport(fieldName, string(privateKey))
+		}
+
+		h := md5.New()
 		if _, err := h.Write(privateKey); err != nil {
 			return err
 		}
 		md5Hash := fmt.Sprintf("%x", h.Sum(nil))
-		if md5Hash != cfg.SSHKeyMD5 {
+		previous := readEnvSecret(c.SelectedEnv, "SSH_KEY_MD5")
+		switch {
+		case previous == "":
+			fmt.Printf("%s no SSH_KEY_MD5_%s in Bitwarden yet — treating new key as a rotation (nginx/certbot will re-run)\n", warning, strings.ToUpper(c.SelectedEnv))
+			c.sshKeyChanged = true
+		case md5Hash != previous:
+			prevPrefix := previous
+			if len(prevPrefix) > 8 {
+				prevPrefix = prevPrefix[:8]
+			}
+			newPrefix := md5Hash
+			if len(newPrefix) > 8 {
+				newPrefix = newPrefix[:8]
+			}
+			fmt.Printf("%s SSH key MD5 changed (was %s..., now %s...) — nginx/certbot will re-run\n", warning, prevPrefix, newPrefix)
 			c.sshKeyChanged = true
 		}
-		cfg.SSHKeyMD5 = md5Hash
+		if os.Getenv("BW_SESSION") != "" && c.SelectedEnv != "" {
+			fieldName := envSuffixedField(c.SelectedEnv, "SSH_KEY_MD5")
+			saveAndReport(fieldName, md5Hash)
+		}
 	}
 	return nil
 }

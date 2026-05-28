@@ -1,41 +1,5 @@
 [
   {
-    "chainId": 195,
-    "name": "x1"
-  },
-  {
-    "chainId": 196,
-    "name": "xlayer"
-  },
-  {
-    "chainId": 1101,
-    "name": "zkEVM Mainnet"
-  },
-  {
-    "chainId": 2442,
-    "name": "cardona"
-  },
-  {
-    "chainId": 421614,
-    "name": "arbitrumSepolia"
-  },
-  {
-    "chainId": 42161,
-    "name": "arbitrum"
-  },
-  {
-    "chainId": 80084,
-    "name": "bartio"
-  },
-  {
-    "chainId": 80094,
-    "name": "bera"
-  },
-  {
-    "chainId": 84532,
-    "name": "base"
-  },
-  {
     "chainId": 8453,
     "name": "base"
   },

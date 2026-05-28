@@ -28,7 +28,6 @@ func TestAWSServerConfigurer(t *testing.T) {
 			expect: func(e *expecter) {
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("", assert.AnError)
 			},
@@ -39,14 +38,12 @@ func TestAWSServerConfigurer(t *testing.T) {
 			expect: func(e *expecter) {
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("aws-access-key", nil)
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
+						components.TextInputOptMasked(),
 					).Return("", assert.AnError)
 			},
 			wantErr: assert.AnError.Error(),
@@ -56,14 +53,12 @@ func TestAWSServerConfigurer(t *testing.T) {
 			expect: func(e *expecter) {
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
 						components.TextInputOptPlaceholder("<AWS_ACCESS_KEY>"),
 					).Return("aws-access-key", nil)
 				e.Components.EXPECT().
 					NewInput(
-						components.TextInputOptValue(""),
-						components.TextInputOptMasked(),
 						components.TextInputOptPlaceholder("<AWS_SECRET_KEY>"),
+						components.TextInputOptMasked(),
 					).Return("aws-access-secret", nil)
 				e.Components.EXPECT().
 					NewInput(
@@ -125,8 +120,6 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 	}
 	wantVars := []string{
 		"-var", "server_label_prefix=prefix",
-		"-var", "aws_access_key=the_access_key",
-		"-var", "aws_secret_key=secret",
 		"-var", "region=region",
 		"-var", "authorized_key=the_key",
 		"-var", "db_instance_class=db.t4g.small",
@@ -137,4 +130,11 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 	}
 
 	assert.Equal(t, wantVars, a.generateVariables())
+
+	wantEnv := []string{
+		"AWS_ACCESS_KEY_ID=the_access_key",
+		"AWS_SECRET_ACCESS_KEY=secret",
+		"AWS_DEFAULT_REGION=region",
+	}
+	assert.Equal(t, wantEnv, a.awsEnv())
 }

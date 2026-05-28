@@ -10,6 +10,17 @@ import (
 func (c *Container) CopyConfigs(ctx *cli.Context) error {
 
 	allArgs := ctx.Args()
+	if allArgs.Len() == 0 {
+		return nil
+	}
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureEnvironment(cfg); err != nil {
+		return err
+	}
 
 	for _, arg := range allArgs.Slice() {
 		switch arg {
