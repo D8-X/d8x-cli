@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/styles"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/urfave/cli/v2"
 )
 
@@ -160,9 +162,56 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	bsd.brokerServerIpAddr = brokerIpAddr
 
-	rpcContent, chainConfigContent, composeContent, err := c.LoadBrokerDeployConfigs()
+	pk := c.Input.brokerDeployInput.privateKey
+	bsd.brokerFeeTBPS = c.Input.brokerDeployInput.feeTBPS
+
+	brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
+	if err != nil || brokerPrivateIp == "" {
+		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
+	}
+
+	// Connect first so the live server state drives the deployment
+	fmt.Println(styles.ItalicText.Render("Connecting to broker-server..."))
+	sshClient, err := c.CreateSSHConn(
+		bsd.brokerServerIpAddr,
+		c.DefaultClusterUserName,
+		c.SshKeyPath,
+	)
+	if err != nil {
+		return fmt.Errorf("establishing ssh connection: %w", err)
+	}
+	defer sshClient.Close()
+
+	fmt.Println(styles.ItalicText.Render("Reading what is currently deployed on broker-server..."))
+	serverChainConfig, chainOnServer, err := readRemoteBrokerFile(sshClient, "./broker/chainConfig.json")
+	if err != nil {
+		return fmt.Errorf("reading remote chainConfig.json: %w", err)
+	}
+	serverRpc, rpcOnServer, err := readRemoteBrokerFile(sshClient, "./broker/rpc.json")
+	if err != nil {
+		return fmt.Errorf("reading remote rpc.json: %w", err)
+	}
+	serverCompose, composeOnServer, err := readRemoteBrokerFile(sshClient, "./broker/docker-compose.yml")
+	if err != nil {
+		return fmt.Errorf("reading remote docker-compose.yml: %w", err)
+	}
+	serverEnv, envOnServer, err := readRemoteBrokerFile(sshClient, "./broker/.env")
+	if err != nil {
+		return fmt.Errorf("reading remote .env: %w", err)
+	}
+
+	repoRpc, repoChainConfig, repoCompose, err := c.LoadBrokerDeployConfigs()
 	if err != nil {
 		return err
+	}
+
+	chainConfigContent := repoChainConfig
+	if chainOnServer {
+		chainConfigContent = serverChainConfig
+	}
+	rpcContent := repoRpc
+	if rpcOnServer {
+		rpcContent = serverRpc
 	}
 	chainConfigContent, rpcContent, err = c.reviewBrokerConfigs(chainConfigContent, rpcContent)
 	if err != nil {
@@ -171,8 +220,14 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 
 	fieldName := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
 	var redisPw string
-	if c.BitwardenFields != nil {
-		if existing, ok := c.BitwardenFields[fieldName]; ok && existing != "" {
+	if envOnServer {
+		if existing := parseEnvBytes(serverEnv)["REDIS_PW"]; existing != "" {
+			redisPw = existing
+			fmt.Printf("  %s Reusing REDIS_PW already deployed on the broker server\n", ok)
+		}
+	}
+	if redisPw == "" && c.BitwardenFields != nil {
+		if existing, has := c.BitwardenFields[fieldName]; has && existing != "" {
 			redisPw = existing
 			fmt.Printf("  %s Reusing %s from Bitwarden for broker redis password\n", styles.SuccessText.Render("✓"), fieldName)
 		}
@@ -195,14 +250,6 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 				}
 			}
 		}
-	}
-
-	pk := c.Input.brokerDeployInput.privateKey
-	bsd.brokerFeeTBPS = c.Input.brokerDeployInput.feeTBPS
-
-	brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
-	if err != nil || brokerPrivateIp == "" {
-		return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 	}
 
 	envSuffix := strings.ToUpper(c.SelectedEnv)
@@ -239,6 +286,9 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	if infraEnv, ierr := c.loadOptionalInfraRepoFile("broker-server/.env"); ierr == nil && infraEnv != nil {
 		envTemplate = infraEnv
 	}
+	if envOnServer {
+		envTemplate = serverEnv
+	}
 	managedBrokerEnv := map[string]string{
 		"REDIS_PW":          redisPw,
 		"BROKER_FEE_TBPS":   bsd.brokerFeeTBPS,
@@ -253,34 +303,58 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 		return fmt.Errorf("building broker .env: %w", err)
 	}
 
-	fmt.Println(styles.ItalicText.Render("Copying files to broker-server..."))
-	sshClient, err := c.CreateSSHConn(
-		bsd.brokerServerIpAddr,
-		c.DefaultClusterUserName,
-		c.SshKeyPath,
-	)
-	if err != nil {
-		return fmt.Errorf("establishing ssh connection: %w", err)
+	pendingChanges := []brokerFileChange{
+		{label: "chainConfig.json", dst: "./broker/chainConfig.json", proposed: chainConfigContent, current: serverChainConfig, exists: chainOnServer},
+		{label: "rpc.json", dst: "./broker/rpc.json", proposed: rpcContent, current: serverRpc, exists: rpcOnServer},
+		{label: "docker-compose.yml", dst: "./broker/docker-compose.yml", proposed: repoCompose, current: serverCompose, exists: composeOnServer},
+		{label: ".env", dst: "./broker/.env", proposed: brokerEnvBytes, current: serverEnv, exists: envOnServer, isEnv: true},
 	}
-	defer sshClient.Close()
-	if err := sshClient.CopyFilesOverSftp(
-		conn.SftpCopySrcDest{Content: chainConfigContent, Dst: "./broker/chainConfig.json"},
-		conn.SftpCopySrcDest{Content: rpcContent, Dst: "./broker/rpc.json"},
-		conn.SftpCopySrcDest{Content: composeContent, Dst: "./broker/docker-compose.yml"},
-		conn.SftpCopySrcDest{Content: brokerEnvBytes, Dst: "./broker/.env"},
-	); err != nil {
-		return err
+	toCopy := []conn.SftpCopySrcDest{}
+	for _, change := range pendingChanges {
+		write, err := c.confirmBrokerFileOverwrite(change)
+		if err != nil {
+			return err
+		}
+		if write {
+			toCopy = append(toCopy, conn.SftpCopySrcDest{Content: change.proposed, Dst: change.dst})
+		}
+	}
+	if len(toCopy) > 0 {
+		fmt.Println(styles.ItalicText.Render("Copying approved files to broker-server..."))
+		if err := sshClient.CopyFilesOverSftp(toCopy...); err != nil {
+			return err
+		}
+	} else {
+		fmt.Println(styles.ItalicText.Render("No config changes to copy; keeping what is deployed."))
 	}
 
-	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-	out, err := c.brokerServerKeyVolSetup(sshClient, pk)
+	writeKey := true
+	keyVolExists, err := brokerKeyVolExists(sshClient)
 	if err != nil {
-		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server volume deployment ^^^"))
 		return err
+	}
+	if keyVolExists {
+		writeKey, err = c.TUI.NewPrompt(
+			fmt.Sprintf("Docker volume %q already holds a broker private key on the server. Overwrite the stored key?", BROKER_KEY_VOL_NAME),
+			false,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	if writeKey {
+		fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
+		out, err := c.brokerServerKeyVolSetup(sshClient, pk)
+		if err != nil {
+			fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server volume deployment ^^^"))
+			return err
+		}
+	} else {
+		fmt.Printf("  %s keeping the broker key already stored in %q\n", ok, BROKER_KEY_VOL_NAME)
 	}
 
 	fmt.Println(styles.ItalicText.Render("Starting docker compose on broker-server..."))
-	out, err = sshClient.ExecCommand("cd ./broker && docker compose up -d")
+	out, err := sshClient.ExecCommand("cd ./broker && docker compose up -d")
 	if err != nil {
 		fmt.Printf("%s\n\n%s", out, styles.ErrorText.Render("Something went wrong during broker-server deployment ^^^"))
 		return err
@@ -449,6 +523,122 @@ type brokerServerDeployment struct {
 	brokerFeeTBPS string
 
 	brokerServerIpAddr string
+}
+
+type brokerFileChange struct {
+	label    string
+	dst      string
+	proposed []byte
+	current  []byte
+	exists   bool
+	isEnv    bool
+}
+
+func readRemoteBrokerFile(sshClient conn.SSHConnection, remotePath string) ([]byte, bool, error) {
+	const missingMarker = "__D8X_BROKER_NO_FILE__"
+	cmd := fmt.Sprintf("if [ -f %s ]; then cat %s; else printf '%%s' %s; fi", shQuote(remotePath), shQuote(remotePath), shQuote(missingMarker))
+	out, err := sshClient.ExecCommand(cmd)
+	if err != nil {
+		return nil, false, fmt.Errorf("%s: %w", strings.TrimSpace(string(out)), err)
+	}
+	if string(out) == missingMarker {
+		return nil, false, nil
+	}
+	return out, true, nil
+}
+
+func brokerKeyVolExists(sshClient conn.SSHConnection) (bool, error) {
+	out, err := sshClient.ExecCommand(fmt.Sprintf("docker volume ls --format '{{.Name}}' --filter name=%s", shQuote(BROKER_KEY_VOL_NAME)))
+	if err != nil {
+		return false, fmt.Errorf("listing docker volumes: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if strings.TrimSpace(line) == BROKER_KEY_VOL_NAME {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (c *Container) confirmBrokerFileOverwrite(change brokerFileChange) (bool, error) {
+	if !change.exists {
+		fmt.Printf("  %s %q is not on the broker server yet; it will be created\n", ok, change.label)
+		return true, nil
+	}
+	if bytes.Equal(change.current, change.proposed) {
+		fmt.Printf("  %s %q already matches what is deployed; leaving it untouched\n", ok, change.label)
+		return false, nil
+	}
+	fmt.Println()
+	fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2).Render("Pending changes to broker " + change.label))
+	if change.isEnv {
+		fmt.Println(summarizeEnvChanges(change.current, change.proposed))
+	} else {
+		fmt.Println(renderUnifiedDiff(string(change.current), string(change.proposed)))
+	}
+	return c.TUI.NewPrompt(fmt.Sprintf("Overwrite %q on the broker server?", change.label), false)
+}
+
+func renderUnifiedDiff(current, proposed string) string {
+	diff := difflib.UnifiedDiff{
+		A:        difflib.SplitLines(current),
+		B:        difflib.SplitLines(proposed),
+		FromFile: "deployed",
+		ToFile:   "proposed",
+		Context:  3,
+	}
+	text, err := difflib.GetUnifiedDiffString(diff)
+	if err != nil || strings.TrimSpace(text) == "" {
+		return proposed
+	}
+	return text
+}
+
+func summarizeEnvChanges(current, proposed []byte) string {
+	cur := parseEnvBytes(current)
+	prop := parseEnvBytes(proposed)
+	keys := map[string]struct{}{}
+	for k := range cur {
+		keys[k] = struct{}{}
+	}
+	for k := range prop {
+		keys[k] = struct{}{}
+	}
+	ordered := make([]string, 0, len(keys))
+	for k := range keys {
+		ordered = append(ordered, k)
+	}
+	sort.Strings(ordered)
+	lines := []string{}
+	for _, k := range ordered {
+		cv, inCur := cur[k]
+		pv, inProp := prop[k]
+		switch {
+		case inCur && !inProp:
+			lines = append(lines, fmt.Sprintf("  - %s (removed)", k))
+		case !inCur && inProp:
+			lines = append(lines, fmt.Sprintf("  + %s=%s", k, redactEnvValue(k, pv)))
+		case cv != pv:
+			lines = append(lines, fmt.Sprintf("  ~ %s: %s -> %s", k, redactEnvValue(k, cv), redactEnvValue(k, pv)))
+		}
+	}
+	if len(lines) == 0 {
+		return "  (no key-level changes)"
+	}
+	return strings.Join(lines, "\n")
+}
+
+func redactEnvValue(key, value string) string {
+	if value == "" {
+		return "(empty)"
+	}
+	upper := strings.ToUpper(key)
+	for _, marker := range []string{"PASSWORD", "TOKEN", "SECRET", "PW", "PRIVATE_KEY", "API_KEY", "APIKEY"} {
+		if strings.Contains(upper, marker) {
+			return redactValue(value)
+		}
+	}
+	return value
 }
 
 // brokerServerKeyVolSetup creates a ./broker/keyfile.txt file with private key
