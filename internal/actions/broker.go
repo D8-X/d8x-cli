@@ -311,12 +311,19 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	toCopy := []conn.SftpCopySrcDest{}
 	for _, change := range pendingChanges {
-		write, err := c.confirmBrokerFileOverwrite(change)
+		content := change.proposed
+		var write bool
+		var err error
+		if change.isEnv {
+			content, write, err = c.resolveBrokerEnvOverwrite(change)
+		} else {
+			write, err = c.confirmBrokerFileOverwrite(change)
+		}
 		if err != nil {
 			return err
 		}
 		if write {
-			toCopy = append(toCopy, conn.SftpCopySrcDest{Content: change.proposed, Dst: change.dst})
+			toCopy = append(toCopy, conn.SftpCopySrcDest{Content: content, Dst: change.dst})
 		}
 	}
 	if len(toCopy) > 0 {
@@ -571,12 +578,131 @@ func (c *Container) confirmBrokerFileOverwrite(change brokerFileChange) (bool, e
 	}
 	fmt.Println()
 	fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2).Render("Pending changes to broker " + change.label))
-	if change.isEnv {
-		fmt.Println(summarizeEnvChanges(change.current, change.proposed))
-	} else {
-		fmt.Println(renderUnifiedDiff(string(change.current), string(change.proposed)))
-	}
+	fmt.Println(renderUnifiedDiff(string(change.current), string(change.proposed)))
 	return c.TUI.NewPrompt(fmt.Sprintf("Overwrite %q on the broker server?", change.label), false)
+}
+
+// resolveBrokerEnvOverwrite lets the operator accept or reject each .env change
+// individually instead of overwriting the whole file. Unselected keys keep the
+// value currently deployed on the broker server. It returns the merged .env to
+// write and whether anything should be written at all.
+func (c *Container) resolveBrokerEnvOverwrite(change brokerFileChange) ([]byte, bool, error) {
+	if !change.exists {
+		fmt.Printf("  %s %q is not on the broker server yet; it will be created\n", ok, change.label)
+		return change.proposed, true, nil
+	}
+
+	cur := parseEnvBytes(change.current)
+	prop := parseEnvBytes(change.proposed)
+	keys := map[string]struct{}{}
+	for k := range cur {
+		keys[k] = struct{}{}
+	}
+	for k := range prop {
+		keys[k] = struct{}{}
+	}
+	ordered := make([]string, 0, len(keys))
+	for k := range keys {
+		ordered = append(ordered, k)
+	}
+	sort.Strings(ordered)
+
+	type envChange struct {
+		key    string
+		label  string
+		remove bool
+		value  string
+	}
+	changes := []envChange{}
+	for _, k := range ordered {
+		cv, inCur := cur[k]
+		pv, inProp := prop[k]
+		switch {
+		case inCur && !inProp:
+			changes = append(changes, envChange{key: k, remove: true, label: fmt.Sprintf("%s  remove (currently %s)", k, redactEnvValue(k, cv))})
+		case !inCur && inProp:
+			changes = append(changes, envChange{key: k, value: pv, label: fmt.Sprintf("%s  add = %s", k, redactEnvValue(k, pv))})
+		case cv != pv:
+			changes = append(changes, envChange{key: k, value: pv, label: fmt.Sprintf("%s  %s -> %s", k, redactEnvValue(k, cv), redactEnvValue(k, pv))})
+		}
+	}
+	if len(changes) == 0 {
+		fmt.Printf("  %s %q already matches what is deployed; leaving it untouched\n", ok, change.label)
+		return nil, false, nil
+	}
+
+	fmt.Println()
+	fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2).Render("Select broker .env changes to apply"))
+	fmt.Println(styles.ItalicText.Render("Selected keys are written; unselected keys keep the value deployed on the server."))
+	labels := make([]string, len(changes))
+	for i, ch := range changes {
+		labels[i] = ch.label
+	}
+	selected, err := c.TUI.NewSelection(labels)
+	if err != nil {
+		return nil, false, err
+	}
+	selectedSet := map[string]bool{}
+	for _, s := range selected {
+		selectedSet[s] = true
+	}
+
+	setKV := map[string]string{}
+	removeKeys := map[string]bool{}
+	accepted := 0
+	for _, ch := range changes {
+		if !selectedSet[ch.label] {
+			continue
+		}
+		accepted++
+		if ch.remove {
+			removeKeys[ch.key] = true
+		} else {
+			setKV[ch.key] = ch.value
+		}
+	}
+	if accepted == 0 {
+		fmt.Printf("  %s no %q changes accepted; leaving it untouched\n", ok, change.label)
+		return nil, false, nil
+	}
+
+	return applyEnvChanges(change.current, setKV, removeKeys), true, nil
+}
+
+// applyEnvChanges returns base with the given key/value sets applied and the
+// given keys removed, preserving the layout of all untouched lines.
+func applyEnvChanges(base []byte, setKV map[string]string, removeKeys map[string]bool) []byte {
+	lines := strings.Split(string(base), "\n")
+	handled := map[string]bool{}
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		key, _, isKV := strings.Cut(trimmed, "=")
+		key = strings.TrimSpace(key)
+		if isKV && key != "" {
+			if removeKeys[key] {
+				handled[key] = true
+				continue
+			}
+			if v, ok := setKV[key]; ok {
+				out = append(out, key+"="+v)
+				handled[key] = true
+				continue
+			}
+		}
+		out = append(out, line)
+	}
+	prepend := []string{}
+	for k, v := range setKV {
+		if !handled[k] {
+			prepend = append(prepend, k+"="+v)
+		}
+	}
+	sort.Strings(prepend)
+	if len(prepend) > 0 {
+		out = append(prepend, out...)
+	}
+	return []byte(strings.Join(out, "\n"))
 }
 
 func renderUnifiedDiff(current, proposed string) string {
@@ -592,40 +718,6 @@ func renderUnifiedDiff(current, proposed string) string {
 		return proposed
 	}
 	return text
-}
-
-func summarizeEnvChanges(current, proposed []byte) string {
-	cur := parseEnvBytes(current)
-	prop := parseEnvBytes(proposed)
-	keys := map[string]struct{}{}
-	for k := range cur {
-		keys[k] = struct{}{}
-	}
-	for k := range prop {
-		keys[k] = struct{}{}
-	}
-	ordered := make([]string, 0, len(keys))
-	for k := range keys {
-		ordered = append(ordered, k)
-	}
-	sort.Strings(ordered)
-	lines := []string{}
-	for _, k := range ordered {
-		cv, inCur := cur[k]
-		pv, inProp := prop[k]
-		switch {
-		case inCur && !inProp:
-			lines = append(lines, fmt.Sprintf("  - %s (removed)", k))
-		case !inCur && inProp:
-			lines = append(lines, fmt.Sprintf("  + %s=%s", k, redactEnvValue(k, pv)))
-		case cv != pv:
-			lines = append(lines, fmt.Sprintf("  ~ %s: %s -> %s", k, redactEnvValue(k, cv), redactEnvValue(k, pv)))
-		}
-	}
-	if len(lines) == 0 {
-		return "  (no key-level changes)"
-	}
-	return strings.Join(lines, "\n")
 }
 
 func redactEnvValue(key, value string) string {
