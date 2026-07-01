@@ -58,6 +58,7 @@ services:
       - SDK_CONFIG_NAME=${SDK_CONFIG_NAME}
       - CHAIN_ID=${CHAIN_ID}
       - CORS_ON=${CORS_ON:-FALSE}
+      - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
       - CONFIG_PATH_RPC=/cfg_rpc_history
     ports:
       - "${HISTORY_API_PORT_HTTP:-3003}:${HISTORY_API_PORT_HTTP:-3003}"
