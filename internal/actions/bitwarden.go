@@ -24,6 +24,11 @@ type bwItem struct {
 }
 
 func (c *Container) LoadSecretsFromBitwarden() error {
+	if c.bitwardenLoaded {
+		return nil
+	}
+	c.bitwardenLoaded = true
+
 	if _, err := exec.LookPath("bw"); err != nil {
 		c.BitwardenStatus = "bw CLI not found in PATH (install with 'brew install bitwarden-cli')"
 		fmt.Println(styles.ErrorText.Render("Bitwarden CLI ('bw') not found in PATH. Install it with 'brew install bitwarden-cli' so secrets can load automatically."))
@@ -294,15 +299,26 @@ func saveBitwardenField(itemName, fieldName, fieldValue string, overwrite bool) 
 	return BwSaved, existingValue, nil
 }
 
-func (c *Container) RequireBitwardenField(fieldName string) error {
+func (c *Container) hasBitwardenField(fieldName string) bool {
 	if v := os.Getenv(fieldName); v != "" {
-		return nil
+		return true
 	}
 	if c.BitwardenFields != nil {
 		if v := c.BitwardenFields[fieldName]; v != "" {
 			os.Setenv(fieldName, v)
-			return nil
+			return true
 		}
+	}
+	return false
+}
+
+func (c *Container) RequireBitwardenField(fieldName string) error {
+	if c.hasBitwardenField(fieldName) {
+		return nil
+	}
+	c.LoadSecretsFromBitwarden()
+	if c.hasBitwardenField(fieldName) {
+		return nil
 	}
 	status := c.BitwardenStatus
 	if status == "" {

@@ -271,10 +271,6 @@ func RunD8XCli() {
 		},
 		Version: version.Get(),
 		Before: func(ctx *cli.Context) error {
-			if !isHelpOrVersionInvocation(os.Args) {
-				container.LoadSecretsFromBitwarden()
-			}
-
 			// Cached ChainJson information
 			chainJsonData, err := container.LoadChainJson()
 			if err != nil {
@@ -327,33 +323,4 @@ func RunD8XCli() {
 	}
 }
 
-var valueTakingFlags = map[string]struct{}{
-	"--password": {}, "-password": {},
-	"--user": {}, "-user": {},
-	"--github-token": {}, "-github-token": {},
-	"--nginx-api-key": {}, "-nginx-api-key": {},
-	"--chdir": {}, "-chdir": {},
-}
-
-func isHelpOrVersionInvocation(args []string) bool {
-	if len(args) <= 1 {
-		return true
-	}
-	skipNext := false
-	for _, a := range args[1:] {
-		if skipNext {
-			skipNext = false
-			continue
-		}
-		if _, ok := valueTakingFlags[a]; ok {
-			skipNext = true
-			continue
-		}
-		switch a {
-		case "help", "h", "--help", "-h", "--version", "-v":
-			return true
-		}
-	}
-	return false
-}
 
