@@ -177,9 +177,9 @@ func RunD8XCli() {
 				Action:    container.Ips,
 			},
 			{
-				Name:        "tf-destroy",
-				Usage:       "Destroy all provisioned servers and infrastructure for an environment (irreversible)",
-				Action:      container.TerraformDestroy,
+				Name:   "tf-destroy",
+				Usage:  "Destroy all provisioned servers and infrastructure for an environment (irreversible)",
+				Action: container.TerraformDestroy,
 			},
 			{
 				Name:   "ssh",
@@ -306,7 +306,6 @@ func RunD8XCli() {
 				)
 			}
 
-
 			return nil
 		},
 		After: func(ctx *cli.Context) error {
@@ -322,5 +321,3 @@ func RunD8XCli() {
 		log.Fatal(err)
 	}
 }
-
-
