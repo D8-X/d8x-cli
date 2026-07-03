@@ -75,6 +75,8 @@ type Container struct {
 
 	BitwardenStatus string
 
+	bitwardenLoaded bool
+
 	LastEnvBackupPath string
 }
 
