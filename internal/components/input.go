@@ -1,6 +1,7 @@
 package components
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -32,7 +33,7 @@ func newInput(opts ...TextInputOpt) (string, error) {
 	}
 
 	if v, ok := m.(exitModel); ok {
-		return "", fmt.Errorf(v.Message())
+		return "", errors.New(v.Message())
 	}
 
 	mdl = m.(inputModel)
@@ -180,9 +181,7 @@ func TextInputOptValue(val string) TextInputOpt {
 
 var _ TextInputOpt = (*testInputOptMasked)(nil)
 
-type testInputOptMasked struct {
-	val string
-}
+type testInputOptMasked struct{}
 
 func (t testInputOptMasked) Apply(s *inputModel) {
 	s.masked = true

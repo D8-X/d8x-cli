@@ -16,34 +16,18 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const D8XASCII = ` ____     ___   __  __
-|  _ \   ( _ )  \ \/ /
-| | | |  / _ \   \  / 
-| |_| | | (_) |  /  \ 
-|____/   \___/  /_/\_\
-`
+const D8XASCII = `                          D8X CLI                          `
 
 // CmdName defines the name of cli tool
 const CmdName = "d8x"
 
-const CmdUsage = "D8X Backend management CLI tool"
+const CmdUsage = ""
 
 // RunD8XCli is the entrypoint to D8X cli tool
 func RunD8XCli() {
 	container, err := actions.NewDefaultContainer()
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	// Shared flags below
-
-	// Default terraform files and state directory (./terraform)
-	provisionTfDirFlag := &cli.StringFlag{
-		Name:        "tf-dir",
-		Value:       "./terraform",
-		Required:    false,
-		Usage:       "Terraform files directory path. Used for backwards compatibility only.",
-		Destination: &container.ProvisioningTfDir,
 	}
 
 	// Initialize cli application and its subcommands and bind default values
@@ -54,6 +38,7 @@ func RunD8XCli() {
 		Usage:                CmdUsage,
 		Description:          MainDescription,
 		EnableBashCompletion: true,
+		Metadata:             map[string]any{"container": container},
 		CommandNotFound: func(ctx *cli.Context, s string) {
 			fmt.Printf("Unknown command %s\n", s)
 		},
@@ -62,7 +47,7 @@ func RunD8XCli() {
 			{
 				Name:   "init",
 				Action: container.Init,
-				Usage:  "Initialize configuration directory and install dependencies",
+				Usage:  "Check for required dependencies (terraform, ansible) and offer to install missing ones on Linux",
 			},
 			{
 				Name:        "setup",
@@ -70,23 +55,24 @@ func RunD8XCli() {
 				Description: SetupDescription,
 				Action:      container.Setup,
 				Before: func(ctx *cli.Context) error {
-					// Retrieve the user password whenever possible
 					if container.UserPassword == "" {
-						pwd, err := container.GetPassword(ctx)
-						if err == nil && len(pwd) > 0 {
+						if pwd := ctx.String(flags.Password); pwd != "" {
 							container.UserPassword = pwd
-							fmt.Printf("User password retrieved from %s\n", configs.DEFAULT_PASSWORD_FILE)
 						}
 					}
 
 					subcommands := []string{
-						"provision",
-						"configure",
+						"new-env",
+						"rm-env",
+						"provision", "prov",
+						"configure", "config",
 						"broker-deploy",
 						"broker-nginx",
-						"swarm-deploy",
-						"swarm-nginx",
+						"swarm-deploy", "sd",
+						"swarm-nginx", "sn",
 						"metrics-deploy",
+						"staging-origins", "so",
+						"rpc",
 
 						// Help is always included
 						"help",
@@ -100,17 +86,33 @@ func RunD8XCli() {
 
 					return nil
 				},
-				Flags: []cli.Flag{provisionTfDirFlag},
 				Subcommands: []*cli.Command{
 					{
+						Name:   "new-env",
+						Usage:  "Create a new environment in the infra repo",
+						Action: container.NewEnvironment,
+					},
+					{
+						Name:   "rm-env",
+						Usage:  "Remove an environment from the infra repo (does not touch cloud infra)",
+						Action: container.RemoveEnvironment,
+						Flags: []cli.Flag{
+							&cli.StringFlag{
+								Name:  "env",
+								Usage: "Pick the env to remove without showing the picker",
+							},
+						},
+					},
+					{
 						Name:        "provision",
+						Aliases:     []string{"prov"},
 						Usage:       "Provision server resources with terraform",
 						Action:      container.Provision,
 						Description: ProvisionDescription,
-						Flags:       []cli.Flag{provisionTfDirFlag},
 					},
 					{
 						Name:        "configure",
+						Aliases:     []string{"config"},
 						Usage:       "Configure servers with ansible",
 						Action:      container.Configure,
 						Description: ConfigureDescription,
@@ -127,12 +129,14 @@ func RunD8XCli() {
 					},
 					{
 						Name:        "swarm-deploy",
+						Aliases:     []string{"sd"},
 						Usage:       "Deploy and configure d8x-trader-backend swarm cluster",
 						Action:      container.SwarmDeploy,
 						Description: SwarmDeployDescription,
 					},
 					{
 						Name:        "swarm-nginx",
+						Aliases:     []string{"sn"},
 						Usage:       "Configure and setup nginx + certbot for d8x-trader swarm deployment",
 						Action:      container.SwarmNginx,
 						Description: SwarmNginxDescription,
@@ -142,6 +146,17 @@ func RunD8XCli() {
 						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
 						Action:      container.DeployMetrics,
 						Description: DeployMetricsDescription,
+					},
+					{
+						Name:    "staging-origins",
+						Aliases: []string{"so"},
+						Usage:   "Update whitelisted staging origins",
+						Action:  container.UpdateStagingOrigins,
+					},
+					{
+						Name:   "rpc",
+						Usage:  "View, add, or remove RPC URLs on the live cluster",
+						Action: container.SetupRpc,
 					},
 				},
 			},
@@ -163,7 +178,7 @@ func RunD8XCli() {
 			},
 			{
 				Name:   "tf-destroy",
-				Usage:  "Run terraform destroy for current setup",
+				Usage:  "Destroy all provisioned servers and infrastructure for an environment (irreversible)",
 				Action: container.TerraformDestroy,
 			},
 			{
@@ -186,20 +201,26 @@ func RunD8XCli() {
 			},
 			{
 				Name:   "backup-db",
+				Usage:  "Dump the swarm database via the manager and download it locally or stream to stdout",
 				Action: container.BackupDb,
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:  "output-dir",
 						Usage: "Backup directory path. Backup files will be saved in this directory.",
 					},
+					&cli.BoolFlag{
+						Name:  "stdout",
+						Usage: "Stream the SQL dump to stdout instead of writing a local file. Progress and status messages go to stderr.",
+					},
 				},
-				Description: "Backup database to local machine. Database credentials are read from d8x.conf.json file.",
+				Description: "Backup database to local machine, or stream the dump to stdout for piping (e.g. d8x backup-db --stdout | gzip | aws s3 cp - s3://...). Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
 			},
 			{
 				Name:        "db-tunnel",
+				Usage:       "Open an SSH tunnel from a local port to the swarm database",
 				Action:      container.DbTunnel,
 				ArgsUsage:   "[local port 5432]",
-				Description: "Create a ssh tunnel to database server. Database credentials are read from d8x.conf.json file.",
+				Description: "Create a ssh tunnel to database server. Database credentials are loaded from the selected environment in the infra repo and Bitwarden.",
 			},
 			{
 				Name:   "fix-ingress",
@@ -210,33 +231,30 @@ func RunD8XCli() {
 		// Global flags accessible to all subcommands
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name: flags.ConfigDir,
-				// Set the defaul path to configuration directory on user's home
-				// dir
-				Value:       "./.d8x-config",
-				Destination: &container.ConfigDir,
-				Usage:       "Configs and secrets directory",
-			},
-			&cli.StringFlag{
-				Name:        flags.PrivateKeyPath,
-				Value:       "./id_ed25519",
-				Destination: &container.SshKeyPath,
-				Usage:       "Default ssh key path used to access servers",
-			},
-			&cli.StringFlag{
 				Name:        flags.User,
 				Value:       configs.DEFAULT_USER_NAME,
 				Destination: &container.DefaultClusterUserName,
-				Usage:       "User which will be created on each server during provisioning and configuration. Also used ssh'ing into servers.",
+				Usage:       "SSH user on servers",
 			},
 			&cli.StringFlag{
 				Name:        flags.Password,
+				EnvVars:     []string{"SERVER_PASSWORD"},
 				Destination: &container.UserPassword,
-				Usage:       "User's password used for tasks requiring elevated permissions, if not provided, default password file will be read.",
+				Usage:       "Server sudo password (loaded from Bitwarden as SERVER_PASSWORD_{ENV})",
+			},
+			&cli.StringFlag{
+				Name:    flags.GithubToken,
+				EnvVars: []string{"GITHUB_TOKEN"},
+				Usage:   "GitHub token (loaded from Bitwarden)",
+			},
+			&cli.StringFlag{
+				Name:    flags.NginxApiKey,
+				EnvVars: []string{"NGINX_API_KEY"},
+				Usage:   "Nginx API key (loaded from Bitwarden)",
 			},
 			&cli.StringFlag{
 				Name:  "chdir",
-				Usage: "Change directory to provided one before executing anything",
+				Usage: "Change working directory before executing",
 			},
 			&cli.BoolFlag{
 				Name:    "quiet",
@@ -245,9 +263,9 @@ func RunD8XCli() {
 			},
 		},
 		Action: func(ctx *cli.Context) error {
-			// Disallow running d8x with incorrect subcommands
 			if ctx.Args().Len() == 0 {
-				return container.Init(ctx)
+				cli.ShowAppHelp(ctx)
+				return nil
 			}
 			return fmt.Errorf("unknown command %s, check --help for more info about available commands", ctx.Args().First())
 		},
@@ -259,11 +277,7 @@ func RunD8XCli() {
 				return fmt.Errorf("loading chain json information: %w", err)
 			}
 
-			// Create d8x.conf.json config read writer. We can only do this here,
-			// because config directory is not know when initializing containter
-			container.ConfigRWriter = configs.NewFileBasedD8XConfigRW(
-				filepath.Join(container.ConfigDir, configs.DEFAULT_D8X_CONFIG_NAME),
-			)
+			container.ConfigRWriter = configs.NewInMemoryD8XConfigRW(nil)
 
 			// Initialize the input collector
 			container.Input = &actions.InputCollector{
@@ -292,11 +306,13 @@ func RunD8XCli() {
 				)
 			}
 
-			// Create config directory if it does not exist already
-			if err := container.MakeConfigDir(); err != nil {
-				return fmt.Errorf("could not create config directory: %w", err)
+			return nil
+		},
+		After: func(ctx *cli.Context) error {
+			dir := filepath.Join(os.TempDir(), "d8x-cli")
+			if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("warning: failed to clean up temp dir %s: %s\n", dir, err)
 			}
-
 			return nil
 		},
 	}

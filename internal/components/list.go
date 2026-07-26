@@ -1,7 +1,7 @@
 package components
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/charmbracelet/bubbles/list"
@@ -75,7 +75,7 @@ func newList(listItems []ListItem, listTitle string, opts ...ListOpt) (ListItem,
 	}
 
 	if v, ok := mdl.(exitModel); ok {
-		return ListItem{}, fmt.Errorf(v.Message())
+		return ListItem{}, errors.New(v.Message())
 	}
 
 	return mdl.(listModel).list.SelectedItem().(ListItem), nil

@@ -1,71 +1,118 @@
 package actions
 
 import (
-	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/conn"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
+	"github.com/pmezard/go-difflib/difflib"
 	"github.com/urfave/cli/v2"
 )
+
+func readManagerFile(sshConn conn.SSHConnection, path string) ([]byte, bool, error) {
+	cmd := fmt.Sprintf(`if [ -f %s ]; then printf 'D8X_EXISTS\n'; base64 %s; else printf 'D8X_MISSING\n'; fi`, shQuote(path), shQuote(path))
+	out, err := sshConn.ExecCommand(cmd)
+	if err != nil {
+		return nil, false, err
+	}
+	s := string(out)
+	nl := strings.IndexByte(s, '\n')
+	if nl < 0 {
+		return nil, false, fmt.Errorf("unexpected output reading %s", path)
+	}
+	marker := strings.TrimSpace(s[:nl])
+	rest := s[nl+1:]
+	switch marker {
+	case "D8X_EXISTS":
+		raw := strings.Join(strings.Fields(rest), "")
+		content, derr := base64.StdEncoding.DecodeString(raw)
+		if derr != nil {
+			return nil, true, fmt.Errorf("decoding base64 of %s: %w", path, derr)
+		}
+		return content, true, nil
+	case "D8X_MISSING":
+		return nil, false, nil
+	default:
+		return nil, false, fmt.Errorf("unexpected marker %q reading %s", marker, path)
+	}
+}
 
 // Stack name that will be used when creating/destroying or managing swarm
 // cluster deployment.
 // TODO - store this in config and make this configurable via flags
 var dockerStackName = "stack"
 
-// NginxConfigSection defines a comment section that can be uncommented via
-// processNginxConfigComments. Section starts with {NginxConfigSection} and ends
-// with {/NginxConfigSection}. All lines starting with # will be trimmed and
-// replaced in between these tags.
-type NginxConfigSection string
-
-const (
-	RealIpCloudflare   NginxConfigSection = "real_ip_cloudflare"
-	EnableRateLimiting NginxConfigSection = "enable_rate_limiting"
-)
+type managedSwarmFile struct {
+	dst            string
+	repoPath       string
+	embeddedSrc    string
+	dockerConfig   string
+	managerContent []byte
+	managerExists  bool
+	baseContent    []byte
+	baseSource     string
+	content        []byte
+	status         string
+	accepted       bool
+}
 
 // EditSwarmEnv edits the .env file for swarm deployment with user provided and
 // provisioning values.
 func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
-	// Edit .env file
 	fmt.Println(styles.ItalicText.Render("Editing .env file..."))
 	envFile, err := os.ReadFile(envPath)
 	if err != nil {
 		return fmt.Errorf("reading .env file: %w", err)
 	}
+	out, err := c.EditSwarmEnvBytes(envFile, cfg)
+	if err != nil {
+		return err
+	}
+	return c.FS.WriteFile(envPath, out)
+}
 
-	envFileLines := strings.Split(string(envFile), "\n")
-
-	// We assume that all cfg values are present at this point
-	findReplaceOrCreateEnvs := map[string]string{
+func (c *Container) EditSwarmEnvBytes(envContent []byte, cfg *configs.D8XConfig) ([]byte, error) {
+	envFileLines := strings.Split(string(envContent), "\n")
+	managed := map[string]string{
 		"SDK_CONFIG_NAME":    c.cachedChainJson.getChainSDKName(strconv.Itoa(int(cfg.ChainId))),
 		"CHAIN_ID":           strconv.Itoa(int(cfg.ChainId)),
 		"REDIS_PASSWORD":     cfg.SwarmRedisPassword,
 		"REMOTE_BROKER_HTTP": cfg.SwarmRemoteBrokerHTTPUrl,
 		"DATABASE_DSN":       cfg.DatabaseDSN,
 	}
-
-	// List of envs that were not found in .env but will be added to the output
+	findReplaceOrCreateEnvs := map[string]string{}
+	for k, v := range managed {
+		findReplaceOrCreateEnvs[k] = v
+	}
+	for k, v := range c.gatherSwarmEnvOverridesFromBitwarden() {
+		if _, isManaged := managed[k]; isManaged {
+			fmt.Printf("%s Bitwarden override for %q ignored (managed by reconciliation pipeline)\n", warning, k)
+			continue
+		}
+		findReplaceOrCreateEnvs[k] = v
+	}
 	prependEnvs := []string{}
-
-	// Process the env file and append collected .env values
-	for env, value := range findReplaceOrCreateEnvs {
+	for key, value := range findReplaceOrCreateEnvs {
+		if value == "" {
+			continue
+		}
 		envFound := false
-		envVal := env + "=" + value
-		fmt.Printf("Setting %s \n", envVal)
+		envVal := key + "=" + value
+		fmt.Printf("Setting %s=%s\n", key, redactSecret(key, value))
 		for lineIndex, line := range envFileLines {
-			if strings.HasPrefix(line, env) {
+			trimmed := strings.TrimLeft(line, " \t")
+			if strings.HasPrefix(trimmed, key+"=") || strings.HasPrefix(trimmed, key+" =") {
 				envFound = true
 				envFileLines[lineIndex] = envVal
 				break
@@ -78,9 +125,25 @@ func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
 	if len(prependEnvs) > 0 {
 		envFileLines = append(prependEnvs, envFileLines...)
 	}
+	return []byte(strings.Join(envFileLines, "\n")), nil
+}
 
-	// Write the env output
-	return c.FS.WriteFile(envPath, []byte(strings.Join(envFileLines, "\n")))
+func (c *Container) gatherSwarmEnvOverridesFromBitwarden() map[string]string {
+	out := map[string]string{}
+	if c.BitwardenFields == nil || c.SelectedEnv == "" {
+		return out
+	}
+	envExample, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
+	if err != nil {
+		return out
+	}
+	suffix := "_" + strings.ToUpper(c.SelectedEnv)
+	for key := range parseEnvBytes(envExample) {
+		if v, ok := c.BitwardenFields[key+suffix]; ok && v != "" {
+			out[key] = v
+		}
+	}
+	return out
 }
 
 // UpdateCandlesPriceConfigPriceServices is an updateFn for UpdateConfig for
@@ -97,29 +160,434 @@ func UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints []string) 
 	}
 }
 
-var swarmDeployConfigFilesToCopy = []files.EmbedCopierOp{
-	// Trader backend configs
-	// Note that .env.example is not recognized in embed.FS
-	{Src: "embedded/trader-backend/env.example", Dst: "./trader-backend/.env", Overwrite: false},
-	{Src: "embedded/trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json", Overwrite: false},
-	{Src: "embedded/trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json", Overwrite: false},
-	// Candles configs
-	{Src: "embedded/candles/prices.config.json", Dst: "./candles/prices.config.json", Overwrite: false},
-	{Src: "embedded/candles/rpc_conf.json", Dst: "./candles/rpc_conf.json", Overwrite: false},
-	// Docker swarm file - do not overwrite and allow user to modify the config
-	// (for example choose specific image manually).
-	{Src: "embedded/docker-swarm-stack.yml", Dst: "./docker-swarm-stack.yml", Overwrite: false},
+func (c *Container) CopySwarmDeployConfigs() error {
+	base := c.envWorkDir()
+	stagings := []struct {
+		envRelPath, embeddedSrc, localPath string
+	}{
+		{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json", filepath.Join(base, "trader-backend/rpc.main.json")},
+		{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json", filepath.Join(base, "trader-backend/rpc.history.json")},
+		{"candles/prices.config.json", "embedded/candles/prices.config.json", filepath.Join(base, "candles/prices.config.json")},
+		{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json", filepath.Join(base, "candles/rpc_conf.json")},
+		{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml", filepath.Join(base, "docker-swarm-stack.yml")},
+	}
+	envData, err := configs.EmbededConfigs.ReadFile("embedded/trader-backend/env.example")
+	if err != nil {
+		return fmt.Errorf("reading embedded env.example: %w", err)
+	}
+	envPath := filepath.Join(base, "trader-backend/.env")
+	if err := os.MkdirAll(filepath.Dir(envPath), 0700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(envPath, envData, 0600); err != nil {
+		return err
+	}
+	for _, s := range stagings {
+		if err := c.stageInfraRepoFile(s.envRelPath, s.embeddedSrc, s.localPath); err != nil {
+			return fmt.Errorf("staging %s: %w", s.envRelPath, err)
+		}
+	}
+	fmt.Println(styles.ItalicText.Render("Swarm configs written to " + base))
+	return nil
 }
 
-func (c *Container) CopySwarmDeployConfigs() error {
-	if err := c.EmbedCopier.Copy(configs.EmbededConfigs, swarmDeployConfigFilesToCopy...); err != nil {
-		return fmt.Errorf("copying configs to local file system: %w", err)
+func (c *Container) importRemoteSwarmDeployConfig(_ *cli.Context, managerIp string) error {
+	remoteCfg, err := c.fetchRemoteSwarmDeployConfig(managerIp)
+	if err != nil {
+		return err
 	}
+	if remoteCfg == nil {
+		return nil
+	}
+
+	if c.Input == nil {
+		return nil
+	}
+
+	fmt.Println(styles.ItalicText.Render("Found existing deployed swarm config on manager."))
+	keep, err := c.TUI.NewPrompt("Load remote swarm config from manager and keep it as baseline?", true)
+	if err != nil {
+		return err
+	}
+	if !keep {
+		return nil
+	}
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	mergeRemoteSwarmEnvIntoCfg(cfg, remoteCfg)
+	if err := c.reconcileSecretsWithBitwarden(cfg, remoteCfg); err != nil {
+		return err
+	}
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+	fmt.Println(styles.SuccessText.Render("Remote swarm config loaded into the in-memory session config."))
+	return nil
+}
+
+func (c *Container) printDeploySummaryBytes(envContent []byte, cfg *configs.D8XConfig, managerIp string) {
+	fmt.Println(styles.ItalicText.Render("Deployment summary:"))
+	fmt.Printf("  environment       : %s\n", c.SelectedEnv)
+	fmt.Printf("  manager IP        : %s\n", managerIp)
+	fmt.Printf("  chain id          : %d\n", cfg.ChainId)
+	fmt.Printf("  remote broker http: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
+	keys := []string{
+		"CHAIN_ID",
+		"SDK_CONFIG_NAME",
+		"REMOTE_BROKER_HTTP",
+		"DATABASE_DSN",
+		"REDIS_PASSWORD",
+		"WS_SPORTSLINEINDEX",
+		"NODE_AUTH_TOKEN",
+	}
+	values := parseEnvBytes(envContent)
+	fmt.Println(styles.ItalicText.Render("Values that will be written to ./trader-backend/.env on the manager:"))
+	for _, k := range keys {
+		v, ok := values[k]
+		if !ok {
+			continue
+		}
+		fmt.Printf("  %-20s = %s\n", k, redactSecret(k, v))
+	}
+}
+
+func parseEnvBytes(data []byte) map[string]string {
+	out := make(map[string]string)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, rest, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		out[key] = strings.Trim(strings.TrimSpace(rest), `"'`)
+	}
+	return out
+}
+
+
+func redactSecret(key, value string) string {
+	upper := strings.ToUpper(key)
+	if value == "" {
+		return "(empty)"
+	}
+	if strings.Contains(upper, "PASSWORD") || strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") {
+		return redactValue(value)
+	}
+	if upper == "DATABASE_DSN" {
+		return redactDSN(value)
+	}
+	return value
+}
+
+func redactValue(v string) string {
+	if len(v) <= 4 {
+		return "****"
+	}
+	return v[:2] + strings.Repeat("*", len(v)-4) + v[len(v)-2:]
+}
+
+func redactDSN(dsn string) string {
+	at := strings.LastIndex(dsn, "@")
+	if at < 0 {
+		return redactValue(dsn)
+	}
+	prefix := dsn[:at]
+	suffix := dsn[at:]
+	colon := strings.LastIndex(prefix, ":")
+	if colon < 0 {
+		return prefix + suffix
+	}
+	return prefix[:colon] + ":****" + suffix
+}
+
+func (c *Container) reconcileSecretsWithBitwarden(cfg *configs.D8XConfig, remoteCfg *configs.D8XConfig) error {
+	upperEnv := strings.ToUpper(c.SelectedEnv)
+	checks := []struct {
+		displayName string
+		bwField     string
+		remoteVal   string
+		target      *string
+	}{
+		{"DATABASE_DSN", "DATABASE_DSN_" + upperEnv, remoteCfg.DatabaseDSN, &cfg.DatabaseDSN},
+		{"REDIS_PASSWORD", "SWARM_REDIS_PW_" + upperEnv, remoteCfg.SwarmRedisPassword, &cfg.SwarmRedisPassword},
+	}
+	for _, chk := range checks {
+		bwVal := ""
+		if c.BitwardenFields != nil {
+			bwVal = c.BitwardenFields[chk.bwField]
+		}
+		if bwVal == "" && chk.remoteVal == "" {
+			continue
+		}
+		if bwVal != "" && chk.remoteVal == "" {
+			if *chk.target != "" && *chk.target != bwVal {
+				fmt.Printf("%s %s in this session's config differs from Bitwarden (%s). Using Bitwarden value.\n", notok, chk.displayName, chk.bwField)
+			}
+			*chk.target = bwVal
+			continue
+		}
+		if bwVal == "" && chk.remoteVal != "" {
+			fmt.Printf("%s %s is set on the manager but missing in Bitwarden (%s).\n", notok, chk.displayName, chk.bwField)
+			keep, err := c.TUI.NewPrompt(fmt.Sprintf("Keep manager value for %s and save it to Bitwarden as %s?", chk.displayName, chk.bwField), true)
+			if err != nil {
+				return err
+			}
+			if !keep {
+				return fmt.Errorf("aborted: missing Bitwarden secret %s", chk.bwField)
+			}
+			*chk.target = chk.remoteVal
+			if os.Getenv("BW_SESSION") != "" {
+				if err := saveAndReport(chk.bwField, chk.remoteVal); err != nil {
+					cont, perr := c.TUI.NewPrompt(fmt.Sprintf("Bitwarden save of %s failed. Proceed with deployment using the manager value (leaving Bitwarden unchanged)?", chk.bwField), false)
+					if perr != nil {
+						return perr
+					}
+					if !cont {
+						return fmt.Errorf("aborted: %s could not be persisted to Bitwarden", chk.bwField)
+					}
+				}
+				if c.BitwardenFields == nil {
+					c.BitwardenFields = make(map[string]string)
+				}
+				c.BitwardenFields[chk.bwField] = chk.remoteVal
+			}
+			continue
+		}
+		if bwVal == chk.remoteVal {
+			*chk.target = bwVal
+			continue
+		}
+		fmt.Printf("%s %s MISMATCH between manager .env and Bitwarden (%s).\n", notok, chk.displayName, chk.bwField)
+		choice, err := c.TUI.NewSelection(
+			[]string{
+				fmt.Sprintf("Use Bitwarden value for %s", chk.displayName),
+				fmt.Sprintf("Use manager value for %s (and overwrite Bitwarden %s)", chk.displayName, chk.bwField),
+				"Abort deployment",
+			},
+			components.SelectionOptAllowOnlySingleItem(),
+			components.SelectionOptRequireSelection(),
+		)
+		if err != nil {
+			return err
+		}
+		if len(choice) == 0 {
+			return fmt.Errorf("aborted: no choice made for %s reconciliation", chk.displayName)
+		}
+		switch {
+		case strings.HasPrefix(choice[0], "Use Bitwarden"):
+			*chk.target = bwVal
+		case strings.HasPrefix(choice[0], "Use manager"):
+			*chk.target = chk.remoteVal
+			if os.Getenv("BW_SESSION") != "" {
+				if _, _, saveErr := ForceOverwriteBitwarden(chk.bwField, chk.remoteVal); saveErr != nil {
+					fmt.Printf("  %s could not overwrite %s in Bitwarden: %s\n", notok, chk.bwField, saveErr)
+					cont, perr := c.TUI.NewPrompt(fmt.Sprintf("Bitwarden overwrite of %s failed. Proceed with deployment anyway (Bitwarden will remain out of sync)?", chk.bwField), false)
+					if perr != nil {
+						return perr
+					}
+					if !cont {
+						return fmt.Errorf("aborted: %s could not be overwritten in Bitwarden", chk.bwField)
+					}
+				} else {
+					fmt.Printf("  %s %s overwritten in Bitwarden\n", ok, chk.bwField)
+				}
+				if c.BitwardenFields == nil {
+					c.BitwardenFields = make(map[string]string)
+				}
+				c.BitwardenFields[chk.bwField] = chk.remoteVal
+			}
+		default:
+			return fmt.Errorf("aborted: %s reconciliation", chk.displayName)
+		}
+	}
+	return nil
+}
+
+func mergeRemoteSwarmEnvIntoCfg(cfg, remoteCfg *configs.D8XConfig) {
+	if remoteCfg == nil {
+		return
+	}
+	if remoteCfg.ChainId != 0 {
+		cfg.ChainId = remoteCfg.ChainId
+	}
+	if remoteCfg.DatabaseDSN != "" {
+		cfg.DatabaseDSN = remoteCfg.DatabaseDSN
+	}
+	if remoteCfg.SwarmRemoteBrokerHTTPUrl != "" {
+		cfg.SwarmRemoteBrokerHTTPUrl = remoteCfg.SwarmRemoteBrokerHTTPUrl
+	}
+	if remoteCfg.SwarmRedisPassword != "" {
+		cfg.SwarmRedisPassword = remoteCfg.SwarmRedisPassword
+	}
+	if len(remoteCfg.HttpRpcList) > 0 {
+		if cfg.HttpRpcList == nil {
+			cfg.HttpRpcList = map[string][]string{}
+		}
+		for k, v := range remoteCfg.HttpRpcList {
+			cfg.HttpRpcList[k] = v
+		}
+	}
+	if len(remoteCfg.WsRpcList) > 0 {
+		if cfg.WsRpcList == nil {
+			cfg.WsRpcList = map[string][]string{}
+		}
+		for k, v := range remoteCfg.WsRpcList {
+			cfg.WsRpcList[k] = v
+		}
+	}
+}
+
+func (c *Container) fetchRemoteSwarmDeployConfig(managerIp string) (*configs.D8XConfig, error) {
+	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("SSH to manager %s failed: %w", managerIp, err)
+	}
+	defer sshConn.Close()
+
+	envOut, err := sshConn.ExecCommand(`if [ -f ./trader-backend/.env ]; then cat ./trader-backend/.env; fi`)
+	if err != nil {
+		return nil, fmt.Errorf("reading remote ./trader-backend/.env on %s: %w", managerIp, err)
+	}
+	remoteEnv := strings.TrimSpace(string(envOut))
+	if remoteEnv == "" {
+		fmt.Println(styles.ItalicText.Render("No existing ./trader-backend/.env on manager; treating as a fresh deployment."))
+		return nil, nil
+	}
+
+	backupPath, dirErr := ensureWorkDir(fmt.Sprintf("trader-backend/.env.manager-backup-%s", time.Now().UTC().Format("20060102-150405")))
+	if dirErr != nil {
+		fmt.Printf("%s failed to prepare backup dir: %s\n", notok, dirErr)
+	}
+	if err := c.FS.WriteFile(backupPath, []byte(remoteEnv)); err != nil {
+		fmt.Printf("%s failed to write remote .env backup to %s: %s\n", notok, backupPath, err)
+		cont, perr := c.TUI.NewPrompt("Remote .env backup could not be written locally. Proceed without a safety copy?", false)
+		if perr != nil {
+			return nil, perr
+		}
+		if !cont {
+			return nil, fmt.Errorf("aborted: no local backup of remote .env could be written")
+		}
+	} else {
+		fmt.Printf("%s saved remote .env backup to %s\n", ok, backupPath)
+		c.LastEnvBackupPath = backupPath
+	}
+
+	cfg := &configs.D8XConfig{}
+	for _, line := range strings.Split(remoteEnv, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(strings.Trim(value, `"'`))
+		switch key {
+		case "CHAIN_ID":
+			chainId, _ := strconv.Atoi(value)
+			cfg.ChainId = uint(chainId)
+		case "DATABASE_DSN":
+			cfg.DatabaseDSN = value
+		case "REMOTE_BROKER_HTTP":
+			cfg.SwarmRemoteBrokerHTTPUrl = value
+		case "REDIS_PASSWORD":
+			cfg.SwarmRedisPassword = value
+		}
+	}
+
+	for _, fname := range []string{"./trader-backend/rpc.main.json", "./trader-backend/rpc.history.json"} {
+		rpcOut, err := sshConn.ExecCommand(fmt.Sprintf(`if [ -f %s ]; then cat %s; fi`, fname, fname))
+		if err != nil {
+			fmt.Printf("%s remote %s could not be read (%s); skipping\n", notok, fname, err)
+			continue
+		}
+		if strings.TrimSpace(string(rpcOut)) == "" {
+			fmt.Printf("%s remote %s is empty or missing; skipping\n", notok, fname)
+			continue
+		}
+		if err := c.populateRemoteRpcConfig(cfg, rpcOut); err != nil {
+			fmt.Printf("%s remote %s parse failed (%s); skipping\n", notok, fname, err)
+			continue
+		}
+	}
+
+	if cfg.ChainId == 0 && len(cfg.HttpRpcList) == 0 && len(cfg.WsRpcList) == 0 && cfg.DatabaseDSN == "" && cfg.SwarmRemoteBrokerHTTPUrl == "" && cfg.SwarmRedisPassword == "" {
+		fmt.Println(styles.ItalicText.Render("Remote ./trader-backend/.env was parsed but contains no recognised fields; treating as a fresh deployment."))
+		return nil, nil
+	}
+	return cfg, nil
+}
+
+func (c *Container) populateRemoteRpcConfig(cfg *configs.D8XConfig, content []byte) error {
+	entries := []RPCConfigEntry{}
+	if err := json.Unmarshal(content, &entries); err != nil {
+		return err
+	}
+	if cfg.HttpRpcList == nil {
+		cfg.HttpRpcList = make(map[string][]string)
+	}
+	if cfg.WsRpcList == nil {
+		cfg.WsRpcList = make(map[string][]string)
+	}
+
+	for _, entry := range entries {
+		chainIdStr := strconv.Itoa(int(entry.ChainId))
+		if len(entry.HttpRpcs) > 0 {
+			cfg.HttpRpcList[chainIdStr] = append(cfg.HttpRpcList[chainIdStr], entry.HttpRpcs...)
+		}
+		if entry.WsRpcs != nil {
+			cfg.WsRpcList[chainIdStr] = append(cfg.WsRpcList[chainIdStr], *entry.WsRpcs...)
+		}
+	}
+
+	for chainID, rpcs := range cfg.HttpRpcList {
+		cfg.HttpRpcList[chainID] = uniqueStrings(rpcs)
+	}
+	for chainID, rpcs := range cfg.WsRpcList {
+		cfg.WsRpcList[chainID] = uniqueStrings(rpcs)
+	}
+
 	return nil
 }
 
 func (c *Container) SwarmDeploy(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Starting swarm cluster deployment...")
+
+	defer func() {
+		if c.LastEnvBackupPath == "" {
+			return
+		}
+		if err := os.Remove(c.LastEnvBackupPath); err != nil && !os.IsNotExist(err) {
+			fmt.Printf("%s failed to remove .env backup %s: %s\n", notok, c.LastEnvBackupPath, err)
+		}
+		c.LastEnvBackupPath = ""
+	}()
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
+		return err
+	}
+	if cfg.ServerProvider == "" {
+		return fmt.Errorf("server_provider is empty in this env's config.json on the infra repo; set it to \"linode\" or \"aws\" there, or run \"d8x setup provision\" first")
+	}
+	if err := c.RequireProvisionedHosts("swarm-deploy", "manager"); err != nil {
+		return err
+	}
 
 	if err := c.swarmDeploy(ctx, true); err != nil {
 		return err
@@ -168,6 +636,20 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return fmt.Errorf("finding manager ip address: %w", err)
 	}
 
+	if err := c.importRemoteSwarmDeployConfig(ctx, managerIp); err != nil {
+		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not load remote swarm config: %v", err)))
+		cont, perr := c.TUI.NewPrompt("Proceed without remote config? (this will deploy as if it were a fresh cluster and may overwrite live values)", false)
+		if perr != nil {
+			return perr
+		}
+		if !cont {
+			return fmt.Errorf("aborted: remote config unreachable")
+		}
+	}
+
+	if c.Input == nil {
+		return fmt.Errorf("internal: input collector not initialized")
+	}
 	if err := c.Input.CollectSwarmDeployInputs(ctx); err != nil {
 		return err
 	}
@@ -177,70 +659,7 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		return err
 	}
 
-	// Copy embed files before starting
-	if err := c.CopySwarmDeployConfigs(); err != nil {
-		return err
-	}
-
-	if c.Input.swarmDeployInput.guideConfig {
-		// Update .env file
-		if err := c.EditSwarmEnv("./trader-backend/.env", cfg); err != nil {
-			return fmt.Errorf("editing .env file: %w", err)
-		}
-
-		// Update rpcconfigs
-		for i, rpconfigFilePath := range []string{
-			"./trader-backend/rpc.main.json",
-			"./trader-backend/rpc.history.json",
-		} {
-			httpRpcs, wsRpcs := DistributeRpcs(
-				i,
-				strconv.Itoa(int(cfg.ChainId)),
-				cfg,
-			)
-
-			fmt.Printf("Updating %s config...\n", rpconfigFilePath)
-
-			if err := c.editRpcConfigUrls(rpconfigFilePath, cfg.ChainId, wsRpcs, httpRpcs); err != nil {
-				fmt.Println(
-					styles.ErrorText.Render(
-						fmt.Sprintf("Could not update %s, please double check the config file: %+v", rpconfigFilePath, err),
-					),
-				)
-			}
-		}
-
-		// Update price configs with provided pyth https endpoints. Remove any
-		// duplicates and ensure that the default pyth endpoint is appended
-		// last.
-		userProvidedHttpEndpoints := c.Input.swarmDeployInput.priceServiceHttpEndpoints
-		slices.Sort(userProvidedHttpEndpoints)
-		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
-		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(strconv.Itoa(int(cfg.ChainId)))
-		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
-		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
-			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
-		}
-		priceServiceHTTPSEndpoints = slices.Compact(priceServiceHTTPSEndpoints)
-
-		if err := UpdateConfig(
-			"./candles/prices.config.json",
-			UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints),
-		); err != nil {
-			return err
-		}
-	}
-
-	if showConfigConfirmation {
-		fmt.Println(styles.AlertImportant.Render("Please verify your .env and configuration files are correct before proceeding."))
-		fmt.Println("The following configuration files will be copied to the 'manager node' for the d8x-trader-backend swarm deployment:")
-		for _, f := range swarmDeployConfigFilesToCopy {
-			fmt.Println(f.Dst)
-		}
-		c.TUI.NewConfirmation("Press enter to confirm that the configuration files listed above are good to go...")
-	}
-
-	pwd, err := c.GetPassword(ctx)
+	pwd, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
@@ -253,10 +672,220 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if err != nil {
 		return err
 	}
+	defer managerSSHConn.Close()
 
-	// Stack might exist, prompt user to remove it
+	managedFiles := []*managedSwarmFile{
+		{dst: "./trader-backend/.env", repoPath: "trader-backend/.env", embeddedSrc: "embedded/trader-backend/env.example"},
+		{dst: "./trader-backend/rpc.main.json", repoPath: "trader-backend/rpc.main.json", embeddedSrc: "embedded/trader-backend/rpc.main.json", dockerConfig: "cfg_rpc"},
+		{dst: "./trader-backend/rpc.history.json", repoPath: "trader-backend/rpc.history.json", embeddedSrc: "embedded/trader-backend/rpc.history.json", dockerConfig: "cfg_rpc_history"},
+		{dst: "./candles/prices.config.json", repoPath: "candles/prices.config.json", embeddedSrc: "embedded/candles/prices.config.json", dockerConfig: "cfg_prices"},
+		{dst: "./candles/rpc_conf.json", repoPath: "candles/rpc_conf.json", embeddedSrc: "embedded/candles/rpc_conf.json", dockerConfig: "cfg_rpc_candles"},
+		{dst: "./docker-stack.yml", repoPath: "docker-swarm-stack.yml", embeddedSrc: "embedded/docker-swarm-stack.yml"},
+	}
+
+	for _, mf := range managedFiles {
+		cur, exists, rerr := readManagerFile(managerSSHConn, mf.dst)
+		if rerr != nil {
+			return fmt.Errorf("reading %s on manager: %w", mf.dst, rerr)
+		}
+		mf.managerContent = cur
+		mf.managerExists = exists
+	}
+
+	token := os.Getenv("GITHUB_TOKEN")
+	for _, mf := range managedFiles {
+		loaded := false
+		if token != "" && c.SelectedEnv != "" {
+			f, gErr := ghReadFile(token, c.SelectedEnv+"/"+mf.repoPath)
+			if gErr == nil {
+				mf.baseContent = []byte(f.Content)
+				mf.baseSource = fmt.Sprintf("%s/%s on infra repo", c.SelectedEnv, mf.repoPath)
+				loaded = true
+			}
+		}
+		if !loaded && mf.managerExists {
+			mf.baseContent = mf.managerContent
+			mf.baseSource = fmt.Sprintf("manager:%s (no override on infra repo; preserving live state)", mf.dst)
+			loaded = true
+		}
+		if !loaded {
+			data, eErr := configs.EmbededConfigs.ReadFile(mf.embeddedSrc)
+			if eErr != nil {
+				return fmt.Errorf("reading embedded %s: %w", mf.embeddedSrc, eErr)
+			}
+			mf.baseContent = data
+			mf.baseSource = "embedded template (fresh deploy)"
+		}
+		mf.content = mf.baseContent
+	}
+
+	chainIdStr := strconv.Itoa(int(cfg.ChainId))
+	shouldUpdateConfigs := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || cfg.SwarmRedisPassword != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
+
+	if c.Input.swarmDeployInput.guideConfig || shouldUpdateConfigs {
+		envMF := managedFiles[0]
+		patched, perr := c.EditSwarmEnvBytes(envMF.content, cfg)
+		if perr != nil {
+			return fmt.Errorf("editing .env content: %w", perr)
+		}
+		envMF.content = patched
+
+		if len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 {
+			rpcSlots := []*managedSwarmFile{managedFiles[1], managedFiles[2]}
+			for i, mf := range rpcSlots {
+				httpRpcs, wsRpcs := DistributeRpcs(i, chainIdStr, cfg)
+				fmt.Printf("Patching %s with RPCs from config.json (base: %s)...\n", mf.repoPath, mf.baseSource)
+				patched, uerr := c.editRpcConfigUrlsBytes(mf.content, cfg.ChainId, wsRpcs, httpRpcs)
+				if uerr != nil {
+					fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not update %s: %+v", mf.repoPath, uerr)))
+					continue
+				}
+				mf.content = patched
+			}
+		}
+
+		userProvidedHttpEndpoints := cfg.UserSuppliedPriceFeedEndpoints
+		slices.Sort(userProvidedHttpEndpoints)
+		userProvidedHttpEndpoints = slices.Compact(userProvidedHttpEndpoints)
+		defaultHttpEndpoint := c.cachedChainJson.getDefaultPythHTTPSEndpoint(chainIdStr)
+		priceServiceHTTPSEndpoints := userProvidedHttpEndpoints
+		if !slices.Contains(priceServiceHTTPSEndpoints, defaultHttpEndpoint) {
+			priceServiceHTTPSEndpoints = append(priceServiceHTTPSEndpoints, defaultHttpEndpoint)
+		}
+		if len(priceServiceHTTPSEndpoints) > 0 {
+			pricesMF := managedFiles[3]
+			patched, uerr := UpdateConfigBytes(pricesMF.content, UpdateCandlesPriceConfigPriceServices(priceServiceHTTPSEndpoints))
+			if uerr != nil {
+				return fmt.Errorf("updating candles prices config: %w", uerr)
+			}
+			pricesMF.content = patched
+		}
+	}
+
+	for _, mf := range managedFiles {
+		switch {
+		case !mf.managerExists:
+			mf.status = "new"
+			mf.accepted = true
+		case bytes.Equal(mf.managerContent, mf.content):
+			mf.status = "unchanged"
+		default:
+			mf.status = "changed"
+		}
+	}
+
+	if showConfigConfirmation {
+		fmt.Println(styles.AlertImportant.Render("Review the configuration below before deploying."))
+		c.printDeploySummaryBytes(managedFiles[0].content, cfg, managerIp)
+
+		fmt.Println()
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("Per-file plan for manager %s:", managerIp)))
+		for _, mf := range managedFiles {
+			statusLabel := "?"
+			switch mf.status {
+			case "new":
+				statusLabel = "NEW (create)"
+			case "unchanged":
+				statusLabel = "UNCHANGED (skip)"
+			case "changed":
+				statusLabel = "CHANGED"
+			}
+			fmt.Println()
+			fmt.Printf("%s [%s, %d bytes]\n", styles.CommandTitleText.Render(mf.dst), statusLabel, len(mf.content))
+			fmt.Printf("  base: %s\n", mf.baseSource)
+			switch mf.status {
+			case "new":
+				fmt.Println(styles.ItalicText.Render("  ---- new content ----"))
+				for _, line := range strings.Split(strings.TrimRight(string(mf.content), "\n"), "\n") {
+					fmt.Println("  " + line)
+				}
+				fmt.Println(styles.ItalicText.Render("  ---- end ----"))
+			case "changed":
+				ud, derr := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+					A:        difflib.SplitLines(string(mf.managerContent)),
+					B:        difflib.SplitLines(string(mf.content)),
+					FromFile: "manager:" + mf.dst,
+					ToFile:   "new",
+					Context:  3,
+				})
+				if derr != nil {
+					fmt.Println(styles.ErrorText.Render("  (diff render failed: " + derr.Error() + ")"))
+				} else {
+					fmt.Println(styles.ItalicText.Render("  ---- diff ----"))
+					for _, line := range strings.Split(strings.TrimRight(ud, "\n"), "\n") {
+						fmt.Println("  " + line)
+					}
+					fmt.Println(styles.ItalicText.Render("  ---- end ----"))
+				}
+				accept, perr := c.TUI.NewPrompt(fmt.Sprintf("Overwrite manager:%s?", mf.dst), false)
+				if perr != nil {
+					return perr
+				}
+				mf.accepted = accept
+				if !accept {
+					fmt.Println(styles.ItalicText.Render(fmt.Sprintf("Keeping manager:%s as-is; will skip copy and not recreate its docker config.", mf.dst)))
+				}
+			}
+		}
+	} else {
+		for _, mf := range managedFiles {
+			if mf.status == "changed" {
+				mf.accepted = true
+			}
+		}
+	}
+
+	if showConfigConfirmation {
+		var willCopy, willRecreate, willKeep []string
+		for _, mf := range managedFiles {
+			switch {
+			case mf.accepted && mf.status == "new":
+				willCopy = append(willCopy, fmt.Sprintf("create %s", mf.dst))
+				if mf.dockerConfig != "" {
+					willRecreate = append(willRecreate, mf.dockerConfig)
+				}
+			case mf.accepted && mf.status == "changed":
+				willCopy = append(willCopy, fmt.Sprintf("overwrite %s", mf.dst))
+				if mf.dockerConfig != "" {
+					willRecreate = append(willRecreate, mf.dockerConfig)
+				}
+			case !mf.accepted && mf.status == "changed":
+				willKeep = append(willKeep, mf.dst)
+			}
+		}
+		fmt.Println()
+		fmt.Println(styles.AlertImportant.Render("Final deployment plan:"))
+		if len(willCopy) == 0 {
+			fmt.Println("  no SFTP writes")
+		} else {
+			fmt.Println("  SFTP writes on manager:")
+			for _, s := range willCopy {
+				fmt.Println("    - " + s)
+			}
+		}
+		if len(willRecreate) == 0 {
+			fmt.Println("  no docker config rebuilds")
+		} else {
+			fmt.Printf("  docker config rm/create: %s\n", strings.Join(willRecreate, ", "))
+		}
+		if len(willKeep) > 0 {
+			fmt.Println("  keep as-is on manager:")
+			for _, s := range willKeep {
+				fmt.Println("    - " + s)
+			}
+		}
+		fmt.Printf("  then run \"docker stack deploy -c ./docker-stack.yml %s\" on the manager\n", dockerStackName)
+		proceed, err := c.TUI.NewPrompt("Proceed with the plan above?", false)
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			return fmt.Errorf("aborted: deployment declined at final confirmation")
+		}
+	}
+
 	if _, err := managerSSHConn.ExecCommand(
-		"echo '" + pwd + "'| sudo -S docker stack ls | grep " + dockerStackName + " >/dev/null 2>&1",
+		fmt.Sprintf("printf '%%s\\n' %s | sudo -S docker stack ls | grep %s >/dev/null 2>&1", shQuote(pwd), shQuote(dockerStackName)),
 	); err == nil {
 		ok, err := c.TUI.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
 		if err != nil {
@@ -274,206 +903,61 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 		}
 	}
 
-	ipWorkers, err := c.HostsCfg.GetWorkerIps()
-	if err != nil {
+	if _, err := c.HostsCfg.GetWorkerIps(); err != nil {
 		return fmt.Errorf("finding worker ip addresses: %w", err)
 	}
-	ipMgrPriv, err := c.HostsCfg.GetMangerPrivateIp()
-	if err != nil {
-		return err
-	}
-	ipWorkersPriv, err := c.HostsCfg.GetWorkerPrivateIps()
-	if err != nil {
-		return err
-	}
-	fmt.Println(styles.ItalicText.Render("Creating NFS Config..."))
-	cmd := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c 'mkdir -p /var/nfs/general && chown nobody:nogroup /var/nfs/general'`,
-		pwd,
-	)
+	sudoPipe := fmt.Sprintf(`printf '%%s\n' %s | sudo -S bash -c `, shQuote(pwd))
 
-	configEtcExports := "#"
-	for _, ip := range ipWorkersPriv {
-		// Essentially ufw allow from %s to any port nfs (tcp/udp)
-		iptables := fmt.Sprintf(`iptables -A INPUT -s %[1]s -p tcp --dport 2049 -j ACCEPT && iptables -A INPUT -s %[1]s -p udp --dport 2049 -j ACCEPT`, ip)
-		cmdUfw := fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "%s" `, pwd, iptables)
-		cmd = cmd + cmdUfw
-		configEtcExports = configEtcExports + "\n" + fmt.Sprintf(`/var/nfs/general %s(rw,sync,no_subtree_check)`, ip)
-	}
-	// Persist rules
-	cmd = cmd + fmt.Sprintf(`&& echo '%s' | sudo -S bash -c "mkdir -p /etc/iptables && iptables-save > /etc/iptables/rules.v4" `, pwd)
-
-	_, err = managerSSHConn.ExecCommand(
-		cmd,
-	)
-	if err != nil {
-		return fmt.Errorf("NFS preparation on manager failed : %w", err)
-	}
-	if err := c.FS.WriteFile("./trader-backend/exports", []byte(configEtcExports)); err != nil {
-		return fmt.Errorf("temp storage of /etc/exports file failed: %w", err)
+	copyList := []conn.SftpCopySrcDest{}
+	for _, mf := range managedFiles {
+		if !mf.accepted {
+			continue
+		}
+		copyList = append(copyList, conn.SftpCopySrcDest{Content: mf.content, Dst: mf.dst})
 	}
 
-	managedConfigNames := []string{
-		"cfg_rpc",
-		"cfg_rpc_history",
-		"cfg_prices",
-		"cfg_rpc_candles",
-	}
-	// Lines of docker config commands which we will concat into single
-	// bash -c ssh call
-	dockerConfigsCMD := []string{
-		`docker config create cfg_rpc ./trader-backend/rpc.main.json >/dev/null 2>&1`,
-		`docker config create cfg_rpc_history ./trader-backend/rpc.history.json >/dev/null 2>&1`,
-		`docker config create cfg_prices ./candles/prices.config.json >/dev/null 2>&1`,
-		`docker config create cfg_rpc_candles ./candles/rpc_conf.json >/dev/null 2>&1`,
-		// `docker config create prometheus_config ./prometheus.yml >/dev/null 2>&1`,
+	var rebuildConfigNames []string
+	var dockerConfigsCMD []string
+	for _, mf := range managedFiles {
+		if mf.dockerConfig == "" {
+			continue
+		}
+		if !mf.accepted {
+			continue
+		}
+		rebuildConfigNames = append(rebuildConfigNames, mf.dockerConfig)
+		dockerConfigsCMD = append(dockerConfigsCMD, fmt.Sprintf("docker config create %s %s >/dev/null 2>&1", mf.dockerConfig, mf.dst))
 	}
 
-	// List of files to transfer to manager
-	copyList := []conn.SftpCopySrcDest{
-		{Src: "./trader-backend/.env", Dst: "./trader-backend/.env"},
-		{Src: "./trader-backend/rpc.main.json", Dst: "./trader-backend/rpc.main.json"},
-		{Src: "./trader-backend/rpc.history.json", Dst: "./trader-backend/rpc.history.json"},
-		{Src: "./trader-backend/exports", Dst: "./trader-backend/exports"},
-		{Src: "./candles/prices.config.json", Dst: "./candles/prices.config.json"},
-		{Src: "./candles/rpc_conf.json", Dst: "./candles/rpc_conf.json"},
-		// Note we are renaming to docker-stack.yml on remote!
-		{Src: "./docker-swarm-stack.yml", Dst: "./docker-stack.yml"},
-	}
-
-	// Copy files to remote
-	fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
-	if err := managerSSHConn.CopyFilesOverSftp(
-		copyList...,
-	); err != nil {
-		return fmt.Errorf("copying configuration files to manager: %w", err)
-	} else {
+	if len(copyList) > 0 {
+		fmt.Println(styles.ItalicText.Render("Copying configuration files to manager node " + managerIp))
+		if err := managerSSHConn.CopyFilesOverSftp(copyList...); err != nil {
+			return fmt.Errorf("copying configuration files to manager: %w", err)
+		}
 		fmt.Println(styles.SuccessText.Render("configuration files copied to manager"))
+	} else {
+		fmt.Println(styles.ItalicText.Render("All configuration files already match manager state; skipping SFTP copy."))
 	}
 
-	// enable nfs server
-	fmt.Println(styles.ItalicText.Render("Starting NFS server..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "cp ./trader-backend/exports /etc/exports && systemctl restart nfs-kernel-server"`, pwd)
-	_, err = managerSSHConn.ExecCommand(
-		cmd,
-	)
-	if err != nil {
-		return fmt.Errorf("starting NFS server: %w", err)
-	}
-
-	fmt.Println(styles.ItalicText.Render("Mounting NFS directories on workers..."))
-	cmd = fmt.Sprintf(`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general" `, pwd, ipMgrPriv)
-	for k, ip := range ipWorkersPriv {
-		fmt.Println(styles.ItalicText.Render("worker "), ip)
-		var (
-			sshConnWorker conn.SSHConnection
-			err           error
+	if len(dockerConfigsCMD) > 0 {
+		fmt.Println(styles.ItalicText.Render("Recreating docker configs for changed files..."))
+		out, err := managerSSHConn.ExecCommand(
+			"echo -e '" + strings.Join(rebuildConfigNames, "\n") + `' | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
 		)
-		if cfg.ServerProvider == configs.D8XServerProviderAWS {
-			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
-				managerSSHConn.GetClient(),
-				ipWorkers[k],
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-		} else {
-			sshConnWorker, err = c.CreateSSHConn(
-				ipWorkers[k],
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-		}
-		if err != nil {
-			return err
-		}
-		_, err = sshConnWorker.ExecCommand(
-			cmd,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to mount nfs dir on worker: %w", err)
-		}
-	}
-
-	// Recreate configs
-	fmt.Println(styles.ItalicText.Render("Creating docker configs..."))
-	out, err := managerSSHConn.ExecCommand(
-		"echo -e '" + strings.Join(managedConfigNames, "\n") + `' | while read -r configname; do docker config rm "$configname"; done;` + strings.Join(dockerConfigsCMD, ";"),
-	)
-	fmt.Println(string(out))
-	if err != nil {
-		return fmt.Errorf("creating docker configs: %w", err)
-	}
-	fmt.Println(styles.SuccessText.Render("docker configs were created on manager node!"))
-
-	// docker volumes
-	fmt.Println(styles.ItalicText.Render("Preparing Docker volumes..."))
-
-	fmt.Printf("\nPrivate ip : %s\n", ipMgrPriv)
-	cmd = fmt.Sprintf(`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`, ipMgrPriv)
-	out, err = managerSSHConn.ExecCommand(
-		cmd,
-	)
-	if err != nil {
 		fmt.Println(string(out))
-		return err
-	}
-	// create volume on worker nodes
-
-	cmd = fmt.Sprintf(
-		`docker volume create --driver local --opt type=nfs4 --opt o=addr=%s,rw --opt device=:/var/nfs/general nfsvol`,
-		ipMgrPriv,
-	)
-	cmdDir := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c "mkdir -p /nfs/general && mount %s:/var/nfs/general /nfs/general"`,
-		pwd,
-		ipMgrPriv,
-	)
-	for _, ip := range ipWorkers {
-		var (
-			sshConnWorker conn.SSHConnection
-			err           error
-		)
-		if cfg.ServerProvider == configs.D8XServerProviderAWS {
-			sshConnWorker, err = conn.NewSSHConnectionWithBastion(
-				managerSSHConn.GetClient(),
-				ip,
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-		} else {
-			sshConnWorker, err = c.CreateSSHConn(
-				ip,
-				c.DefaultClusterUserName,
-				c.SshKeyPath,
-			)
-		}
 		if err != nil {
-			return err
+			return fmt.Errorf("creating docker configs: %w", err)
 		}
-		_, err = sshConnWorker.ExecCommand(
-			cmdDir,
-		)
-		if err != nil {
-			fmt.Println(string(out))
-			return fmt.Errorf("failed to create nfs dir on worker: %w", err)
-		}
-		_, err = sshConnWorker.ExecCommand(
-			cmd,
-		)
-		if err != nil {
-			fmt.Println(string(out))
-			return fmt.Errorf("creating volume on worker failed: %w", err)
-		}
+		fmt.Println(styles.SuccessText.Render("docker configs recreated on manager node"))
+	} else {
+		fmt.Println(styles.ItalicText.Render("No docker configs need recreating."))
 	}
 
 	// Deploy swarm stack
 	fmt.Println(styles.ItalicText.Render("Deploying docker swarm via manager node..."))
-	swarmDeployCMD := fmt.Sprintf(
-		`echo '%s' | sudo -S bash -c "docker compose --env-file ./trader-backend/.env -f ./docker-stack.yml config | sed -E 's/published: \"([0-9]+)\"/published: \1/g' | sed -E 's/^name: .*$/ /'|  docker stack deploy -c - %s"`,
-		pwd,
-		dockerStackName,
-	)
-	out, err = managerSSHConn.ExecCommand(swarmDeployCMD)
+	deployInner := fmt.Sprintf(`docker compose --env-file ./trader-backend/.env -f ./docker-stack.yml config | sed -E 's/published: "([0-9]+)"/published: \1/g' | sed -E 's/^name: .*$/ /' | docker stack deploy -c - %s`, dockerStackName)
+	swarmDeployCMD := sudoPipe + shQuote(deployInner)
+	out, err := managerSSHConn.ExecCommand(swarmDeployCMD)
 	fmt.Println(string(out))
 	if err != nil {
 		return fmt.Errorf("swarm deployment failed: %w", err)
@@ -482,50 +966,40 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	// Update config
 	cfg.SwarmDeployed = true
-	return c.ConfigRWriter.Write(cfg)
+	if err := c.ConfigRWriter.Write(cfg); err != nil {
+		return err
+	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
+	}
+	return nil
 }
 
 func (c *Container) SwarmNginx(ctx *cli.Context) error {
-	styles.PrintCommandTitle("Starting swarm nginx and certbot setup...")
+	styles.PrintCommandTitle("Starting swarm nginx setup...")
 
-	if err := c.Input.CollectSwarmNginxInputs(ctx); err != nil {
-		return err
-	}
-
-	// Load config which we will later use to write details about services.
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
 	}
-
-	// Copy nginx config and ansible playbook for swarm nginx setup
-	if err := c.EmbedCopier.Copy(
-		configs.EmbededConfigs,
-		files.EmbedCopierOp{Src: "embedded/nginx/nginx.conf", Dst: "./nginx/nginx.conf", Overwrite: true},
-		files.EmbedCopierOp{Src: "embedded/nginx/nginx.server.conf", Dst: "./nginx.server.conf", Overwrite: true},
-		files.EmbedCopierOp{Src: "embedded/playbooks/nginx.ansible.yaml", Dst: "./playbooks/nginx.ansible.yaml", Overwrite: true},
-	); err != nil {
+	env, err := c.EnsureProvisionedEnvironment(cfg)
+	if err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("swarm-nginx", "manager"); err != nil {
 		return err
 	}
 
-	// Process any nginx config overwrites
-	enableNginxSections := make([]NginxConfigSection, 0, 2)
-	if c.Input.nginxOverwrites.enableCloudflareRealIps {
-		enableNginxSections = append(enableNginxSections, RealIpCloudflare)
+	if err := c.RequireBitwardenField("GITHUB_TOKEN"); err != nil {
+		return err
 	}
-	if c.Input.nginxOverwrites.enableNginxRateLimiting {
-		enableNginxSections = append(enableNginxSections, EnableRateLimiting)
+	token := os.Getenv("GITHUB_TOKEN")
+	if err := c.RequireBitwardenField("NGINX_API_KEY"); err != nil {
+		return err
 	}
-	if len(enableNginxSections) > 0 {
-		if err := enableSectionsInNginxFile("./nginx/nginx.conf", enableNginxSections); err != nil {
-			return fmt.Errorf("enabling nginx sections in ./nginx/nginx.conf: %w", err)
-		}
-		if err := enableSectionsInNginxFile("./nginx.server.conf", enableNginxSections); err != nil {
-			return fmt.Errorf("enabling nginx sections in ./nginx.server.conf: %w", err)
-		}
-	}
+	apiKey := os.Getenv("NGINX_API_KEY")
 
-	password, err := c.GetPassword(ctx)
+	password, err := c.ResolvePassword(ctx)
 	if err != nil {
 		return err
 	}
@@ -535,104 +1009,104 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	setupCertbot := c.Input.swarmNginxInput.setupCertbot
-	emailForCertbot := cfg.CertbotEmail
-	services := c.Input.swarmNginxInput.collectedServiceDomains
-
-	replacements := make([]files.ReplacementTuple, len(services))
-	for i, svc := range services {
-		replacements[i] = files.ReplacementTuple{
-			Find:    svc.find,
-			Replace: svc.server,
-		}
+	sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err != nil {
+		return fmt.Errorf("SSH connection: %w", err)
 	}
-	fmt.Println(styles.ItalicText.Render("Generating nginx.conf for swarm manager..."))
-	// Replace server_name's in nginx.conf
-	if err := c.FS.ReplaceAndCopy(
-		"./nginx/nginx.conf",
-		"./nginx.configured.conf",
-		replacements,
-	); err != nil {
+	defer sshConn.Close()
+
+	fmt.Println(styles.ItalicText.Render("Fetching nginx configs from GitHub..."))
+	deployCfg, err := fetchAndBuildNginxConfig(token, env)
+	if err != nil {
+		return err
+	}
+	deployCfg.sshConn = sshConn
+	deployCfg.password = password
+	deployCfg.apiKey = apiKey
+
+	fmt.Println("Installing certbot...")
+	sshExecSudo(sshConn, password, "apt-get remove -y certbot 2>/dev/null; true")
+	sshExecSudo(sshConn, password, "snap install --classic certbot 2>/dev/null; true")
+	sshExecSudo(sshConn, password, "ln -sf /snap/bin/certbot /usr/bin/certbot")
+
+	if err := deployNginxFull(*deployCfg); err != nil {
 		return err
 	}
 
-	fmt.Println(
-		styles.AlertImportant.Render(
-			"Please create the following DNS records on your domain provider's website now:",
-		),
-	)
-	for _, svc := range services {
-		fmt.Printf("Hostname: %s\tType: A\tIP: %s\n", svc.server, managerIp)
-	}
-	c.TUI.NewConfirmation("\nPress enter when done...")
-
-	// Hostnames - domains list provided for certbot
-	hostnames := make([]string, len(services))
-	for i, svc := range services {
-		hostnames[i] = svc.server
-		// Store services in d8x config
-		cfg.Services[svc.serviceName] = configs.D8XService{
-			Name:      svc.serviceName,
-			UsesHTTPS: setupCertbot,
-			HostName:  svc.server,
-		}
-	}
-
-	// Run ansible-playbook for nginx setup on broker server
-	args := []string{
-		"--extra-vars", fmt.Sprintf(`ansible_ssh_private_key_file='%s'`, c.SshKeyPath),
-		"--extra-vars", "ansible_host_key_checking=false",
-		"--extra-vars", fmt.Sprintf(`ansible_become_pass='%s'`, password),
-		"-i", configs.DEFAULT_HOSTS_FILE,
-		"-u", c.DefaultClusterUserName,
-		"./playbooks/nginx.ansible.yaml",
-	}
-	cmd := exec.Command("ansible-playbook", args...)
-	connectCMDToCurrentTerm(cmd)
-	if err := c.RunCmd(cmd); err != nil {
+	setupCertbot, err := c.TUI.NewPrompt("Setup SSL certificates with certbot?", true)
+	if err != nil {
 		return err
-	} else {
-		fmt.Println(styles.SuccessText.Render("Manager node nginx setup done!"))
-
-		// Update sate
-		cfg.SwarmNginxDeployed = true
 	}
-
 	if setupCertbot {
-		fmt.Println(styles.ItalicText.Render("Setting up ssl certificates with certbot..."))
-		sshConn, err := c.CreateSSHConn(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+		email, err := c.promptCertbotEmail(cfg)
 		if err != nil {
 			return err
 		}
 
-		out, err := c.certbotNginxSetup(
-			sshConn,
-			password,
-			emailForCertbot,
-			hostnames,
-		)
-		fmt.Println(string(out))
-
-		if err != nil {
-			restart, err2 := c.TUI.NewPrompt("Certbot setup failed, do you want to restart the swarm-nginx setup?", true)
-			if err2 != nil {
-				return err2
+		hostnames := extractAllServerNames(deployCfg.sitesConfContent)
+		succeeded := map[string]bool{}
+		pending := hostnames
+		var failed []string
+		for {
+			failed = failed[:0]
+			for _, host := range pending {
+				fmt.Printf("  Issuing cert for %s...\n", host)
+				certCmd := fmt.Sprintf("certbot --nginx -d %s --non-interactive --agree-tos -m %s 2>&1", shQuote(host), shQuote(email))
+				out, err := sshExecSudo(sshConn, password, certCmd)
+				if err != nil {
+					fmt.Printf("  %s certbot failed for %s: %s\n", notok, host, strings.TrimSpace(string(out)))
+					failed = append(failed, host)
+				} else {
+					fmt.Printf("  %s %s\n", ok, host)
+					succeeded[host] = true
+				}
 			}
-			if restart {
-				return c.SwarmNginx(ctx)
+			if len(failed) == 0 {
+				break
 			}
-			return fmt.Errorf("certbot setup failed: %w", err)
-		} else {
-			fmt.Println(styles.SuccessText.Render("Manager server certificates setup done!"))
+			fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("%d of %d cert issuances failed: %s", len(failed), len(pending), strings.Join(failed, ", "))))
+			retry, perr := c.TUI.NewPrompt("Retry failed hosts with a different email?", false)
+			if perr != nil {
+				return perr
+			}
+			if !retry {
+				break
+			}
+			newEmail, eerr := c.promptCertbotEmail(&configs.D8XConfig{})
+			if eerr != nil {
+				return eerr
+			}
+			email = newEmail
+			cfg.CertbotEmail = newEmail
+			pending = append([]string(nil), failed...)
+		}
 
+		if len(succeeded) > 0 {
+			if _, err := sshExecSudo(sshConn, password, "systemctl enable snap.certbot.renew.timer && systemctl start snap.certbot.renew.timer"); err != nil {
+				fmt.Printf("  %s could not enable certbot renew timer: %s\n", notok, err)
+			}
 			cfg.SwarmCertbotDeployed = true
+		}
+		stillMissing := []string{}
+		for _, h := range hostnames {
+			if !succeeded[h] {
+				stillMissing = append(stillMissing, h)
+			}
+		}
+		if len(stillMissing) > 0 {
+			fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("certbot did not issue certs for: %s. Re-run \"d8x setup swarm-nginx\" once DNS/email is fixed.", strings.Join(stillMissing, ", "))))
 		}
 	}
 
+	cfg.SwarmNginxDeployed = true
 	if err := c.ConfigRWriter.Write(cfg); err != nil {
 		return fmt.Errorf("could not update config: %w", err)
 	}
+	if err := c.PublishRemoteConfig(cfg); err != nil {
+		fmt.Printf("  %s failed to sync remote config: %s\n", notok, err)
+	}
 
+	fmt.Println(styles.SuccessText.Render("Nginx deployment complete."))
 	return nil
 }
 
@@ -691,6 +1165,9 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 		return err
 	}
 	managerConn, err := conn.NewSSHConnection(managerIp, c.DefaultClusterUserName, c.SshKeyPath)
+	if err == nil {
+		defer managerConn.Close()
+	}
 	if err != nil {
 		return err
 	}
@@ -727,98 +1204,38 @@ func (c *Container) CheckSwarmIngressIsCorrect(ctx *cli.Context) error {
 	return nil
 }
 
-// enableSectionsInNginxFile reads contents of nginx configuration file at
-// nginxCfgPath and processes it to enable priovided enableSections sections and
-// writes the result in place.
-func enableSectionsInNginxFile(nginxCfgPath string, enableSections []NginxConfigSection) error {
-	nginxConf, err := os.Open(nginxCfgPath)
-	if err != nil {
-		return err
+func (c *Container) promptCertbotEmail(cfg *configs.D8XConfig) (string, error) {
+	if cfg != nil && isValidEmail(cfg.CertbotEmail) {
+		return cfg.CertbotEmail, nil
 	}
-	defer nginxConf.Close()
-
-	contents, err := io.ReadAll(nginxConf)
-	if err != nil {
-		return err
-	}
-
-	cfgBuf := bytes.NewBuffer(contents)
-
-	for _, enableSection := range enableSections {
-		nginxConfUpdated, err := processNginxConfigComments(cfgBuf, enableSection)
+	for {
+		fmt.Println("Enter email for certbot:")
+		email, err := c.TUI.NewInput(components.TextInputOptPlaceholder("admin@example.com"))
 		if err != nil {
-			return err
+			return "", err
 		}
-		cfgBuf = bytes.NewBuffer(nginxConfUpdated)
+		email = strings.TrimSpace(email)
+		if isValidEmail(email) {
+			if cfg != nil {
+				cfg.CertbotEmail = email
+			}
+			return email, nil
+		}
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf("%q is not a valid email address. Try again.", email)))
 	}
-
-	return os.WriteFile(nginxCfgPath, cfgBuf.Bytes(), 0o644)
 }
 
-// processNginxConfigComments enables (uncomments) provided enableSection in
-// given nginxConf if that section can be found. Section starts with comment
-// line and enableSection wrapped in curly braces {enableSection} and ends with
-// a comment line and enableSection wrapped in curly braces with forward slash
-// after first brace {/enableSection}. Nested sections are not supported, but
-// multiple sequential ones are.
-func processNginxConfigComments(nginxConf io.Reader, enableSection NginxConfigSection) ([]byte, error) {
-	config, err := io.ReadAll(nginxConf)
-	if err != nil {
-		return nil, err
+func isValidEmail(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.ContainsAny(s, " \t\r\n") {
+		return false
 	}
-
-	// Is a section currently opened and comments should be removed for all
-	// commented lines in the section
-	opened := false
-
-	result := bytes.NewBuffer(nil)
-	sc := bufio.NewScanner(bytes.NewReader(config))
-	for sc.Scan() {
-		line := sc.Text()
-		writeLine := line
-		line = strings.TrimSpace(line)
-
-		// Check for section open/close tags first
-		isSectionTag := false
-		if strings.HasPrefix(line, "#") {
-			line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
-			// Open tag
-			if line == "{"+string(enableSection)+"}" {
-				opened = true
-				isSectionTag = true
-			}
-			// Close tag
-			if line == "{/"+string(enableSection)+"}" {
-				opened = false
-				isSectionTag = true
-			}
-		}
-
-		if opened && !isSectionTag {
-			// Keep any whitespace or identation in place, simply remove the
-			// initial comment(s) chars, but leave any other comments in the
-			// same line in place
-			temp := strings.Builder{}
-			hashFound := false
-			lastHash := false
-			for _, ch := range writeLine {
-				if ch == '#' && (!hashFound || lastHash) {
-					hashFound = true
-					lastHash = true
-					continue
-				}
-
-				lastHash = false
-				temp.WriteRune(ch)
-			}
-
-			writeLine = temp.String()
-		}
-
-		if _, err := result.Write([]byte(writeLine + "\n")); err != nil {
-			return nil, err
-		}
+	at := strings.IndexByte(s, '@')
+	if at <= 0 || at != strings.LastIndexByte(s, '@') || at == len(s)-1 {
+		return false
 	}
-
-	return result.Bytes(), nil
+	domain := s[at+1:]
+	dot := strings.LastIndexByte(domain, '.')
+	return dot > 0 && dot < len(domain)-1
 }
+

@@ -4,7 +4,7 @@ package components
 // component library.
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -15,7 +15,6 @@ import (
 type model struct {
 	spinner  spinner.Model
 	quitting bool
-	err      error
 
 	text string
 	done chan struct{}
@@ -71,7 +70,7 @@ func newSpinner(done chan struct{}, text string) error {
 	out, err := p.Run()
 
 	if v, ok := out.(exitModel); ok {
-		return fmt.Errorf(v.Message())
+		return errors.New(v.Message())
 	}
 
 	return err

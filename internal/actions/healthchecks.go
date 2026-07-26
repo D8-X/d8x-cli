@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,28 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 	cfg, err := c.ConfigRWriter.Read()
 	if err != nil {
 		return err
+	}
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
+		return err
+	}
+
+	token := os.Getenv("GITHUB_TOKEN")
+	if token != "" && c.SelectedEnv != "" {
+		sites, err := ghReadFile(token, c.SelectedEnv+"/sites.conf")
+		if err != nil {
+			fmt.Printf("%s could not fetch %s/sites.conf from the infra repo (%s); health checks will run only against the services already listed in this env's config.json\n", notok, c.SelectedEnv, err)
+		} else {
+			for _, host := range extractAllServerNames(sites.Content) {
+				name := strings.Split(host, ".")[0]
+				if _, exists := cfg.Services[configs.D8XServiceName(name)]; !exists {
+					cfg.Services[configs.D8XServiceName(name)] = configs.D8XService{
+						Name:      configs.D8XServiceName(name),
+						HostName:  host,
+						UsesHTTPS: true,
+					}
+				}
+			}
+		}
 	}
 
 	svcsForModel := []*serviceHostnameStatus{}
@@ -91,7 +114,69 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 			return fmt.Errorf("retrieving docker swarm info: %w", err)
 		}
 		// Print the docker services info outside the bubbletea program
-		fmt.Printf("\nDocker swarm services status:%s\n", dockerSwarmInfoString)
+		fmt.Printf("\nDocker swarm services status:\n%s", dockerSwarmInfoString)
+	}
+
+	brokerIp, err := c.HostsCfg.GetBrokerPublicIp()
+	if err == nil {
+		brokerConn, err := conn.NewSSHConnection(brokerIp, c.DefaultClusterUserName, c.SshKeyPath)
+		if err == nil {
+			fmt.Printf("\nBroker services (docker compose):\n")
+			out, err := brokerConn.ExecCommand("docker ps --format '{{.Names}} {{.Status}}'")
+			if err == nil {
+				for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+					if line == "" {
+						continue
+					}
+					parts := strings.SplitN(line, " ", 2)
+					name := strings.TrimPrefix(parts[0], "broker-")
+					name = strings.TrimSuffix(name, "-1")
+					status := ""
+					if len(parts) > 1 {
+						status = parts[1]
+					}
+					icon := ok
+					if !strings.Contains(strings.ToLower(status), "up") {
+						icon = notok
+						status = styles.ErrorText.Render(status)
+					}
+					fmt.Printf("  %s %-20s %s\n", icon, name, status)
+				}
+			}
+
+			brokerHostname := ""
+			if svc, ok := cfg.Services[configs.D8XServiceBrokerServer]; ok {
+				brokerHostname = svc.HostName
+			}
+			if brokerHostname == "" {
+				// Try from infra repo
+				token := os.Getenv("GITHUB_TOKEN")
+				if token != "" && c.SelectedEnv != "" {
+					brokerNginx, err := ghReadFile(token, c.SelectedEnv+"/broker-nginx.conf")
+					if err == nil {
+						names := extractAllServerNames(brokerNginx.Content)
+						if len(names) > 0 {
+							brokerHostname = names[0]
+						}
+					}
+				}
+			}
+			if brokerHostname != "" {
+				rpcHealthURL := fmt.Sprintf("https://%s/rpc/health", brokerHostname)
+				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' %s`, rpcHealthURL)
+				out, err = brokerConn.ExecCommand(curlCmd)
+				code := strings.TrimSpace(string(out))
+				icon := notok
+				codeDisplay := styles.ErrorText.Render("unreachable")
+				if err == nil && code == "200" {
+					icon = ok
+					codeDisplay = styles.SuccessText.Render(code)
+				} else if err == nil {
+					codeDisplay = styles.ErrorText.Render(code)
+				}
+				fmt.Printf("  %s %-20s %s  %s\n", icon, "rpc-proxy", codeDisplay, rpcHealthURL)
+			}
+		}
 	}
 
 	return nil
@@ -126,6 +211,9 @@ func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, prefix+svc.HostName, nil)
 	if err != nil {
 		return err
+	}
+	if apiKey := os.Getenv("NGINX_API_KEY"); apiKey != "" {
+		req.Header.Set("X-Api-Key", apiKey)
 	}
 	resp, err := c.HttpClient.Do(req)
 	if err != nil {
@@ -224,44 +312,48 @@ func healthChecksSwarmServices(managerConn conn.SSHConnection) (string, error) {
 		}
 	}
 
-	// Build the output
+	maxName := 0
+	for _, name := range svcNames {
+		short := strings.TrimPrefix(name, "stack_")
+		if len(short) > maxName {
+			maxName = len(short)
+		}
+	}
+
 	fullOutput := strings.Builder{}
 	for _, svcName := range svcNames {
-		out := strings.Builder{}
 		v := svcs[svcName]
-		out.WriteByte('\n')
+		short := strings.TrimPrefix(svcName, "stack_")
+		padding := strings.Repeat(" ", maxName-len(short)+1)
 
-		// Name and instances
-		nameAndInstances := fmt.Sprintf(
-			"%s\n  instances: %s",
-			svcName, v.replicasString,
-		)
-		out.WriteString(nameAndInstances)
+		icon := ok
+		if v.running < v.total {
+			icon = notok
+		}
 
-		// Instances info
+		replicas := fmt.Sprintf("%d/%d", v.running, v.total)
+		line := fmt.Sprintf("  %s %s%s%s", icon, short, padding, replicas)
 
-		for _, psInfo := range v.psInfo {
-			out.WriteString("\n  \\_ ")
-			out.WriteString(psInfo.name)
-			out.WriteString(" on ")
-			out.WriteString(psInfo.node)
-			out.WriteString(" status ")
-			out.WriteString(psInfo.currentState)
-
-			if psInfo.err != "" {
-				out.WriteString(" ")
-				out.WriteString(psInfo.err)
+		if len(v.psInfo) == 1 {
+			ps := v.psInfo[0]
+			line += fmt.Sprintf("  %s  %s", ps.node, ps.currentState)
+			if ps.err != "" {
+				line += "  " + ps.err
 			}
+		} else if len(v.psInfo) > 1 {
+			nodes := []string{}
+			for _, ps := range v.psInfo {
+				nodes = append(nodes, ps.node)
+			}
+			line += fmt.Sprintf("  [%s]", strings.Join(nodes, ", "))
 		}
 
 		if v.running < v.total {
-			fullOutput.WriteString(styles.ErrorText.Render(
-				out.String(),
-			))
+			fullOutput.WriteString(styles.ErrorText.Render(line))
 		} else {
-			fullOutput.WriteString(out.String())
+			fullOutput.WriteString(line)
 		}
-
+		fullOutput.WriteByte('\n')
 	}
 
 	return fullOutput.String(), nil
@@ -271,6 +363,7 @@ const (
 	notok   = "❌"
 	ok      = "✅"
 	warning = "⚠️"
+	arrow   = "▶"
 )
 
 type serviceHostnameStatus struct {
@@ -335,62 +428,50 @@ func (m healthCheckModel) allDone() bool {
 func (h healthCheckModel) View() string {
 	httpHealthChecks := strings.Builder{}
 
+	// Find max service name length for alignment
+	maxName := 0
 	for _, svc := range h.services {
-		spinner := ""
-		sendingRequestTime := ""
-		retry := ""
-		responseStatus := ""
-		reachable := ""
+		if len(svc.service) > maxName {
+			maxName = len(svc.service)
+		}
+	}
+
+	for _, svc := range h.services {
+		icon := ""
+		status := ""
 		if svc.done {
+			code := svc.responseStatus
+			codeStr := strconv.Itoa(code)
 			if svc.success {
-				spinner = ok
-				reachable = "service was reached"
+				if code >= 200 && code < 500 {
+					icon = ok
+					status = styles.SuccessText.Render(codeStr)
+				} else if code >= 500 {
+					icon = warning
+					status = styles.ErrorText.Render(codeStr)
+				} else {
+					icon = ok
+					status = codeStr
+				}
 			} else {
-				spinner = notok
-				reachable = "service unreachable"
+				icon = notok
+				status = styles.ErrorText.Render("unreachable")
 			}
-
-			responseStatus = "HTTP Status (" + strconv.Itoa(svc.responseStatus) + ")"
-
-			if svc.responseStatus >= 200 && svc.responseStatus < 500 {
-				responseStatus = styles.SuccessText.Render(responseStatus)
-			}
-			if svc.responseStatus >= 500 {
-				responseStatus = styles.ErrorText.Render(responseStatus)
-				spinner = warning
-			}
-			spinner += " "
-
 		} else {
-			spinner = h.spinner.View()
-
+			icon = h.spinner.View()
 			if time.Now().Before(svc.currentCtxDeadline) {
-				// display how many seconds left till request deadline
-				sendingRequestTime = "next request timeout in " + strconv.Itoa(int(svc.currentCtxDeadline.Unix()-time.Now().Unix())) + "s"
+				status = fmt.Sprintf("retry #%d", svc.currentRetry)
 			}
-
-			retry = strconv.Itoa(int(svc.currentRetry))
-			retry = "(" + retry + ")"
 		}
 
+		padding := strings.Repeat(" ", maxName-len(svc.service)+1)
 		httpHealthChecks.WriteString(
-			fmt.Sprintf(
-				"%s %s %s %s %s %s %s",
-				spinner,
-				svc.service,
-				svc.hostname,
-				retry,
-				sendingRequestTime,
-				reachable,
-				responseStatus,
-			),
+			fmt.Sprintf("  %s %s%s%s  %s\n", icon, svc.service, padding, status, svc.hostname),
 		)
-
-		httpHealthChecks.WriteByte('\n')
 	}
 
 	title := "Performing health checks"
-	dockerSwarmInfo := "\n" + h.spinner.View() + "Loading Docker Swarm Services info\n"
+	dockerSwarmInfo := "\n" + h.spinner.View() + " Loading Docker swarm services...\n"
 	if h.allDone() {
 		title = "Health checks done"
 		dockerSwarmInfo = ""

@@ -2,10 +2,9 @@ package actions
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
@@ -48,14 +46,28 @@ type linodeConfigurer struct {
 }
 
 func (c *Container) CopyLinodeTFFiles() error {
-	return c.EmbedCopier.Copy(configs.EmbededConfigs,
-		files.EmbedCopierOp{
-			Src:       "embedded/trader-backend/tf-linode",
-			Dst:       c.ProvisioningTfDir,
-			Dir:       true,
-			Overwrite: true,
-		},
-	)
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" {
+		return fmt.Errorf("GITHUB_TOKEN is required")
+	}
+	if c.SelectedEnv == "" {
+		return fmt.Errorf("no environment selected")
+	}
+
+	fmt.Println(styles.ItalicText.Render("Fetching Terraform configs from GitHub..."))
+	if err := ghFetchDir(token, "terraform/linode", c.ProvisioningTfDir); err != nil {
+		return fmt.Errorf("fetching terraform/linode from GitHub: %w", err)
+	}
+
+	tfvars, err := ghReadFile(token, c.SelectedEnv+"/terraform.tfvars")
+	if err != nil {
+		return fmt.Errorf("fetching %s/terraform.tfvars from GitHub: %w", c.SelectedEnv, err)
+	}
+	if err := os.WriteFile(filepath.Join(c.ProvisioningTfDir, "env.auto.tfvars"), []byte(tfvars.Content), 0600); err != nil {
+		return fmt.Errorf("writing env.auto.tfvars: %w", err)
+	}
+
+	return nil
 }
 
 // BuildTerraformCMD builds terraform configuration for linode cluster creation.
@@ -135,7 +147,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	// Attempt to load defaults from config
 	var (
-		defaultToken              = ""
 		defaultClusterLabelPrefix = "d8x-cluster"
 		defaultDbId               = ""
 		defaultRegion             = ""
@@ -146,7 +157,6 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	if cfg.ServerProvider == configs.D8XServerProviderLinode {
 		if cfg.LinodeConfig != nil {
-			defaultToken = cfg.LinodeConfig.Token
 			defaultDbId = cfg.LinodeConfig.DbId
 			defaultRegion = cfg.LinodeConfig.Region
 			defaultClusterLabelPrefix = cfg.LinodeConfig.LabelPrefix
@@ -162,17 +172,22 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 		defaultRegionItem = getRegionItemByRegionId(defaultRegion)
 	}
 
-	// Token
-	fmt.Println("Enter your Linode API token")
-	token, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
-		components.TextInputOptValue(defaultToken),
-		components.TextInputOptMasked(),
-	)
-	if err != nil {
-		return l, err
+	token := readEnvSecret(c.SelectedEnv, "LINODE_TOKEN")
+	if token == "" {
+		fmt.Println("Enter your Linode API token")
+		var err error
+		token, err = c.TUI.NewInput(
+			components.TextInputOptPlaceholder("<YOUR LINODE API TOKEN>"),
+			components.TextInputOptMasked(),
+		)
+		if err != nil {
+			return l, err
+		}
 	}
 	l.Token = token
+	if os.Getenv("BW_SESSION") != "" {
+		saveAndReport(envSuffixedField(c.SelectedEnv, "LINODE_TOKEN"), token)
+	}
 
 	// DB for swarm
 	if c.setup.deploySwarm {
@@ -262,16 +277,17 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	c.provisioning.collectedLinodeConfigurer = &l
 
-	// Update the cfg
 	cfg.ServerProvider = configs.D8XServerProviderLinode
-	cfg.LinodeConfig = &l.D8XLinodeConfig
+	cfgLinode := l.D8XLinodeConfig
+	cfgLinode.Token = ""
+	cfg.LinodeConfig = &cfgLinode
 
 	return l, nil
 }
 
 // noLinodeDbCheck displays some information to users when external db is used.
 func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
-	if i.DbId == "" && !c.Input.BrokerOnly() {
+	if i.DbId == "" && c.Input != nil && !c.Input.BrokerOnly() {
 		fmt.Println(
 			styles.AlertImportant.Render(
 				"Make sure you configure external database to allow connections from Linode cluster!",
@@ -279,10 +295,15 @@ func (i linodeConfigurer) noLinodeDbCheck(c *Container) {
 		)
 
 		fmt.Printf(`You should configure your external database to allow connection from provisioned cluster.
-Make sure to refer to %s inventory file or visit your server provider's dashboard to 
+Make sure to refer to %s inventory file or visit your server provider's dashboard to
 find the public ip addresses of your servers.
-`, configs.DEFAULT_HOSTS_FILE)
+`, c.hostsCfgPath())
 
+		if c.HostsCfg == nil {
+			fmt.Println(styles.AlertImportant.Render("hosts.cfg not loaded; cannot list IPs"))
+			c.TUI.NewConfirmation("Press enter to confirm...")
+			return
+		}
 		workers, _ := c.HostsCfg.GetWorkerIps()
 		manager, _ := c.HostsCfg.GetMangerPublicIp()
 		broker, _ := c.HostsCfg.GetBrokerPublicIp()
@@ -344,22 +365,3 @@ func (c *Container) LinodeInventorySetUserVar(ipAddresses []string, sshUser stri
 	return c.HostsCfg.WriteLines(hostLines)
 }
 
-// fetchLinodeAPIRequest sends GET request to linode api endpoint and reads the
-// response
-func fetchLinodeAPIRequest(c *http.Client, endpoint, linodeToken string) ([]byte, error) {
-	req, err := http.NewRequest(
-		http.MethodGet,
-		endpoint,
-		nil,
-	)
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", linodeToken))
-	if err != nil {
-		return nil, err
-	}
-	resp, err := c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	return io.ReadAll(resp.Body)
-}

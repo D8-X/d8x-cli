@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +29,14 @@ type DokcerStackFileServices struct {
 
 func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Updating swarm services...")
+
+	cfg, err := c.ConfigRWriter.Read()
+	if err != nil {
+		return err
+	}
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
+		return err
+	}
 
 	// Swarm services
 	services, err := configs.GetSwarmDockerServices(true)
@@ -80,14 +89,21 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 		}
 
 		if needsBrokerKey {
-			pk, _, err := c.CollectAndValidatePrivateKey("Enter your broker private key:")
-			if err != nil {
+			c.Input.SelectedEnv = c.SelectedEnv
+			if err := c.Input.CollectBrokerPrivateKey(); err != nil {
 				return err
 			}
-			brokerPrivateKey = pk
+			brokerPrivateKey = c.Input.brokerDeployInput.privateKey
 		}
 
-		if !cfg.BrokerDeployed {
+		if c.SelectedEnv != "" {
+			envKey := "BROKER_REDIS_PW_" + strings.ToUpper(c.SelectedEnv)
+			if pw := os.Getenv(envKey); pw != "" {
+				brokerRedisPassword = pw
+			}
+		}
+
+		if !cfg.BrokerDeployed && brokerRedisPassword == "" {
 			fmt.Println(styles.ErrorText.Render("Broker server configuration not found, make sure you have deployed the broker server first (d8x setup broker-deploy), otherwise the update might fail."))
 			fmt.Println("Enter your broker redis password:")
 			pwd, err := c.TUI.NewInput(
@@ -113,8 +129,12 @@ func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 				return err
 			}
 		} else {
-			brokerRedisPassword = cfg.BrokerServerConfig.RedisPassword
-			brokerFeeTBPS = cfg.BrokerServerConfig.FeeTBPS
+			if brokerRedisPassword == "" {
+				brokerRedisPassword = cfg.BrokerServerConfig.RedisPassword
+			}
+			if brokerFeeTBPS == "" {
+				brokerFeeTBPS = cfg.BrokerServerConfig.FeeTBPS
+			}
 		}
 	}
 
@@ -203,7 +223,7 @@ func (c *Container) updateSwarmServices(_ *cli.Context, selectedSwarmServicesToU
 		selectedImageReferenceForUpdate[svcToUpdate] = imgToUse
 	}
 
-	workerIps, err := c.HostsCfg.GetWorkerIps()
+	workerIps, err := c.HostsCfg.GetWorkerPrivateIps()
 	if err != nil {
 		return err
 	}
@@ -233,7 +253,7 @@ func (c *Container) updateSwarmServices(_ *cli.Context, selectedSwarmServicesToU
 		done := make(chan struct{})
 		go func() {
 			err := sshConn.ExecCommandPiped(
-				fmt.Sprintf(`docker service update --image %s %s`, imgToUse, svcStackName),
+				fmt.Sprintf(`docker service update --force --image %s %s`, imgToUse, svcStackName),
 			)
 			if err != nil {
 				fmt.Println(
@@ -314,10 +334,13 @@ func (c *Container) updateBrokerServerServices(selectedSwarmServicesToUpdate []s
 			}
 		}
 
-		cfg, _ := c.ConfigRWriter.Read()
-		brokerPrivateIp, _ := c.HostsCfg.GetBrokerPrivateIp()
-		if brokerPrivateIp == "" {
-			brokerPrivateIp = "127.0.0.1"
+		cfg, err := c.ConfigRWriter.Read()
+		if err != nil {
+			return fmt.Errorf("reading config: %w", err)
+		}
+		brokerPrivateIp, err := c.HostsCfg.GetBrokerPrivateIp()
+		if err != nil || brokerPrivateIp == "" {
+			return fmt.Errorf("broker_private_ip not found in hosts.cfg")
 		}
 		if err := sshConn.ExecCommandPiped(
 			fmt.Sprintf(

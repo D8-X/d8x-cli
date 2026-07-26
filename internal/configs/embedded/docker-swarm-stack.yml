@@ -58,6 +58,7 @@ services:
       - SDK_CONFIG_NAME=${SDK_CONFIG_NAME}
       - CHAIN_ID=${CHAIN_ID}
       - CORS_ON=${CORS_ON:-FALSE}
+      - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
       - CONFIG_PATH_RPC=/cfg_rpc_history
       - REDIS_URL=${REDIS_URL:-redis://:thisismypassword@redis:6379/0}
     ports:
@@ -232,9 +233,6 @@ networks:
     ipam:
       config:
         - subnet: 172.16.3.0/24
-volumes:
-  nfsvol:
-    external: true
 configs:
   cfg_rpc:
     external: true

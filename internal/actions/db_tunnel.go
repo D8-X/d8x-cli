@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 
 	"github.com/D8-X/d8x-cli/internal/conn"
 	"github.com/D8-X/d8x-cli/internal/styles"
@@ -31,6 +32,12 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if _, err := c.EnsureProvisionedEnvironment(cfg); err != nil {
+		return err
+	}
+	if err := c.RequireProvisionedHosts("db-tunnel", "manager"); err != nil {
+		return err
+	}
 
 	ip, err := c.HostsCfg.GetMangerPublicIp()
 	if err != nil {
@@ -38,7 +45,10 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	}
 
 	if len(cfg.DatabaseDSN) == 0 {
-		return fmt.Errorf("database dsn is not set in config")
+		cfg.DatabaseDSN = readEnvSecret(c.SelectedEnv, "DATABASE_DSN")
+	}
+	if len(cfg.DatabaseDSN) == 0 {
+		return fmt.Errorf("DATABASE_DSN_%s missing in Bitwarden — on AWS it is written by \"d8x setup provision\", on Linode by \"d8x setup swarm-deploy\", or set it manually as a field on the d8x-cli Bitwarden item", strings.ToUpper(c.SelectedEnv))
 	}
 
 	// Parse the database dsn string
@@ -76,18 +86,22 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	fmt.Println(styles.GrayText.Render("Press Ctrl+C to exit"))
 
 	for {
-		conn, err := l.Accept()
+		clientConn, err := l.Accept()
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
-
-		dbConn, err := managerConn.GetClient().Dial("tcp", pgCfg.Host+":"+strconv.Itoa(int(pgCfg.Port)))
-		if err != nil {
-			return fmt.Errorf("dialing database on manager: %w", err)
-		}
-
-		go cpIo(dbConn, conn)
-		go cpIo(conn, dbConn)
+		go func() {
+			defer clientConn.Close()
+			dbConn, err := managerConn.GetClient().Dial("tcp", pgCfg.Host+":"+strconv.Itoa(int(pgCfg.Port)))
+			if err != nil {
+				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("dialing database on manager: %s", err)))
+				return
+			}
+			defer dbConn.Close()
+			done := make(chan struct{}, 2)
+			go func() { cpIo(dbConn, clientConn); done <- struct{}{} }()
+			go func() { cpIo(clientConn, dbConn); done <- struct{}{} }()
+			<-done
+		}()
 	}
 }

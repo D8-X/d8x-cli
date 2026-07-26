@@ -215,6 +215,20 @@ func (mr *MockHostsFileInteractorMockRecorder) WriteLines(arg0 interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteLines", reflect.TypeOf((*MockHostsFileInteractor)(nil).WriteLines), arg0)
 }
 
+// GetPath mocks base method.
+func (m *MockHostsFileInteractor) GetPath() string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPath")
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetPath indicates an expected call of GetPath.
+func (mr *MockHostsFileInteractorMockRecorder) GetPath() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPath", reflect.TypeOf((*MockHostsFileInteractor)(nil).GetPath))
+}
+
 // MockFSInteractor is a mock of FSInteractor interface.
 type MockFSInteractor struct {
 	ctrl     *gomock.Controller

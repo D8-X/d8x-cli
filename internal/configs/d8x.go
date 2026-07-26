@@ -3,9 +3,6 @@ package configs
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-
-	"github.com/D8-X/d8x-cli/internal/styles"
 )
 
 //go:generate mockgen -package mocks -destination ../mocks/configs.go . D8XConfigReadWriter
@@ -76,9 +73,6 @@ type D8XConfig struct {
 	SwarmDeployed        bool `json:"swarm_deployed"`
 	SwarmNginxDeployed   bool `json:"swarm_nginx_deployed"`
 	SwarmCertbotDeployed bool `json:"swarm_certbot_deployed"`
-
-	// MD5 hash of last created ssh private key, empty string initially
-	SSHKeyMD5 string `json:"ssh_key_hash"`
 
 	// Ansible related configuration details
 	ConfigDetails ConfigurationDetails `json:"configuration_details"`
@@ -203,92 +197,74 @@ func NewD8XConfig() *D8XConfig {
 	}
 }
 
-// D8XConfigReadWriter reads and writes D8X config to storage system. If file
-// does not exists it is created automatically.
 type D8XConfigReadWriter interface {
-	// Read reads the config from underlying storagesystem. If config is not
-	// found, an empty D8XConfig is returned
 	Read() (*D8XConfig, error)
-
-	// Write writes given D8XConfig to underlying storage system
 	Write(*D8XConfig) error
-
-	// GetPath returns the full path of config file
-	GetPath() string
-
-	// WriteTo writes the contents of cfg to the provided filePath
-	WriteTo(filePath string, cfg *D8XConfig) error
 }
 
-func NewFileBasedD8XConfigRW(filePath string) D8XConfigReadWriter {
-	return &d8xConfigFileReadWriter{filePath: filePath}
+func NewInMemoryD8XConfigRW(initial *D8XConfig) D8XConfigReadWriter {
+	if initial == nil {
+		initial = NewD8XConfig()
+	}
+	if initial.Services == nil {
+		initial.Services = make(map[D8XServiceName]D8XService)
+	}
+	if initial.HttpRpcList == nil {
+		initial.HttpRpcList = make(map[string][]string)
+	}
+	if initial.WsRpcList == nil {
+		initial.WsRpcList = make(map[string][]string)
+	}
+	return &d8xConfigMemReadWriter{cfg: initial}
 }
 
-var _ (D8XConfigReadWriter) = (*d8xConfigFileReadWriter)(nil)
-
-type d8xConfigFileReadWriter struct {
-	filePath string
-
-	warningShown bool
+type d8xConfigMemReadWriter struct {
+	cfg *D8XConfig
 }
 
-func (d *d8xConfigFileReadWriter) GetPath() string {
-	return d.filePath
+func (m *d8xConfigMemReadWriter) Read() (*D8XConfig, error) {
+	// Deep-copy so concurrent read/mutate/write callers don't observe each other.
+	data, err := json.Marshal(m.cfg)
+	if err != nil {
+		return nil, err
+	}
+	out := NewD8XConfig()
+	if err := json.Unmarshal(data, out); err != nil {
+		return nil, err
+	}
+	if out.Services == nil {
+		out.Services = make(map[D8XServiceName]D8XService)
+	}
+	if out.HttpRpcList == nil {
+		out.HttpRpcList = make(map[string][]string)
+	}
+	if out.WsRpcList == nil {
+		out.WsRpcList = make(map[string][]string)
+	}
+	return out, nil
 }
 
-func (d *d8xConfigFileReadWriter) Read() (*D8XConfig, error) {
-	cfg := NewD8XConfig()
-	if contents, err := os.ReadFile(d.filePath); err != nil {
-		// Print error message to indicate empty config when not intended. Only
-		// once in current session!
-		if !d.warningShown {
-			fmt.Println(
-				styles.ErrorText.Render(
-					fmt.Sprintf("Config file was not found: %s", d.filePath),
-				),
-			)
-			d.warningShown = true
-		}
-		return cfg, nil
-	} else {
-		if err := json.Unmarshal(contents, cfg); err != nil {
-			return nil, err
-		}
+func (m *d8xConfigMemReadWriter) Write(cfg *D8XConfig) error {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		m.cfg = cfg
+		return nil
 	}
-
-	// Make sure we initialize nil-able fields
-	if cfg.Services == nil {
-		cfg.Services = make(map[D8XServiceName]D8XService)
+	clone := NewD8XConfig()
+	if err := json.Unmarshal(data, clone); err != nil {
+		m.cfg = cfg
+		return nil
 	}
-	if cfg.HttpRpcList == nil {
-		cfg.HttpRpcList = make(map[string][]string)
+	if clone.Services == nil {
+		clone.Services = make(map[D8XServiceName]D8XService)
 	}
-	if cfg.WsRpcList == nil {
-		cfg.WsRpcList = make(map[string][]string)
+	if clone.HttpRpcList == nil {
+		clone.HttpRpcList = make(map[string][]string)
 	}
-
-	return cfg, nil
-}
-
-func (d *d8xConfigFileReadWriter) Write(cfg *D8XConfig) error {
-	if buf, err := json.MarshalIndent(cfg, "", "\t"); err != nil {
-		return err
-	} else {
-		if err := os.WriteFile(d.filePath, buf, 0666); err != nil {
-			return err
-		}
+	if clone.WsRpcList == nil {
+		clone.WsRpcList = make(map[string][]string)
 	}
-	return nil
-}
-
-func (d *d8xConfigFileReadWriter) WriteTo(filePath string, cfg *D8XConfig) error {
-	if buf, err := json.MarshalIndent(cfg, "", "\t"); err != nil {
-		return err
-	} else {
-		if err := os.WriteFile(filePath, buf, 0666); err != nil {
-			return err
-		}
-	}
+	m.cfg = clone
 	return nil
 }
 
