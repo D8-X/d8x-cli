@@ -35,6 +35,26 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		return nil
 	}
 
+	statusOut, err := exec.Command("bw", "status").Output()
+	if err != nil {
+		c.BitwardenStatus = fmt.Sprintf("bw status check failed: %s", err)
+		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden status check failed: %s. Run 'bw login' or 'bw unlock' manually.", err)))
+		return nil
+	}
+	var initialStatus struct {
+		Status string `json:"status"`
+	}
+	json.Unmarshal(statusOut, &initialStatus)
+	if initialStatus.Status == "unauthenticated" {
+		c.BitwardenStatus = "bw vault is not logged in (run 'bw login')"
+		fmt.Println(styles.ErrorText.Render("Bitwarden: not logged in. Run 'bw login' first."))
+		return nil
+	}
+
+	if syncOut, err := exec.Command("bw", "sync").CombinedOutput(); err != nil {
+		fmt.Printf("%s bw sync failed (%s); proceeding with cached vault contents\n", warning, bwCleanStderr(string(syncOut)))
+	}
+
 	session := os.Getenv("BW_SESSION")
 	if session == "" {
 		if cached := readCachedBWSession(); cached != "" {
@@ -56,22 +76,6 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 	}
 	if needUnlock {
-		out, err := exec.Command("bw", "status").Output()
-		if err != nil {
-			c.BitwardenStatus = fmt.Sprintf("bw status check failed: %s", err)
-			fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden status check failed: %s. Run 'bw login' or 'bw unlock' manually.", err)))
-			return nil
-		}
-		var status struct {
-			Status string `json:"status"`
-		}
-		json.Unmarshal(out, &status)
-
-		if status.Status == "unauthenticated" {
-			c.BitwardenStatus = "bw vault is not logged in (run 'bw login')"
-			fmt.Println(styles.ErrorText.Render("Bitwarden: not logged in. Run 'bw login' first."))
-			return nil
-		}
 
 		fmt.Println("Enter Bitwarden master password:")
 		masterPwd, err := c.TUI.NewInput(
@@ -85,10 +89,17 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 
 		os.Setenv("BW_TMP_PWD", masterPwd)
-		unlockOut, err := exec.Command("bw", "unlock", "--raw", "--passwordenv", "BW_TMP_PWD").CombinedOutput()
+		unlockCmd := exec.Command("bw", "unlock", "--raw", "--passwordenv", "BW_TMP_PWD")
+		var unlockErrBuf bytes.Buffer
+		unlockCmd.Stderr = &unlockErrBuf
+		unlockOut, err := unlockCmd.Output()
 		os.Unsetenv("BW_TMP_PWD")
 		if err != nil {
+			detail := bwCleanStderr(unlockErrBuf.String())
 			c.BitwardenStatus = fmt.Sprintf("bw unlock failed: %s", err)
+			if detail != "" {
+				c.BitwardenStatus = fmt.Sprintf("bw unlock failed: %s (%s)", err, detail)
+			}
 			fmt.Println(styles.ErrorText.Render("Bitwarden unlock failed. Check your master password."))
 			return nil
 		}
@@ -105,23 +116,21 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		c.BitwardenFields = make(map[string]string)
 	}
 
-	if syncOut, err := exec.Command("bw", "sync", "--session", session).CombinedOutput(); err != nil {
-		fmt.Printf("%s bw sync failed (%s); proceeding with cached vault contents\n", warning, strings.TrimSpace(string(syncOut)))
-	}
-
 	count := 0
 	itemsSeen := 0
 	var fetchErr error
+	vaultLocked := false
 	for _, itemName := range []string{bwPersonalItemName, bwItemName} {
-		out, err := exec.Command("bw", "get", "item", itemName, "--session", session).Output()
+		out, err := bwGetItem(itemName, session)
 		if err != nil {
+			if err == errBwVaultLocked {
+				vaultLocked = true
+				break
+			}
 			if itemName == bwItemName {
 				fetchErr = err
 				fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Bitwarden: could not fetch shared item '%s'. Error: %s", itemName, err)))
 			}
-			continue
-		}
-		if len(bytes.TrimSpace(out)) == 0 {
 			continue
 		}
 		itemsSeen++
@@ -162,7 +171,10 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 		}
 	}
 
-	if itemsSeen == 0 {
+	if vaultLocked {
+		c.BitwardenStatus = "bw vault re-locked mid-run (session expired); run 'bw unlock' and retry"
+		fmt.Println(styles.ErrorText.Render("Bitwarden: the vault re-locked before secrets could be read (the session expired). Run 'bw unlock' and re-run this command."))
+	} else if itemsSeen == 0 {
 		if fetchErr != nil {
 			c.BitwardenStatus = fmt.Sprintf("could not fetch d8x-cli item (%s)", fetchErr)
 		} else {
@@ -179,6 +191,66 @@ func (c *Container) LoadSecretsFromBitwarden() error {
 	}
 
 	return nil
+}
+
+var errBwVaultLocked = fmt.Errorf("bitwarden vault is locked")
+
+func bwGetItem(itemName, session string) ([]byte, error) {
+	cmd := exec.Command("bw", "get", "item", itemName, "--session", session)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	cmd.Stdin = nil
+	out, err := cmd.Output()
+	detail := bwCleanStderr(stderr.String())
+	if bwAskedForPassword(detail) {
+		return nil, errBwVaultLocked
+	}
+	if err != nil {
+		if detail != "" {
+			return nil, fmt.Errorf("%s: %s", err, detail)
+		}
+		return nil, err
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
+		if detail != "" {
+			return nil, fmt.Errorf("bw returned no data for %q: %s", itemName, detail)
+		}
+		return nil, fmt.Errorf("bw returned no data for %q", itemName)
+	}
+	return out, nil
+}
+
+func bwAskedForPassword(stderr string) bool {
+	return strings.Contains(strings.ToLower(stderr), "master password")
+}
+
+func bwCleanStderr(s string) string {
+	var b strings.Builder
+	skip := false
+	for _, r := range s {
+		if r == 0x1b {
+			skip = true
+			continue
+		}
+		if skip {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				skip = false
+			}
+			continue
+		}
+		if r == '\n' || r == '\r' {
+			b.WriteRune(' ')
+			continue
+		}
+		if r >= 0x20 || r == '\t' {
+			b.WriteRune(r)
+		}
+	}
+	out := strings.Join(strings.Fields(b.String()), " ")
+	if r := []rune(out); len(r) > 200 {
+		out = string(r[:200]) + "..."
+	}
+	return out
 }
 
 type BwSaveResult int
