@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -274,7 +275,6 @@ func parseEnvBytes(data []byte) map[string]string {
 	return out
 }
 
-
 func redactSecret(key, value string) string {
 	upper := strings.ToUpper(key)
 	if value == "" {
@@ -294,6 +294,12 @@ func redactValue(v string) string {
 		return "****"
 	}
 	return v[:2] + strings.Repeat("*", len(v)-4) + v[len(v)-2:]
+}
+
+var dsnUserinfoRe = regexp.MustCompile("(//[^:/@\\s\"`]+):[^@\\s\"`]*@")
+
+func redactDSNs(s string) string {
+	return dsnUserinfoRe.ReplaceAllString(s, "$1:****@")
 }
 
 func redactDSN(dsn string) string {
@@ -1238,4 +1244,3 @@ func isValidEmail(s string) bool {
 	dot := strings.LastIndexByte(domain, '.')
 	return dot > 0 && dot < len(domain)-1
 }
-

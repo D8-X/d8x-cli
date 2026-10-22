@@ -54,7 +54,7 @@ func (c *Container) DbTunnel(ctx *cli.Context) error {
 	// Parse the database dsn string
 	pgCfg, err := pgx.ParseConfig(cfg.DatabaseDSN)
 	if err != nil {
-		return fmt.Errorf("parsing database connection string: %w", err)
+		return fmt.Errorf("parsing database connection string %s: %s", redactDSN(cfg.DatabaseDSN), redactDSNs(err.Error()))
 	}
 
 	// Bind local socket
