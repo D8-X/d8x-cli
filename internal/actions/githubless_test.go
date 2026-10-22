@@ -32,11 +32,11 @@ func TestStageInfraRepoFile_NoGitHubToken_NoSelectedEnv_StillFallsBack(t *testin
 	t.Setenv("GITHUB_TOKEN", "")
 
 	c := &Container{SelectedEnv: ""}
-	localPath := filepath.Join(t.TempDir(), "prometheus.yml")
+	localPath := filepath.Join(t.TempDir(), "docker-swarm-stack.yml")
 
 	err := c.stageInfraRepoFile(
-		"prometheus.yml",
-		"embedded/prometheus.yml",
+		"docker-swarm-stack.yml",
+		"embedded/docker-swarm-stack.yml",
 		localPath,
 	)
 	require.NoError(t, err)

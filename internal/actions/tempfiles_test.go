@@ -44,8 +44,8 @@ func TestStageInfraRepoFile_WritesUnderTempDir_AndNotCwd(t *testing.T) {
 	cwdBefore := snapshotCwd(t)
 
 	c := &Container{}
-	localPath := filepath.Join(t.TempDir(), "prometheus.yml")
-	err := c.stageInfraRepoFile("prometheus.yml", "embedded/prometheus.yml", localPath)
+	localPath := filepath.Join(t.TempDir(), "docker-swarm-stack.yml")
+	err := c.stageInfraRepoFile("docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml", localPath)
 	require.NoError(t, err)
 
 	info, err := os.Stat(localPath)

@@ -70,7 +70,6 @@ func RunD8XCli() {
 						"broker-nginx",
 						"swarm-deploy", "sd",
 						"swarm-nginx", "sn",
-						"metrics-deploy",
 						"staging-origins", "so",
 						"rpc",
 
@@ -142,12 +141,6 @@ func RunD8XCli() {
 						Description: SwarmNginxDescription,
 					},
 					{
-						Name:        "metrics-deploy",
-						Usage:       "Deploy and configure metrics services (prometheus, grafana) on manager node",
-						Action:      container.DeployMetrics,
-						Description: DeployMetricsDescription,
-					},
-					{
 						Name:    "staging-origins",
 						Aliases: []string{"so"},
 						Usage:   "Update whitelisted staging origins",
@@ -185,12 +178,6 @@ func RunD8XCli() {
 				Name:   "ssh",
 				Usage:  "Attach ssh session to one of your servers",
 				Action: container.SSH,
-			},
-			{
-				Name:      "grafana-tunnel",
-				Usage:     "Create ssh tunnel to grafana service on manager",
-				Action:    container.TunnelGrafana,
-				ArgsUsage: "[port 8080]",
 			},
 			{
 				Name:        "cp-configs",
