@@ -563,9 +563,6 @@ func (c *Container) collectDestroyTargets(cfg *configs.D8XConfig) destroyTargets
 	if cfg.BrokerNginxDeployed {
 		t.deployed = append(t.deployed, "broker-nginx")
 	}
-	if cfg.MetricsDeployed {
-		t.deployed = append(t.deployed, "metrics")
-	}
 	return t
 }
 

@@ -62,8 +62,6 @@ type D8XConfig struct {
 	// services
 	SetupDomain string `json:"setup_domain"`
 
-	// Whether metrics services were deployed
-	MetricsDeployed bool `json:"metrics_deployed"`
 	// Whether broker server is deployed
 	BrokerDeployed        bool `json:"broker_deployed"`
 	BrokerNginxDeployed   bool `json:"broker_nginx_deployed"`
@@ -110,7 +108,6 @@ type ConfigurationDetails struct {
 // ResetDeploymentStatus cleans up deployment status of all services/servers,
 // etc. Should be called and stored after tf-destroy.
 func (d *D8XConfig) ResetDeploymentStatus() {
-	d.MetricsDeployed = false
 	d.BrokerDeployed = false
 	d.BrokerNginxDeployed = false
 	d.BrokerCertbotDeployed = false
@@ -160,13 +157,13 @@ type D8XLinodeConfig struct {
 }
 
 type D8XAWSConfig struct {
-	AccesKey               string `json:"access_key"`
-	SecretKey              string `json:"secret_key"`
-	Region                 string `json:"region"`
-	LabelPrefix            string `json:"label_prefix"`
-	RDSInstanceClass       string `json:"rds_instance_class"`
-	CreateBrokerServer     bool   `json:"create_broker_server"`
-	DeploySwarm            bool   `json:"deploy_swarm"`
+	AccesKey           string `json:"access_key"`
+	SecretKey          string `json:"secret_key"`
+	Region             string `json:"region"`
+	LabelPrefix        string `json:"label_prefix"`
+	RDSInstanceClass   string `json:"rds_instance_class"`
+	CreateBrokerServer bool   `json:"create_broker_server"`
+	DeploySwarm        bool   `json:"deploy_swarm"`
 	// Number of worker servers to deploy in swarm
 	NumWorker int `json:"num_worker"`
 }
@@ -186,7 +183,6 @@ type D8XBrokerServerConfig struct {
 	FeeInputPercent string `json:"fee_input_percent"`
 
 	RedisPassword string `json:"redis_password"`
-
 }
 
 func NewD8XConfig() *D8XConfig {
