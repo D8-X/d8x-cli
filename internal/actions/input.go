@@ -919,7 +919,7 @@ func (c *InputCollector) CollectAndValidateWalletAddress(title, value string) (s
 func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	change := true
 	if cfg.DatabaseDSN != "" {
-		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want keep it?", cfg.DatabaseDSN)
+		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want keep it?", redactDSN(cfg.DatabaseDSN))
 		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return err
@@ -942,7 +942,7 @@ func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 			dbConnStr,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("%s", redactDSNs(err.Error()))
 		}
 
 		if connUrl.User == nil {

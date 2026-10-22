@@ -67,7 +67,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 
 	pgCfg, err := pgx.ParseConfig(cfg.DatabaseDSN)
 	if err != nil {
-		return fmt.Errorf("parsing database connection string: %w", err)
+		return fmt.Errorf("parsing database connection string %s: %s", redactDSN(cfg.DatabaseDSN), redactDSNs(err.Error()))
 	}
 
 	managerConn, err := conn.NewSSHConnection(ip, c.DefaultClusterUserName, c.SshKeyPath)
