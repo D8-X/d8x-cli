@@ -428,7 +428,6 @@ func snapshotProvisioningCfg(cfg *configs.D8XConfig) string {
 		aws := *cfg.AWSConfig
 		aws.AccesKey = ""
 		aws.SecretKey = ""
-		aws.RDSCredentialsFilePath = ""
 		s.AWS = &aws
 	}
 	data, _ := json.Marshal(s)

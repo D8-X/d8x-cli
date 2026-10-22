@@ -258,9 +258,8 @@ func healthChecksSwarmServices(managerConn conn.SSHConnection) (string, error) {
 		// Number of running replicas
 		running int
 		// Number of total replicas defined to run
-		total          int
-		replicasString string
-		psInfo         []svcPsInfo
+		total  int
+		psInfo []svcPsInfo
 	}
 
 	// Parse `docker ls` info
@@ -275,11 +274,10 @@ func healthChecksSwarmServices(managerConn conn.SSHConnection) (string, error) {
 			running, _ := strconv.Atoi(replicas[0])
 			total, _ := strconv.Atoi(replicas[1])
 			info := svcInfo{
-				name:           fields[1],
-				running:        running,
-				total:          total,
-				psInfo:         []svcPsInfo{},
-				replicasString: fields[3],
+				name:    fields[1],
+				running: running,
+				total:   total,
+				psInfo:  []svcPsInfo{},
 			}
 			svcs[fields[1]] = info
 			svcNames = append(svcNames, fields[1])

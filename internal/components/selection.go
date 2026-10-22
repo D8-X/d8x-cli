@@ -53,10 +53,9 @@ func newSelection(selection []string, opts ...SelectionOpts) ([]string, error) {
 var _ tea.Model = (*selectionModel)(nil)
 
 type selectionModel struct {
-	selection    []string
-	selected     []bool
-	cursor       int
-	doneSelected bool
+	selection []string
+	selected  []bool
+	cursor    int
 
 	// Allows only 1 item to be selected
 	oneSelectedOnly bool
@@ -201,7 +200,6 @@ type selectOptSelectEnter struct {
 }
 
 func (opt selectOptSelectEnter) Apply(s *selectionModel) {
-	s.doneSelected = true
 	s.cursor = len(s.selection)
 }
 

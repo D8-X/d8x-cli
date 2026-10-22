@@ -151,7 +151,6 @@ type D8XLinodeConfig struct {
 	DbId               string `json:"db_id"`
 	Region             string `json:"region"`
 	LabelPrefix        string `json:"label_prefix"`
-	SwarmWorkerSize    string `json:"swarm_worker_size"`
 	SwarmNodeSize      string `json:"swarm_node_size"`
 	BrokerServerSize   string `json:"broker_server_size"`
 	CreateBrokerServer bool   `json:"create_broker_server"`
@@ -167,7 +166,6 @@ type D8XAWSConfig struct {
 	LabelPrefix            string `json:"label_prefix"`
 	RDSInstanceClass       string `json:"rds_instance_class"`
 	CreateBrokerServer     bool   `json:"create_broker_server"`
-	RDSCredentialsFilePath string `json:"rds_credentials_file_path"`
 	DeploySwarm            bool   `json:"deploy_swarm"`
 	// Number of worker servers to deploy in swarm
 	NumWorker int `json:"num_worker"`

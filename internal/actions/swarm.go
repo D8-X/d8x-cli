@@ -68,21 +68,6 @@ type managedSwarmFile struct {
 	accepted       bool
 }
 
-// EditSwarmEnv edits the .env file for swarm deployment with user provided and
-// provisioning values.
-func (c *Container) EditSwarmEnv(envPath string, cfg *configs.D8XConfig) error {
-	fmt.Println(styles.ItalicText.Render("Editing .env file..."))
-	envFile, err := os.ReadFile(envPath)
-	if err != nil {
-		return fmt.Errorf("reading .env file: %w", err)
-	}
-	out, err := c.EditSwarmEnvBytes(envFile, cfg)
-	if err != nil {
-		return err
-	}
-	return c.FS.WriteFile(envPath, out)
-}
-
 func (c *Container) EditSwarmEnvBytes(envContent []byte, cfg *configs.D8XConfig) ([]byte, error) {
 	envFileLines := strings.Split(string(envContent), "\n")
 	managed := map[string]string{
@@ -1124,8 +1109,6 @@ type hostnameTuple struct {
 	server      string
 	prompt      string
 	placeholder string
-	// string pattern which will be replaced by server value
-	find        string
 	serviceName configs.D8XServiceName
 }
 
@@ -1134,25 +1117,21 @@ var hostsTpl = []hostnameTuple{
 	{
 		prompt:      "Enter Main HTTP (sub)domain: ",
 		placeholder: "api.d8x.xyz",
-		find:        "%main%",
 		serviceName: configs.D8XServiceMainHTTP,
 	},
 	{
 		prompt:      "Enter Main Websockets (sub)domain: ",
 		placeholder: "ws.d8x.xyz",
-		find:        "%main_ws%",
 		serviceName: configs.D8XServiceMainWS,
 	},
 	{
 		prompt:      "Enter History HTTP (sub)domain: ",
 		placeholder: "history.d8x.xyz",
-		find:        "%history%",
 		serviceName: configs.D8XServiceHistory,
 	},
 	{
 		prompt:      "Enter Candlesticks Websockets (sub)domain: ",
 		placeholder: "candles.d8x.xyz",
-		find:        "%candles_ws%",
 		serviceName: configs.D8XServiceCandlesWs,
 	},
 }
