@@ -89,7 +89,9 @@ func (c *Container) IngressFix(ctx *cli.Context) error {
 			if err != nil {
 				info := fmt.Sprintf("creating ssh connection to worker-%d %s: %s", workerNum, ip, err.Error())
 				fmt.Println(styles.ErrorText.Render(info))
+				return
 			}
+			defer workerConn.Close()
 
 			if _, err := workerConn.ExecCommand(
 				fmt.Sprintf(`echo "%s"| sudo -S systemctl restart docker`, pwd),
