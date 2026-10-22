@@ -163,7 +163,10 @@ func (c *Container) HealthCheck(ctx *cli.Context) error {
 			}
 			if brokerHostname != "" {
 				rpcHealthURL := fmt.Sprintf("https://%s/rpc/health", brokerHostname)
-				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' %s`, rpcHealthURL)
+				curlCmd := fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' -H %s %s`, shQuote("Origin: "+healthCheckOrigin()), rpcHealthURL)
+				if apiKey := os.Getenv("NGINX_API_KEY"); apiKey != "" {
+					curlCmd = fmt.Sprintf(`curl -s -o /dev/null -w '%%{http_code}' -H %s -H %s %s`, shQuote("Origin: "+healthCheckOrigin()), shQuote("X-Api-Key: "+apiKey), rpcHealthURL)
+				}
 				out, err = brokerConn.ExecCommand(curlCmd)
 				code := strings.TrimSpace(string(out))
 				icon := notok
@@ -212,6 +215,7 @@ func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Origin", healthCheckOrigin())
 	if apiKey := os.Getenv("NGINX_API_KEY"); apiKey != "" {
 		req.Header.Set("X-Api-Key", apiKey)
 	}
@@ -224,6 +228,13 @@ func (c *Container) healthCheckWithBackoff(ch chan healthCheckMsg, svc configs.D
 	}
 
 	return nil
+}
+
+func healthCheckOrigin() string {
+	if o := os.Getenv("HEALTHCHECK_ORIGIN"); o != "" {
+		return o
+	}
+	return "https://localhost"
 }
 
 // healthChecksSwarmServices parses services statuses from manager node
