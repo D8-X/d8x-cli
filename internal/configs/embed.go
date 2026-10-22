@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/go-yaml/yaml"
+	"gopkg.in/yaml.v2"
 )
 
 //go:embed embedded/*
