@@ -12,7 +12,6 @@ type HostsFileInteractor interface {
 	GetBrokerPublicIp() (string, error)
 	GetBrokerPrivateIp() (string, error)
 	GetMangerPublicIp() (string, error)
-	GetMangerPrivateIp() (string, error)
 	GetWorkerIps() ([]string, error)
 	GetWorkerPrivateIps() ([]string, error)
 	GetAllPublicIps() []string
@@ -22,9 +21,6 @@ type HostsFileInteractor interface {
 
 	// WriteLines writes the provided lines to hosts file
 	WriteLines([]string) error
-
-	// GetPath returns the absolute file path backing this interactor
-	GetPath() string
 }
 
 func NewFSHostsFileInteractor(filePath string) HostsFileInteractor {
@@ -87,12 +83,6 @@ func (f *fsHostFileInteractor) GetMangerPublicIp() (string, error) {
 	}
 	return f.cached.GetMangerPublicIp()
 }
-func (f *fsHostFileInteractor) GetMangerPrivateIp() (string, error) {
-	if err := f.ensureFileLoaded(); err != nil {
-		return "", err
-	}
-	return f.cached.GetMangerPrivateIp()
-}
 func (f *fsHostFileInteractor) GetWorkerIps() ([]string, error) {
 	if err := f.ensureFileLoaded(); err != nil {
 		return nil, err
@@ -112,10 +102,6 @@ func (f *fsHostFileInteractor) GetLines() ([]string, error) {
 	}
 
 	return f.cached.lines, nil
-}
-
-func (f *fsHostFileInteractor) GetPath() string {
-	return f.filePath
 }
 
 func (f *fsHostFileInteractor) WriteLines(lines []string) error {
@@ -211,13 +197,6 @@ func (h *HostsFile) GetBrokerPrivateIp() (string, error) {
 	return "", fmt.Errorf("broker private ip was not found in hosts file")
 }
 
-func (h *HostsFile) GetMangerPrivateIp() (string, error) {
-	ip, err := h.FindPrivateIps("manager")
-	if err != nil {
-		return "", fmt.Errorf("manager private ip was not found in hosts file: %w", err)
-	}
-	return ip[0], nil
-}
 func (h *HostsFile) GetMangerPublicIp() (string, error) {
 	ip, err := h.FindFirstIp("[managers]")
 	if err != nil {

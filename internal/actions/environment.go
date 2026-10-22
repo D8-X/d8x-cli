@@ -395,7 +395,6 @@ func (c *Container) PublishRemoteConfigWithSource(cfg *configs.D8XConfig, source
 		aws := *public.AWSConfig
 		aws.AccesKey = ""
 		aws.SecretKey = ""
-		aws.RDSCredentialsFilePath = ""
 		public.AWSConfig = &aws
 	}
 

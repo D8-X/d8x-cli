@@ -110,13 +110,11 @@ type fakeHostsInteractor struct {
 func (f *fakeHostsInteractor) GetLines() ([]string, error)            { return f.lines, nil }
 func (f *fakeHostsInteractor) WriteLines([]string) error              { return nil }
 func (f *fakeHostsInteractor) GetMangerPublicIp() (string, error)     { return "", nil }
-func (f *fakeHostsInteractor) GetMangerPrivateIp() (string, error)    { return "", nil }
 func (f *fakeHostsInteractor) GetBrokerPublicIp() (string, error)     { return "", nil }
 func (f *fakeHostsInteractor) GetBrokerPrivateIp() (string, error)    { return "", nil }
 func (f *fakeHostsInteractor) GetWorkerIps() ([]string, error)        { return nil, nil }
 func (f *fakeHostsInteractor) GetWorkerPrivateIps() ([]string, error) { return nil, nil }
 func (f *fakeHostsInteractor) GetAllPublicIps() []string              { return nil }
-func (f *fakeHostsInteractor) GetPath() string                        { return "" }
 
 func snapshotCwd(t *testing.T) []string {
 	t.Helper()

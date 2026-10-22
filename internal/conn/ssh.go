@@ -9,8 +9,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-//go:generate mockgen -package mocks -destination ../mocks/conn.go . SSHConnection
-
 type SSHConnection interface {
 	// Execute cmd on remote server
 	ExecCommand(cmd string) ([]byte, error)

@@ -10,6 +10,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type infraRepoFile struct {
+	envRelPath  string
+	embeddedSrc string
+}
+
+var infraRepoManagedFiles = []infraRepoFile{
+	{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json"},
+	{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json"},
+	{"candles/prices.config.json", "embedded/candles/prices.config.json"},
+	{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json"},
+	{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml"},
+	{"docker-swarm-metrics.yml", "embedded/docker-swarm-metrics.yml"},
+	{"prometheus.yml", "embedded/prometheus.yml"},
+	{"grafana/datasource-prometheus.yml", "embedded/grafana/datasource-prometheus.yml"},
+	{"grafana/chart.json", "embedded/grafana/chart.json"},
+	{"grafana/chart-cadvisor.json", "embedded/grafana/chart-cadvisor.json"},
+	{"grafana/dashboards.yml", "embedded/grafana/dashboards.yml"},
+	{"broker-server/rpc.json", "embedded/broker-server/rpc.json"},
+	{"broker-server/chainConfig.json", "embedded/broker-server/chainConfig.json"},
+	{"broker-server/docker-compose.yml", "embedded/broker-server/docker-compose.yml"},
+}
+
 func TestLoadInfraRepoFile_NoGitHubToken_ReturnsEmbeddedBytes(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	c := &Container{}
