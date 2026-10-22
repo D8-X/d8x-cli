@@ -12,7 +12,6 @@ import (
 
 	"github.com/D8-X/d8x-cli/internal/components"
 	"github.com/D8-X/d8x-cli/internal/configs"
-	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 	"github.com/xo/dburl"
@@ -66,18 +65,6 @@ type InputCollector struct {
 	// Only when ssh key changes, or when broker/swarm was not deployed before.
 	runBrokerNginxCertbot bool
 	runSwarmNginxCertbot  bool
-
-	nginxOverwrites NginxOverwrites
-}
-
-// NginxOverwrites determine nginx configuration changes. Whether user wants to
-// use real_ip module for cloudlfare proxying and rate limiting.
-type NginxOverwrites struct {
-	enableCloudflareRealIps bool
-	enableNginxRateLimiting bool
-
-	// Whether prompts were already shown for user in this session
-	asked bool
 }
 
 type ProvisioningInput struct {
@@ -98,8 +85,6 @@ type InputCollectorSetupData struct {
 	setupDomainEntered bool
 
 	certbotEmailEntered bool
-
-	deployMetrics bool
 }
 
 type BrokerDeployInput struct {
@@ -139,9 +124,6 @@ type SwarmNginxInput struct {
 
 	setupNginx   bool
 	setupCertbot bool
-
-	// Collected service domain names
-	collectedServiceDomains []hostnameTuple
 }
 
 // Whether deployment is broker only
@@ -208,12 +190,6 @@ func (input *InputCollector) CollectFullSetupInput(ctx *cli.Context) error {
 				return err
 			}
 		}
-
-		deployMetrics, err := input.TUI.NewPrompt("Do you want to deploy metrics (prometheus/grafana) stack?", true)
-		if err != nil {
-			return err
-		}
-		input.setup.deployMetrics = deployMetrics
 	}
 
 	return nil
@@ -394,7 +370,7 @@ func (input *InputCollector) CollectPrivateKeys(ctx *cli.Context) error {
 		currentCommand = activeStep
 	}
 
-	if currentCommand == "swarm-deploy" || currentCommand == "swarm-nginx" || currentCommand == "metrics-deploy" {
+	if currentCommand == "swarm-deploy" || currentCommand == "swarm-nginx" {
 		return nil
 	}
 
@@ -455,10 +431,6 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 		return err
 	}
 	input.brokerNginxInput.setupNginx = setupNginx
-
-	if err := input.CollectNginxOverwrites(); err != nil {
-		return err
-	}
 
 	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
 	if err != nil {
@@ -761,10 +733,6 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 	}
 	input.swarmNginxInput.setupNginx = setupNginx
 
-	if err := input.CollectNginxOverwrites(); err != nil {
-		return err
-	}
-
 	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
 	if err != nil {
 		return err
@@ -893,27 +861,6 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 	cfg.ChainId = uint(chainIdUint)
 
 	return cfg.ChainId, c.ConfigRWriter.Write(cfg)
-}
-
-func (c *InputCollector) CollectAndValidateWalletAddress(title, value string) (string, error) {
-	fmt.Println(title)
-	walletAddress, err := c.TUI.NewInput(
-		components.TextInputOptPlaceholder("0x0000000000000000000000000000000000000000"),
-		components.TextInputOptValue(value),
-		components.TextInputOptDenyEmpty(),
-	)
-	walletAddress = strings.TrimSpace(walletAddress)
-	if err != nil {
-		return "", err
-	}
-
-	// Validate the address
-	if !ValidWalletAddress(walletAddress) {
-		fmt.Println(styles.ErrorText.Render("invalid address provided, please try again..."))
-		return c.CollectAndValidateWalletAddress(title, value)
-	}
-
-	return walletAddress, nil
 }
 
 func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
@@ -1163,8 +1110,6 @@ func (input *InputCollector) GetServerProviderConfigurer() ServerProviderConfigu
 
 // SwarmNginxCollectDomains collects hostnames information.
 func (c *InputCollector) SwarmNginxCollectDomains(cfg *configs.D8XConfig) ([]hostnameTuple, error) {
-	hosts := make([]string, len(hostsTpl))
-	replacements := make([]files.ReplacementTuple, len(hostsTpl))
 	for i, h := range hostsTpl {
 
 		// When possible, find values from config for non-first time runs.
@@ -1188,16 +1133,8 @@ func (c *InputCollector) SwarmNginxCollectDomains(cfg *configs.D8XConfig) ([]hos
 		}
 		input = TrimHttpsPrefix(input)
 		hostsTpl[i].server = input
-		replacements[i] = files.ReplacementTuple{
-			Find:    h.find,
-			Replace: input,
-		}
-		hosts[i] = input
-
 		fmt.Printf("Using domain %s for %s\n\n", input, h.serviceName)
 	}
-
-	c.swarmNginxInput.collectedServiceDomains = hostsTpl
 
 	return hostsTpl, nil
 }
@@ -1278,28 +1215,6 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 			fieldName := envSuffixedField(c.SelectedEnv, "SSH_KEY_MD5")
 			saveAndReport(fieldName, md5Hash)
 		}
-	}
-	return nil
-}
-
-// CollectNginxOverwrites collects information about which sections in nginx
-// should be enabled: options are cloudflare real_ip and nginx rate limiting
-func (c *InputCollector) CollectNginxOverwrites() error {
-	if !c.nginxOverwrites.asked {
-
-		cfProxying, err := c.TUI.NewPrompt("Will you be using Cloudflare proxying?", true)
-		if err != nil {
-			return err
-		}
-		c.nginxOverwrites.enableCloudflareRealIps = cfProxying
-
-		rateLimits, err := c.TUI.NewPrompt("Do you want to enable nginx rate limiting?", true)
-		if err != nil {
-			return err
-		}
-		c.nginxOverwrites.enableNginxRateLimiting = rateLimits
-
-		c.nginxOverwrites.asked = true
 	}
 	return nil
 }

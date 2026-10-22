@@ -2,7 +2,6 @@ package conn
 
 import (
 	"fmt"
-	"os"
 	"path"
 
 	"github.com/pkg/sftp"
@@ -10,7 +9,6 @@ import (
 )
 
 type SftpCopySrcDest struct {
-	Src     string
 	Content []byte
 	Dst     string
 }
@@ -32,13 +30,7 @@ func CopyFilesOverSftp(
 
 		content := cp.Content
 		if content == nil {
-			if cp.Src == "" {
-				return fmt.Errorf("sftp copy: Dst=%q has neither Content nor Src", cp.Dst)
-			}
-			content, err = os.ReadFile(cp.Src)
-			if err != nil {
-				return err
-			}
+			return fmt.Errorf("sftp copy: Dst=%q has no Content", cp.Dst)
 		}
 
 		dstFd, err := s.Create(cp.Dst)

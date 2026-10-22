@@ -282,11 +282,6 @@ if ($http_x_api_key = 'API_KEY_HERE') {
     set $auth_ok 1;
 }
 
-# Grafana dashboard server
-if ($remote_addr = '172.104.135.218') {
-    set $auth_ok 1;
-}
-
 if ($auth_ok = 0) {
     return 403;
 }

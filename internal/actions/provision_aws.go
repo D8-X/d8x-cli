@@ -381,7 +381,6 @@ func (c *InputCollector) CollectAwProviderDetails(cfg *configs.D8XConfig) (awsCo
 	cfgAws := awsCfg.D8XAWSConfig
 	cfgAws.AccesKey = ""
 	cfgAws.SecretKey = ""
-	cfgAws.RDSCredentialsFilePath = ""
 	cfg.AWSConfig = &cfgAws
 	cfg.ServerProvider = configs.D8XServerProviderAWS
 

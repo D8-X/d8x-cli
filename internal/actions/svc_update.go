@@ -22,11 +22,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-type DokcerStackFileServices struct {
-	Services []struct {
-	} `yaml:"services"`
-}
-
 func (c *Container) ServiceUpdate(ctx *cli.Context) error {
 	styles.PrintCommandTitle("Updating swarm services...")
 

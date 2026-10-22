@@ -14,13 +14,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-type ChainInfo struct {
-	ChainId   string
-	ChainName string
-}
-
-type SSHConnectionMaker func()
-
 // Container is the cli container which provides all the command and subcommand
 // actions
 type Container struct {
@@ -37,8 +30,6 @@ type Container struct {
 	SelectedEnv string
 
 	ProvisioningTfDir string
-
-	EmbedCopier files.EmbedFileCopier
 
 	FS files.FSInteractor
 
@@ -84,7 +75,6 @@ func NewDefaultContainer() (*Container, error) {
 
 	httpClient := http.DefaultClient
 	return &Container{
-		EmbedCopier:   files.NewEmbedFileCopier(),
 		FS:            files.NewFileSystemInteractor(),
 		HostsCfg:      files.NewFSHostsFileInteractor(configs.DEFAULT_HOSTS_FILE),
 		HttpClient:    httpClient,

@@ -10,14 +10,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type infraRepoFile struct {
+	envRelPath  string
+	embeddedSrc string
+}
+
+var infraRepoManagedFiles = []infraRepoFile{
+	{"trader-backend/rpc.main.json", "embedded/trader-backend/rpc.main.json"},
+	{"trader-backend/rpc.history.json", "embedded/trader-backend/rpc.history.json"},
+	{"candles/prices.config.json", "embedded/candles/prices.config.json"},
+	{"candles/rpc_conf.json", "embedded/candles/rpc_conf.json"},
+	{"docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml"},
+	{"broker-server/rpc.json", "embedded/broker-server/rpc.json"},
+	{"broker-server/chainConfig.json", "embedded/broker-server/chainConfig.json"},
+	{"broker-server/docker-compose.yml", "embedded/broker-server/docker-compose.yml"},
+}
+
 func TestLoadInfraRepoFile_NoGitHubToken_ReturnsEmbeddedBytes(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	c := &Container{}
-	content, err := c.loadInfraRepoFile("prometheus.yml", "embedded/prometheus.yml")
+	content, err := c.loadInfraRepoFile("docker-swarm-stack.yml", "embedded/docker-swarm-stack.yml")
 	require.NoError(t, err)
 	assert.NotEmpty(t, content)
-	assert.True(t, strings.HasPrefix(string(content), "global:") || strings.Contains(string(content), "scrape_configs"),
-		"prometheus.yml content should look like a Prometheus config, got: %q", truncate(string(content)))
+	assert.True(t, strings.Contains(string(content), "services:"),
+		"docker-swarm-stack.yml content should look like a compose file, got: %q", truncate(string(content)))
 }
 
 func TestLoadInfraRepoFile_NoGitHubToken_AllManaged_ReturnsContent(t *testing.T) {

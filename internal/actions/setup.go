@@ -63,9 +63,6 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	}
 
 	total := 2
-	if c.Input.setup.deployMetrics {
-		total++
-	}
 	if c.Input.setup.deployBroker {
 		total++
 		if c.Input.runBrokerNginxCertbot {
@@ -118,14 +115,6 @@ func (c *Container) Setup(ctx *cli.Context) error {
 			if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
 				return err
 			}
-		}
-	}
-
-	// Deploy metrics stack if user wants to
-	if c.Input.setup.deployMetrics {
-		announce("metrics-deploy", "Deploy prometheus and grafana on the manager node")
-		if err := c.DeployMetrics(ctx); err != nil {
-			return err
 		}
 	}
 
