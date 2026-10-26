@@ -103,7 +103,7 @@ func (c *Container) BackupDb(ctx *cli.Context) error {
 	cmd := "apt-cache search --names-only ^postgresql-client-* | awk '{print $1}'"
 	pgClientPackages, err := managerConn.ExecCommand(cmd)
 	maxPgVersion := CurrentMaximumPostgresVersion
-	if err != nil {
+	if err == nil {
 		for _, pkgName := range strings.Split(string(pgClientPackages), "\n") {
 			versionStr := strings.TrimPrefix(
 				strings.TrimSpace(pkgName),

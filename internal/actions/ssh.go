@@ -51,7 +51,7 @@ func (c *Container) SSH(ctx *cli.Context) error {
 
 			isWorker = true
 
-			if parsedWorkerNum <= len(ips) {
+			if parsedWorkerNum >= 1 && parsedWorkerNum <= len(ips) {
 				ip = ips[parsedWorkerNum-1]
 				break
 			}
@@ -81,6 +81,7 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	if connErr != nil {
 		return connErr
 	}
+	defer cn.Close()
 
 	sshClient := cn.GetClient()
 
@@ -95,12 +96,12 @@ func (c *Container) SSH(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	defer term.Restore(fileDescriptor, originalState)
 
 	w, h, err := term.GetSize(fileDescriptor)
 	if err != nil {
 		return err
 	}
-	defer term.Restore(fileDescriptor, originalState)
 
 	if err := session.RequestPty("xterm", h, w, ssh.TerminalModes{
 		ssh.ECHO:          1,     // enable echoing

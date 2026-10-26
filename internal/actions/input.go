@@ -238,6 +238,7 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 
 	// Select server provider from  a list of supported server providers
 	fmt.Println("Select your server provider")
+	opts = append(opts, components.SelectionOptAllowOnlySingleItem(), components.SelectionOptRequireSelection())
 	selectedProvider, err := input.TUI.NewSelection([]string{
 		string(ServerProviderLinode),
 		string(ServerProviderAws),
