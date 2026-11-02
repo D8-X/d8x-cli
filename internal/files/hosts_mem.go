@@ -53,9 +53,6 @@ func (m *memHostFileInteractor) GetBrokerPrivateIp() (string, error) {
 func (m *memHostFileInteractor) GetMangerPublicIp() (string, error) {
 	return m.hosts.GetMangerPublicIp()
 }
-func (m *memHostFileInteractor) GetMangerPrivateIp() (string, error) {
-	return m.hosts.GetMangerPrivateIp()
-}
 func (m *memHostFileInteractor) GetWorkerIps() ([]string, error) {
 	return m.hosts.GetWorkerIps()
 }
@@ -64,10 +61,6 @@ func (m *memHostFileInteractor) GetWorkerPrivateIps() ([]string, error) {
 }
 func (m *memHostFileInteractor) GetLines() ([]string, error) {
 	return m.hosts.lines, nil
-}
-
-func (m *memHostFileInteractor) GetPath() string {
-	return "<memory>"
 }
 
 func (m *memHostFileInteractor) WriteLines(lines []string) error {

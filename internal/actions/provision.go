@@ -51,8 +51,24 @@ func (c *Container) Provision(ctx *cli.Context) error {
 				"Env %q appears to be already provisioned (manager IP %s present in hosts.cfg).",
 				c.SelectedEnv, managerIp,
 			)))
+			statePath := filepath.Join(c.ProvisioningTfDir, "terraform.tfstate")
+			yesMeans := "terraform runs against the live environment and may modify or recreate servers, which causes downtime"
+			if info, serr := os.Stat(statePath); serr != nil || info.Size() == 0 {
+				fmt.Println(styles.AlertImportant.Render(fmt.Sprintf(
+					"There is no terraform state at %s, so terraform does not know about the servers already running in this env.",
+					statePath,
+				)))
+				yesMeans = "terraform starts from empty state and tries to create every server again, which usually fails on duplicate labels or leaves the running servers orphaned and still billed"
+			}
 			fmt.Println(styles.ItalicText.Render("Re-running provision will recreate or modify cloud servers and almost certainly cause downtime."))
-			proceed, perr := c.TUI.NewPrompt("Force re-run of \"d8x setup provision\" anyway?", false)
+			proceed, perr := c.TUI.NewPrompt(
+				yesNoQuestion(
+					"Force a re-run of \"d8x setup provision\" anyway?",
+					yesMeans,
+					"leaves the provisioned servers untouched and skips this step",
+				),
+				false,
+			)
 			if perr != nil {
 				return perr
 			}
@@ -116,10 +132,10 @@ func (c *Container) Provision(ctx *cli.Context) error {
 	if preCfgSnapshot != postCfgSnapshot || preTfvars != postTfvars {
 		const source = "\"d8x setup provision\""
 		if err := c.PublishRemoteConfigWithSource(cfg, source); err != nil {
-			fmt.Printf("  %s could not push updated config.json: %s\n", notok, err)
+			return fmt.Errorf("aborting before terraform apply: the provisioning values changed but %s/config.json could not be updated in the infra repo: %w", c.SelectedEnv, err)
 		}
 		if err := c.PublishRemoteTfvars(cfg, source); err != nil {
-			fmt.Printf("  %s could not push updated terraform.tfvars: %s\n", notok, err)
+			return fmt.Errorf("aborting before terraform apply: the provisioning values changed but %s/terraform.tfvars could not be updated in the infra repo: %w", c.SelectedEnv, err)
 		}
 	}
 	providerConfigurer := c.Input.GetServerProviderConfigurer()
@@ -159,7 +175,14 @@ func (c *Container) Provision(ctx *cli.Context) error {
 
 	if hostsContent, herr := os.ReadFile(c.hostsCfgPath()); herr == nil {
 		c.HostsCfg = files.NewMemHostsFileInteractor(hostsContent, hostsCfgGitHubPusher(c.SelectedEnv))
+	} else {
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf(
+			"Terraform apply finished but no inventory was written to %s (%s). The servers it created are not recorded anywhere.",
+			c.hostsCfgPath(), herr,
+		)))
 	}
+
+	c.recordProvisionedHosts()
 
 	// Perform provider dependent actions
 	if err := providerConfigurer.PostProvisioningAction(c); err != nil {
@@ -171,29 +194,40 @@ func (c *Container) Provision(ctx *cli.Context) error {
 		return err
 	}
 
-	if token := os.Getenv("GITHUB_TOKEN"); token != "" && c.SelectedEnv != "" {
-		hostsContent, err := os.ReadFile(c.hostsCfgPath())
-		if err == nil {
-			path := c.SelectedEnv + "/hosts.cfg"
-			existing, _ := ghReadFile(token, path)
-			sha := ""
-			if existing != nil {
-				sha = existing.SHA
-				if existing.Content == string(hostsContent) {
-					fmt.Printf("  %s hosts.cfg already up to date on GitHub (%s)\n", ok, path)
-					return nil
-				}
-			}
-			_, err := ghWriteFile(token, path, string(hostsContent), sha, "update "+path)
-			if err != nil {
-				fmt.Printf("  %s Could not push hosts.cfg to GitHub: %s\n", notok, err)
-			} else {
-				fmt.Printf("  %s hosts.cfg pushed to GitHub (%s)\n", ok, path)
-			}
+	return nil
+}
+
+func (c *Container) recordProvisionedHosts() {
+	token := os.Getenv("GITHUB_TOKEN")
+	if token == "" || c.SelectedEnv == "" {
+		fmt.Println(styles.AlertImportant.Render(
+			"Cannot push hosts.cfg to the infra repo: no GITHUB_TOKEN or no environment selected. Copy it off this machine before the temp dir is cleaned.",
+		))
+		return
+	}
+	hostsContent, err := os.ReadFile(c.hostsCfgPath())
+	if err != nil {
+		fmt.Printf("  %s could not read %s: %s\n", notok, c.hostsCfgPath(), err)
+		return
+	}
+	path := c.SelectedEnv + "/hosts.cfg"
+	sha := ""
+	if existing, _ := ghReadFile(token, path); existing != nil {
+		sha = existing.SHA
+		if existing.Content == string(hostsContent) {
+			fmt.Printf("  %s %s already up to date in infra repo\n", ok, path)
+			return
 		}
 	}
-
-	return nil
+	if _, werr := ghWriteFile(token, path, string(hostsContent), sha, "update "+path); werr != nil {
+		fmt.Printf("  %s could not push %s to infra repo: %s\n", notok, path, werr)
+		fmt.Println(styles.AlertImportant.Render(fmt.Sprintf(
+			"The servers were created but the infra repo has no record of them. Save %s now and add it to the repo by hand, otherwise the next run treats this env as unprovisioned and provisions duplicates.",
+			c.hostsCfgPath(),
+		)))
+		return
+	}
+	fmt.Printf("  %s pushed %s to infra repo\n", ok, path)
 }
 
 func hostsCfgGitHubPusher(env string) func(content string) error {
@@ -254,6 +288,7 @@ func (c *Container) printProvisionSummary(cfg *configs.D8XConfig) {
 			fmt.Printf("  label prefix      : %s\n", cfg.AWSConfig.LabelPrefix)
 			fmt.Printf("  workers           : %d\n", cfg.AWSConfig.NumWorker)
 			fmt.Printf("  rds instance class: %s\n", cfg.AWSConfig.RDSInstanceClass)
+			fmt.Printf("  swarm node size   : %s\n", cfg.AWSConfig.SwarmNodeSize)
 			fmt.Printf("  create broker     : %t\n", cfg.AWSConfig.CreateBrokerServer)
 			fmt.Printf("  deploy swarm      : %t\n", cfg.AWSConfig.DeploySwarm)
 		}
@@ -292,18 +327,39 @@ func (c *Container) editProvisioningSummary(cfg *configs.D8XConfig) error {
 			return err
 		}
 		lc.SwarmNodeSize = v
-		b, err := c.TUI.NewPrompt("create broker server?", lc.CreateBrokerServer)
+		b, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision a broker server?",
+				"terraform creates a broker host for this environment",
+				"no broker host is created; if one already exists, the auto approved terraform apply destroys it together with its data",
+			),
+			lc.CreateBrokerServer,
+		)
 		if err != nil {
 			return err
 		}
 		lc.CreateBrokerServer = b
-		b, err = c.TUI.NewPrompt("deploy swarm?", lc.DeploySwarm)
+		b, err = c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision the swarm servers?",
+				"terraform creates the manager and worker nodes for this environment",
+				"no swarm nodes are created; if they already exist, the auto approved terraform apply destroys the manager and workers together with their data",
+			),
+			lc.DeploySwarm,
+		)
 		if err != nil {
 			return err
 		}
 		lc.DeploySwarm = b
 		useExternalDb := lc.DbId != ""
-		useExternalDb, err = c.TUI.NewPrompt("use an external Linode managed Postgres cluster?", useExternalDb)
+		useExternalDb, err = c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Attach a Linode managed Postgres cluster?",
+				"asks for an existing cluster id so terraform can allow the swarm nodes to reach it",
+				"clears the stored cluster id; the swarm then uses only the database dsn you supply during \"d8x setup swarm-deploy\"",
+			),
+			useExternalDb,
+		)
 		if err != nil {
 			return err
 		}
@@ -341,12 +397,31 @@ func (c *Container) editProvisioningSummary(cfg *configs.D8XConfig) error {
 			return err
 		}
 		ac.RDSInstanceClass = v
-		b, err := c.TUI.NewPrompt("create broker server?", ac.CreateBrokerServer)
+		v, err = c.promptString("swarm node size:", defaultStr(ac.SwarmNodeSize, "t3.small"))
+		if err != nil {
+			return err
+		}
+		ac.SwarmNodeSize = v
+		b, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision a broker server?",
+				"terraform creates a broker host for this environment",
+				"no broker host is created; if one already exists, the auto approved terraform apply destroys it together with its data",
+			),
+			ac.CreateBrokerServer,
+		)
 		if err != nil {
 			return err
 		}
 		ac.CreateBrokerServer = b
-		b, err = c.TUI.NewPrompt("deploy swarm?", ac.DeploySwarm)
+		b, err = c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision the swarm servers?",
+				"terraform creates the manager and worker nodes for this environment",
+				"no swarm nodes are created; if they already exist, the auto approved terraform apply destroys the manager and workers together with their data",
+			),
+			ac.DeploySwarm,
+		)
 		if err != nil {
 			return err
 		}
@@ -428,7 +503,6 @@ func snapshotProvisioningCfg(cfg *configs.D8XConfig) string {
 		aws := *cfg.AWSConfig
 		aws.AccesKey = ""
 		aws.SecretKey = ""
-		aws.RDSCredentialsFilePath = ""
 		s.AWS = &aws
 	}
 	data, _ := json.Marshal(s)
@@ -452,6 +526,9 @@ func (c *InputCollector) CollectProvisioningCredentialsOnly(ctx *cli.Context) er
 	}
 	switch cfg.ServerProvider {
 	case configs.D8XServerProviderLinode:
+		if cfg.LinodeConfig == nil {
+			return fmt.Errorf("%s/config.json on the infra repo sets server_provider=linode but has no linode_config block; rerun \"d8x setup provision\" and pick \"Edit values before proceeding\" to fill it in", c.SelectedEnv)
+		}
 		token := readEnvSecret(c.SelectedEnv, "LINODE_TOKEN")
 		if token == "" {
 			fmt.Println("Enter your Linode API token")
@@ -467,15 +544,16 @@ func (c *InputCollector) CollectProvisioningCredentialsOnly(ctx *cli.Context) er
 				saveAndReport(envSuffixedField(c.SelectedEnv, "LINODE_TOKEN"), token)
 			}
 		}
-		if cfg.LinodeConfig != nil {
-			cfg.LinodeConfig.Token = token
-		}
+		cfg.LinodeConfig.Token = token
 		c.provisioning.selectedServerProvider = ServerProviderLinode
 		c.provisioning.collectedLinodeConfigurer = &linodeConfigurer{
 			D8XLinodeConfig: *cfg.LinodeConfig,
 			authorizedKey:   authorizedKey,
 		}
 	case configs.D8XServerProviderAWS:
+		if cfg.AWSConfig == nil {
+			return fmt.Errorf("%s/config.json on the infra repo sets server_provider=aws but has no aws_config block; rerun \"d8x setup provision\" and pick \"Edit values before proceeding\" to fill it in", c.SelectedEnv)
+		}
 		access := readEnvSecret(c.SelectedEnv, "AWS_ACCESS_KEY")
 		if access == "" {
 			fmt.Println("Enter your AWS Access Key: ")
@@ -507,10 +585,8 @@ func (c *InputCollector) CollectProvisioningCredentialsOnly(ctx *cli.Context) er
 				saveAndReportPersonal(envSuffixedField(c.SelectedEnv, "AWS_SECRET_KEY"), secret)
 			}
 		}
-		if cfg.AWSConfig != nil {
-			cfg.AWSConfig.AccesKey = access
-			cfg.AWSConfig.SecretKey = secret
-		}
+		cfg.AWSConfig.AccesKey = access
+		cfg.AWSConfig.SecretKey = secret
 		c.provisioning.selectedServerProvider = ServerProviderAws
 		c.provisioning.collectedAwsConfigurer = &awsConfigurer{
 			D8XAWSConfig:  *cfg.AWSConfig,

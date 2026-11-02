@@ -31,7 +31,6 @@ func uniqueStrings(in []string) []string {
 
 type ChainJsonEntry struct {
 	SDKNetwork               string `json:"sdkNetwork"`
-	DefaultPythWSEndpoint    string `json:"priceServiceWSEndpoint"`
 	DefaultPythHTTPSEndpoint string `json:"priceServiceHTTPSEndpoint"`
 	// Chain type is either testnet or mainnet
 	Type string `json:"type"`
@@ -247,11 +246,6 @@ func (c ChainJson) GetChainType(chainId string) string {
 		return c["default"].Type
 	}
 	return entry.Type
-}
-
-type WSRPCSlice struct {
-	Entries     []string
-	OmitIfEmpty bool
 }
 
 type RPCConfigEntry struct {

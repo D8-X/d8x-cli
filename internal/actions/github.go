@@ -9,6 +9,31 @@ import (
 	"path/filepath"
 )
 
+func clearFetchedTerraformFiles(dir string) error {
+	keep := map[string]bool{
+		"terraform.tfstate":        true,
+		"terraform.tfstate.backup": true,
+		".terraform":               true,
+		".terraform.lock.hcl":      true,
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, e := range entries {
+		if keep[e.Name()] {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return fmt.Errorf("removing stale %s: %w", e.Name(), err)
+		}
+	}
+	return nil
+}
+
 func ghFetchDir(token, repoPath, localDir string) error {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", getGhRepo(), repoPath)
 	req, err := http.NewRequest("GET", url, nil)
@@ -38,7 +63,9 @@ func ghFetchDir(token, repoPath, localDir string) error {
 		return err
 	}
 
-	os.MkdirAll(localDir, 0755)
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return fmt.Errorf("creating %s: %w", localDir, err)
+	}
 
 	for _, e := range entries {
 		localPath := filepath.Join(localDir, e.Name)

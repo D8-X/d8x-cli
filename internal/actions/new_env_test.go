@@ -149,7 +149,7 @@ func TestBuildTfvars_AWS_TestNewChain(t *testing.T) {
 	assert.Contains(t, out, "num_workers          = 4")
 	assert.Contains(t, out, "create_broker_server = true")
 	assert.Contains(t, out, "create_swarm         = true")
-	assert.Contains(t, out, `rds_instance_class   = "db.t4g.small"`)
+	assert.Contains(t, out, `db_instance_class    = "db.t4g.small"`)
 }
 
 func TestBuildTfvars_AWS_DefaultsRdsInstanceClass_WhenEmpty(t *testing.T) {
@@ -161,7 +161,8 @@ func TestBuildTfvars_AWS_DefaultsRdsInstanceClass_WhenEmpty(t *testing.T) {
 		},
 	}
 	out := buildTfvars(cfg)
-	assert.Contains(t, out, `rds_instance_class   = "db.t4g.small"`)
+	assert.Contains(t, out, `db_instance_class    = "db.t4g.small"`)
+	assert.Contains(t, out, `worker_size          = "t3.small"`)
 }
 
 func TestBuildTfvars_NilConfigs_ReturnsEmpty(t *testing.T) {

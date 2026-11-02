@@ -101,11 +101,25 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 		return err
 	}
 
-	createBroker, err := c.TUI.NewPrompt("Provision a broker server alongside the swarm?", true)
+	createBroker, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Provision a broker server alongside the swarm?",
+			"the generated env config asks terraform for a broker host",
+			"no broker host is defined for this environment; the swarm would have to point at a broker you run elsewhere",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
-	deploySwarm, err := c.TUI.NewPrompt("Deploy the swarm stack?", true)
+	deploySwarm, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Provision the swarm servers (one manager plus the workers)?",
+			"the generated env config asks terraform for the manager and worker nodes",
+			"no swarm nodes are defined for this environment; only the broker server is created",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -113,6 +127,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 	brokerSize := "g6-dedicated-2"
 	swarmNodeSize := "g6-dedicated-2"
 	rdsInstanceClass := "db.t4g.small"
+	awsNodeSize := "t3.small"
 	useExternalDb := false
 	externalDbId := ""
 	switch provider {
@@ -138,7 +153,14 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			if swarmNodeSize == "" {
 				swarmNodeSize = "g6-dedicated-2"
 			}
-			useExternalDb, err = c.TUI.NewPrompt("Use an external Linode managed Postgres cluster?", false)
+			useExternalDb, err = c.TUI.NewPrompt(
+				yesNoQuestion(
+					"Attach a Linode managed Postgres cluster to this environment?",
+					"asks for an existing cluster id and records it so terraform allows the swarm nodes to reach it",
+					"no Linode database is recorded; the swarm uses the external database dsn you supply during \"d8x setup swarm-deploy\"",
+				),
+				false,
+			)
 			if err != nil {
 				return err
 			}
@@ -152,6 +174,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			}
 		}
 	case "aws":
+		awsNodeSize = "t3.small"
 		if deploySwarm {
 			fmt.Println("RDS instance class:")
 			rdsInstanceClass, err = c.TUI.NewInput(components.TextInputOptValue("db.t4g.small"))
@@ -162,11 +185,27 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			if rdsInstanceClass == "" {
 				rdsInstanceClass = "db.t4g.small"
 			}
+			fmt.Println("Swarm node size (also used for the broker host):")
+			awsNodeSize, err = c.TUI.NewInput(components.TextInputOptValue("t3.small"))
+			if err != nil {
+				return err
+			}
+			awsNodeSize = strings.TrimSpace(awsNodeSize)
+			if awsNodeSize == "" {
+				awsNodeSize = "t3.small"
+			}
 		}
 	}
 
 	fmt.Println(styles.ItalicText.Render("\nNginx rate limiting throttles incoming requests per client IP across the api/ws/history/candles endpoints. When the limit is exceeded the client gets HTTP 503 until traffic slows down."))
-	rateLimitEnabled, err := c.TUI.NewPrompt("Enable nginx rate limiting for this environment?", true)
+	rateLimitEnabled, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Enable nginx rate limiting for this environment?",
+			"asks for the limit and burst values below and writes them into the env config",
+			"the generated nginx configs forward every request with no per client cap",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -239,6 +278,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			Region:             region,
 			NumWorker:          numWorkers,
 			RDSInstanceClass:   rdsInstanceClass,
+			SwarmNodeSize:      awsNodeSize,
 			CreateBrokerServer: createBroker,
 			DeploySwarm:        deploySwarm,
 		}
@@ -279,11 +319,6 @@ if ($is_allowed_origin = 1) {
 }
 
 if ($http_x_api_key = 'API_KEY_HERE') {
-    set $auth_ok 1;
-}
-
-# Grafana dashboard server
-if ($remote_addr = '172.104.135.218') {
     set $auth_ok 1;
 }
 
@@ -630,7 +665,14 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 	}
 
 	printConfigStep("trader-backend/rpc.history.json", "history service RPC list", chainID)
-	reuse, err := c.TUI.NewPrompt("Reuse the same RPCs as rpc.main.json?", true)
+	reuse, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Reuse the same RPCs as rpc.main.json?",
+			"the history service shares the rpc list you just entered",
+			"prompts for a separate rpc list for the history service, which is useful when it needs an archive node",
+		),
+		true,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +695,14 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 	}
 
 	printConfigStep("candles/rpc_conf.json", "candles WS listener RPCs", chainID)
-	configureCandles, err := c.TUI.NewPrompt("Configure candles RPC list now? (skip to keep embedded defaults)", true)
+	configureCandles, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Configure the candles rpc list now?",
+			"prompts for the https and wss endpoints the candles listener uses",
+			"keeps the rpc endpoints embedded in the cli, which may not match this chain",
+		),
+		true,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -677,7 +726,14 @@ func (c *Container) collectOperatorConfigs(chainID uint) (map[string]string, err
 	}
 
 	printConfigStep("broker-server/rpc.json", "broker RPC list", chainID)
-	reuseBroker, err := c.TUI.NewPrompt("Reuse rpc.main.json HTTPs for the broker?", true)
+	reuseBroker, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Reuse the rpc.main.json https endpoints for the broker?",
+			"the broker shares the https rpc list you just entered",
+			"prompts for a separate https rpc list for the broker",
+		),
+		true,
+	)
 	if err != nil {
 		return nil, err
 	}
