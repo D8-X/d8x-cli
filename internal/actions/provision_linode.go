@@ -191,7 +191,18 @@ func (c *InputCollector) CollectLinodeProviderDetails(cfg *configs.D8XConfig) (l
 
 	// DB for swarm
 	if c.setup.deploySwarm {
-		if ok, err := c.TUI.NewPrompt("Do you want to use an external database? (choose no if you have a legacy Linode DB cluster)", true); err == nil && !ok {
+		useLinodeDb, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Attach a Linode managed Postgres cluster to this environment?",
+				"asks for an existing cluster id so terraform can allow the swarm nodes to reach it",
+				"no Linode database is attached; the swarm uses the external database dsn you supply during \"d8x setup swarm-deploy\"",
+			),
+			false,
+		)
+		if err != nil {
+			return l, err
+		}
+		if useLinodeDb {
 			fmt.Println("Enter your Linode database cluster ID")
 			dbId, err := c.TUI.NewInput(
 				components.TextInputOptPlaceholder("12345678"),

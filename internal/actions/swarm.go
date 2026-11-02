@@ -191,7 +191,14 @@ func (c *Container) importRemoteSwarmDeployConfig(_ *cli.Context, managerIp stri
 	}
 
 	fmt.Println(styles.ItalicText.Render("Found existing deployed swarm config on manager."))
-	keep, err := c.TUI.NewPrompt("Load remote swarm config from manager and keep it as baseline?", true)
+	keep, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Load the swarm config from the manager and use it as the baseline?",
+			"the live values on the manager become the starting point, so this deploy only changes what you explicitly change",
+			"the local config and Bitwarden are the only source, which can overwrite values that exist only on the manager",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -629,7 +636,14 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 
 	if err := c.importRemoteSwarmDeployConfig(ctx, managerIp); err != nil {
 		fmt.Println(styles.ErrorText.Render(fmt.Sprintf("Could not load remote swarm config: %v", err)))
-		cont, perr := c.TUI.NewPrompt("Proceed without remote config? (this will deploy as if it were a fresh cluster and may overwrite live values)", false)
+		cont, perr := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Proceed without the remote config?",
+				"deploys as if this were a fresh cluster, which can overwrite values that exist only on the manager",
+				"stops here so you can fix manager access and rerun \"d8x setup swarm-deploy\"",
+			),
+			false,
+		)
 		if perr != nil {
 			return perr
 		}
@@ -808,7 +822,14 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 					}
 					fmt.Println(styles.ItalicText.Render("  ---- end ----"))
 				}
-				accept, perr := c.TUI.NewPrompt(fmt.Sprintf("Overwrite manager:%s?", mf.dst), false)
+				accept, perr := c.TUI.NewPrompt(
+					yesNoQuestion(
+						fmt.Sprintf("Overwrite manager:%s?", mf.dst),
+						"copies the version shown as added in the diff above and recreates the docker config that uses it",
+						"keeps the file on the manager as it is and skips recreating its docker config",
+					),
+					false,
+				)
 				if perr != nil {
 					return perr
 				}
@@ -878,7 +899,14 @@ func (c *Container) swarmDeploy(ctx *cli.Context, showConfigConfirmation bool) e
 	if _, err := managerSSHConn.ExecCommand(
 		fmt.Sprintf("printf '%%s\\n' %s | sudo -S docker stack ls | grep %s >/dev/null 2>&1", shQuote(pwd), shQuote(dockerStackName)),
 	); err == nil {
-		ok, err := c.TUI.NewPrompt("\nThere seems to be an existing stack deployed. Do you want to remove it before redeploying?", true)
+		ok, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				fmt.Sprintf("\nThe %q stack is already deployed. Remove it before redeploying?", dockerStackName),
+				"takes every service down and recreates them, so the api, ws, history and candles endpoints are unavailable for the duration",
+				"deploys over the running stack, which rolls services one by one but can leave old containers on stale configs",
+			),
+			true,
+		)
 		if err != nil {
 			return err
 		}
@@ -1024,7 +1052,14 @@ func (c *Container) SwarmNginx(ctx *cli.Context) error {
 		return err
 	}
 
-	setupCertbot, err := c.TUI.NewPrompt("Setup SSL certificates with certbot?", true)
+	setupCertbot, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Request SSL certificates with certbot now?",
+			"runs certbot for every swarm hostname and adds the https server blocks to the nginx config just deployed",
+			"leaves nginx serving plain http on port 80 only, so https clients and Cloudflare origin pulls will fail until certbot runs",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}

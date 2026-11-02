@@ -33,7 +33,11 @@ func (c *Container) Setup(ctx *cli.Context) error {
 	// Prompt to clean up config when it exists
 	if !cfg.IsEmpty() {
 		keepConfig, err := c.TUI.NewPrompt(
-			fmt.Sprintf("Existing configuration (%s) was found. Do you want to use it?", cfg.ServerProvider),
+			yesNoQuestion(
+				fmt.Sprintf("Existing configuration (%s) was found. Reuse it?", cfg.ServerProvider),
+				"keeps the stored provider, server sizes and secrets, and asks only for values that are missing",
+				"offers to clear the loaded configuration so every value is collected again from scratch",
+			),
 			true,
 		)
 
@@ -44,11 +48,20 @@ func (c *Container) Setup(ctx *cli.Context) error {
 			// Print out a warning one more time to prevent accidental deletion
 			// of config
 			fmt.Println(
-				styles.AlertImportant.Render("Warning! Existing configuration will be completely removed!"),
+				styles.AlertImportant.Render("Warning! This discards every value the cli has loaded for this environment."),
 			)
-			if yes, err := c.TUI.NewPrompt("Are you sure you want to continue?", false); err != nil {
+			clearCfg, err := c.TUI.NewPrompt(
+				yesNoQuestion(
+					"Clear the loaded configuration now?",
+					"empties the in memory config; provider, server sizes and secrets are re-read from the infra repo and Bitwarden on the next env selection",
+					"keeps the existing configuration and continues with it",
+				),
+				false,
+			)
+			if err != nil {
 				return err
-			} else if yes {
+			}
+			if clearCfg {
 				if err := c.ConfigRWriter.Write(&configs.D8XConfig{}); err != nil {
 					return err
 				}
@@ -112,7 +125,18 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		if cfg.ServerProvider == configs.D8XServerProviderLinode && (cfg.SwarmDeployed || cfg.BrokerDeployed) {
 			fmt.Println("Some configuration steps failed, but we will continue with other actions...")
 		} else {
-			if ok, _ := c.TUI.NewPrompt("Configuration failed, do you want to continue?", false); !ok {
+			cont, perr := c.TUI.NewPrompt(
+				yesNoQuestion(
+					"The \"configure\" step failed. Continue with the remaining setup steps?",
+					"runs broker deploy, swarm deploy and nginx anyway, which may fail again or leave the cluster half configured",
+					"stops here and returns the configure error so you can fix it and rerun \"d8x setup\"",
+				),
+				false,
+			)
+			if perr != nil {
+				return perr
+			}
+			if !cont {
 				return err
 			}
 		}
@@ -146,7 +170,18 @@ func (c *Container) Setup(ctx *cli.Context) error {
 		}
 	}
 
-	if ok, _ := c.TUI.NewPrompt("Do you want to perform services healthchecks?", true); ok {
+	runHealth, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Run health checks against the deployed services now?",
+			"probes the api, history, candles and broker endpoints and prints which ones answered",
+			"finishes setup without probing; you can run \"d8x health\" at any time later",
+		),
+		true,
+	)
+	if err != nil {
+		return err
+	}
+	if runHealth {
 		if err := c.HealthCheck(ctx); err != nil {
 			return err
 		}

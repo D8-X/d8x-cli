@@ -208,13 +208,27 @@ func (input *InputCollector) CollectProvisioningData(ctx *cli.Context) error {
 	// We must ask about broker server before collecting information for the
 	// actual provisioning step, since we need to know whether to ask for broker
 	// server size on linode.
-	createBrokerServer, err := input.TUI.NewPrompt("Do you want to provision a broker server?", true)
+	createBrokerServer, err := input.TUI.NewPrompt(
+		yesNoQuestion(
+			"Provision a broker server for this environment?",
+			"terraform creates a dedicated broker host and setup later deploys the broker service on it",
+			"no broker host is created; the swarm must point at a broker you run elsewhere",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
 	input.setup.deployBroker = createBrokerServer
 	// Same for swarm servers
-	deploySwarm, err := input.TUI.NewPrompt("Do you want to provision swarm servers?", true)
+	deploySwarm, err := input.TUI.NewPrompt(
+		yesNoQuestion(
+			"Provision the swarm servers (one manager plus the workers)?",
+			"terraform creates the manager and worker nodes and setup later deploys the trader backend stack on them",
+			"no swarm nodes are created; only the broker server is provisioned",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -321,7 +335,14 @@ func (input *InputCollector) CollectBrokerPrivateKey() error {
 			if addr, err := PrivateKeyToAddress(normalized); err == nil {
 				fmt.Printf("%s found broker private key in Bitwarden as %s\n", ok, fieldName)
 				fmt.Printf("  Wallet address: %s\n", addr.Hex())
-				reuse, perr := input.TUI.NewPrompt("Reuse this key?", true)
+				reuse, perr := input.TUI.NewPrompt(
+					yesNoQuestion(
+						"Reuse the broker private key stored in Bitwarden?",
+						"deploys the broker with the key whose address is shown above",
+						"prompts for a different private key, which is used for this deploy instead",
+					),
+					true,
+				)
 				if perr != nil {
 					return perr
 				}
@@ -343,7 +364,11 @@ func (input *InputCollector) CollectBrokerPrivateKey() error {
 
 	if os.Getenv("BW_SESSION") != "" && input.SelectedEnv != "" {
 		save, perr := input.TUI.NewPrompt(
-			fmt.Sprintf("Save the broker private key to Bitwarden as %s for redeploy convenience? (the key signs broker orders; only persist it if your Bitwarden vault is the right place for it)", fieldName),
+			yesNoQuestion(
+				fmt.Sprintf("Save the broker private key to Bitwarden as %s?", fieldName),
+				"stores the key in the vault so later redeploys do not ask for it again",
+				"leaves Bitwarden untouched; you will have to paste the key on every redeploy",
+			),
 			true,
 		)
 		if perr != nil {
@@ -427,13 +452,27 @@ func (input *InputCollector) CollectBrokerNginxInput(ctx *cli.Context) error {
 		return err
 	}
 
-	setupNginx, err := input.TUI.NewPrompt("Do you want to setup nginx for broker-server?", true)
+	setupNginx, err := input.TUI.NewPrompt(
+		yesNoQuestion(
+			"Install and configure nginx on the broker server?",
+			"writes the broker site config and reloads nginx, replacing the config currently deployed there",
+			"leaves the nginx config on the broker server exactly as it is",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
 	input.brokerNginxInput.setupNginx = setupNginx
 
-	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for broker-server?", true)
+	setupCertbot, err := input.TUI.NewPrompt(
+		yesNoQuestion(
+			"Request an SSL certificate with certbot for the broker domain?",
+			"runs certbot, which issues the certificate and adds the https server block to the nginx config",
+			"nginx keeps serving plain http on port 80 only",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -502,13 +541,27 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 	existingConfig := cfg.ChainId != 0 && (len(cfg.HttpRpcList[chainIdStr]) > 0 || len(cfg.WsRpcList[chainIdStr]) > 0 || cfg.DatabaseDSN != "" || cfg.SwarmRedisPassword != "" || cfg.SwarmRemoteBrokerHTTPUrl != "" || len(cfg.UserSuppliedPriceFeedEndpoints) > 0)
 	if existingConfig {
 		fmt.Println(styles.ItalicText.Render("Found existing swarm deploy configuration."))
-		keepExisting, err := input.TUI.NewPrompt("Do you want to keep this configuration and only collect missing values?", true)
+		keepExisting, err := input.TUI.NewPrompt(
+			yesNoQuestion(
+				"Keep the swarm deploy configuration that was found?",
+				"reuses the stored chain id, rpc lists, database dsn and passwords, and asks only for values that are missing",
+				"walks through every swarm deploy value again so you can change them",
+			),
+			true,
+		)
 		if err != nil {
 			return err
 		}
 		input.swarmDeployInput.guideConfig = !keepExisting
 	} else {
-		guideUser, err := input.TUI.NewPrompt("Would you like the cli to guide you through swarm-deploy configuration?", true)
+		guideUser, err := input.TUI.NewPrompt(
+			yesNoQuestion(
+				"Walk through the swarm deploy configuration now?",
+				"asks about every value, so you can review the chain id, rpc endpoints, database dsn and broker url even when one is already set",
+				"asks only for the values that are still empty",
+			),
+			true,
+		)
 		if err != nil {
 			return err
 		}
@@ -554,7 +607,14 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		changeRemoteBrokerHTTP := true
 		if cfg.SwarmRemoteBrokerHTTPUrl != "" {
 			fmt.Printf("Found remote broker http url: %s\n", cfg.SwarmRemoteBrokerHTTPUrl)
-			if keep, err := input.TUI.NewPrompt("Do you want to keep remote broker http endpoint?", true); err != nil {
+			if keep, err := input.TUI.NewPrompt(
+				yesNoQuestion(
+					"Keep this remote broker http endpoint?",
+					"the swarm services keep calling the url shown above",
+					"prompts for a different broker url",
+				),
+				true,
+			); err != nil {
 				return err
 			} else if keep {
 				changeRemoteBrokerHTTP = false
@@ -589,7 +649,14 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 		// candles/prices.config.json. Note that public hermes (default value
 		// from chain.json) endpoint is always added at the end of price
 		// endpoints list in swarm deploy step.
-		dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+		dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt(
+			yesNoQuestion(
+				"\nUse the public Hermes Pyth price service as the only price feed endpoint?",
+				"candles/prices.config.json gets the public hermes entry and nothing else",
+				"prompts for one extra endpoint, which is tried before the public hermes entry",
+			),
+			true,
+		)
 		if err != nil {
 			return err
 		}
@@ -688,7 +755,14 @@ func (input *InputCollector) CollectSwarmDeployInputs(ctx *cli.Context) error {
 			cfg.SwarmRemoteBrokerHTTPUrl = EnsureHttpsPrefixExists(brokerUrl)
 		}
 		if len(cfg.UserSuppliedPriceFeedEndpoints) == 0 {
-			dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt("\nUse public Hermes Pyth Price Service endpoint only (entry in ./candles/prices.config.json)?", true)
+			dontAddAnotherPythEndpoint, err := input.TUI.NewPrompt(
+				yesNoQuestion(
+					"\nUse the public Hermes Pyth price service as the only price feed endpoint?",
+					"candles/prices.config.json gets the public hermes entry and nothing else",
+					"prompts for one extra endpoint, which is tried before the public hermes entry",
+				),
+				true,
+			)
 			if err != nil {
 				return err
 			}
@@ -728,13 +802,27 @@ func (input *InputCollector) CollectSwarmNginxInputs(ctx *cli.Context) error {
 		return err
 	}
 
-	setupNginx, err := input.TUI.NewPrompt("Do you want to setup nginx for swarm-server?", true)
+	setupNginx, err := input.TUI.NewPrompt(
+		yesNoQuestion(
+			"Install and configure nginx on the manager server?",
+			"writes the api, ws, history and candles site configs and reloads nginx, replacing the configs currently deployed there",
+			"leaves the nginx configs on the manager server exactly as they are",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
 	input.swarmNginxInput.setupNginx = setupNginx
 
-	setupCertbot, err := input.TUI.NewPrompt("Do you want to setup SSL with certbot for manager server?", true)
+	setupCertbot, err := input.TUI.NewPrompt(
+		yesNoQuestion(
+			"Request SSL certificates with certbot for the swarm domains?",
+			"runs certbot for every swarm hostname and adds the https server blocks to nginx",
+			"nginx keeps serving plain http on port 80 only",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -811,7 +899,11 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 
 		c.chainIdSelected = true
 
-		info := fmt.Sprintf("Currently using chain id: %d. Keep using this chain id?", cfg.ChainId)
+		info := yesNoQuestion(
+			fmt.Sprintf("Currently using chain id %d. Keep it?", cfg.ChainId),
+			"the rpc lists and contract addresses stay on this chain",
+			"lets you pick a different chain id, which changes which rpc endpoints and contracts are used",
+		)
 		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return 0, err
@@ -867,7 +959,11 @@ func (c *InputCollector) GetChainId(cfg *configs.D8XConfig, ctx *cli.Context) (u
 func (c *InputCollector) CollectDatabaseDSN(cfg *configs.D8XConfig) error {
 	change := true
 	if cfg.DatabaseDSN != "" {
-		info := fmt.Sprintf("Found DATABASE_DSN=%s\nDo you want keep it?", redactDSN(cfg.DatabaseDSN))
+		info := yesNoQuestion(
+			fmt.Sprintf("A database dsn is already configured:\n  %s\nKeep it?", redactDSN(cfg.DatabaseDSN)),
+			"the api and history services keep using this database",
+			"prompts for a new connection string, which replaces the stored one",
+		)
 		keep, err := c.TUI.NewPrompt(info, true)
 		if err != nil {
 			return err
@@ -1065,7 +1161,14 @@ func (c *InputCollector) CollectCertbotEmail(cfg *configs.D8XConfig) (string, er
 	change := true
 	if cfg.CertbotEmail != "" {
 		fmt.Printf("Email for certbot notifications is set to %s\n", cfg.CertbotEmail)
-		keep, err := c.TUI.NewPrompt("Do you want to keep it?", true)
+		keep, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Keep this certbot email?",
+				"certbot keeps sending certificate expiry notices to the address above",
+				"prompts for a different address",
+			),
+			true,
+		)
 		if err != nil {
 			return "", err
 		}
@@ -1154,7 +1257,11 @@ func (c *InputCollector) EnsureSSHKeyPresent(sshKeyPath string, cfg *configs.D8X
 		createKey = true
 	} else {
 		keep, err := c.TUI.NewPrompt(
-			fmt.Sprintf("SSH key %s was found, do you want to keep it? (Changing keypair forces servers re-creation)", sshKeyPath),
+			yesNoQuestion(
+				fmt.Sprintf("SSH key %s was found. Keep it?", sshKeyPath),
+				"the existing keypair is reused and already provisioned servers stay reachable",
+				"generates a new keypair and overwrites the files above; terraform then recreates every server in this environment, which destroys their data",
+			),
 			true,
 		)
 		if err != nil {

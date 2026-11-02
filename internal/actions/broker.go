@@ -19,9 +19,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-
 const BROKER_KEY_VOL_NAME = "keyvol"
-
 
 func (c *Container) EditBrokerEnvBytes(envContent []byte, managed map[string]string) ([]byte, error) {
 	envFileLines := strings.Split(string(envContent), "\n")
@@ -342,7 +340,11 @@ func (c *Container) BrokerDeploy(ctx *cli.Context) error {
 	}
 	if keyVolExists {
 		writeKey, err = c.TUI.NewPrompt(
-			fmt.Sprintf("Docker volume %q already holds a broker private key on the server. Overwrite the stored key?", BROKER_KEY_VOL_NAME),
+			yesNoQuestion(
+				fmt.Sprintf("Docker volume %q already holds a broker private key on the server. Overwrite the stored key?", BROKER_KEY_VOL_NAME),
+				"replaces the stored key with the one collected for this deploy, so the broker signs with a different address from now on",
+				"keeps the key already in the volume; the key collected for this deploy is not written",
+			),
 			false,
 		)
 		if err != nil {
@@ -480,7 +482,14 @@ func (c *Container) BrokerServerNginxCertbotSetup(ctx *cli.Context) error {
 	cfg.BrokerNginxDeployed = true
 
 	// Certbot
-	setupCertbot, err := c.TUI.NewPrompt("Setup SSL certificate with certbot?", true)
+	setupCertbot, err := c.TUI.NewPrompt(
+		yesNoQuestion(
+			"Request an SSL certificate with certbot now?",
+			"runs certbot, which issues the certificate and adds the https server block to the nginx config just deployed",
+			"leaves nginx serving plain http on port 80 only, so an https client or a Cloudflare origin pull will fail until certbot runs",
+		),
+		true,
+	)
 	if err != nil {
 		return err
 	}
@@ -579,7 +588,14 @@ func (c *Container) confirmBrokerFileOverwrite(change brokerFileChange) (bool, e
 	fmt.Println()
 	fmt.Println(styles.PurpleBgText.Copy().Padding(0, 2).Render("Pending changes to broker " + change.label))
 	fmt.Println(renderUnifiedDiff(string(change.current), string(change.proposed)))
-	return c.TUI.NewPrompt(fmt.Sprintf("Overwrite %q on the broker server?", change.label), false)
+	return c.TUI.NewPrompt(
+		yesNoQuestion(
+			fmt.Sprintf("Overwrite %q on the broker server?", change.label),
+			"writes the version shown as added in the diff above",
+			"keeps the file currently on the broker server and skips this change",
+		),
+		false,
+	)
 }
 
 // resolveBrokerEnvOverwrite lets the operator accept or reject each .env change
@@ -893,4 +909,3 @@ func (c *Container) editInfraRepoFile(repoRelPath string, content *[]byte) error
 	*content = edited
 	return nil
 }
-

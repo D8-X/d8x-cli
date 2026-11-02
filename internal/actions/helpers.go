@@ -10,6 +10,7 @@ import (
 	"github.com/D8-X/d8x-cli/internal/configs"
 	"github.com/D8-X/d8x-cli/internal/files"
 	"github.com/D8-X/d8x-cli/internal/flags"
+	"github.com/D8-X/d8x-cli/internal/styles"
 	"github.com/urfave/cli/v2"
 )
 
@@ -183,4 +184,13 @@ func UpdateConfigBytes[Target any](contents []byte, updateFn func(*Target) error
 		return contents, nil
 	}
 	return json.MarshalIndent(target, "", "  ")
+}
+
+func yesNoQuestion(question, yesMeans, noMeans string) string {
+	return fmt.Sprintf(
+		"%s\n%s\n%s",
+		question,
+		styles.GrayText.Render("  yes: "+yesMeans),
+		styles.GrayText.Render("  no:  "+noMeans),
+	)
 }

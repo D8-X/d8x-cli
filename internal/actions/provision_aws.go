@@ -125,7 +125,14 @@ func (a *awsConfigurer) PostProvisioningAction(c *Container) error {
 
 	recoveryHint := fmt.Sprintf("Easiest retry: rerun \"d8x setup provision\" and accept the auto-create prompt. Manual alternative: on the manager (\"d8x ssh manager\") run a psql against the RDS host using the values from Bitwarden fields AWS_RDS_HOST_%s / AWS_RDS_PORT_%s / AWS_RDS_USER_%s / AWS_RDS_PASSWORD_%s and execute \"CREATE DATABASE %s;\".", envUpper, envUpper, envUpper, envUpper, dbName)
 
-	create, perr := c.TUI.NewPrompt(fmt.Sprintf("Auto-create the %q database on RDS now? (decline only if you'll create it manually on the manager before \"d8x setup swarm-deploy\")", dbName), true)
+	create, perr := c.TUI.NewPrompt(
+		yesNoQuestion(
+			fmt.Sprintf("Create the %q database on the RDS instance now?", dbName),
+			"connects to RDS with the credentials from Bitwarden and runs CREATE DATABASE",
+			fmt.Sprintf("nothing is created; you must create %q yourself before running \"d8x setup swarm-deploy\" or the history service will fail to start", dbName),
+		),
+		true,
+	)
 	if perr != nil {
 		return perr
 	}

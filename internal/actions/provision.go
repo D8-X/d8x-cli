@@ -52,7 +52,14 @@ func (c *Container) Provision(ctx *cli.Context) error {
 				c.SelectedEnv, managerIp,
 			)))
 			fmt.Println(styles.ItalicText.Render("Re-running provision will recreate or modify cloud servers and almost certainly cause downtime."))
-			proceed, perr := c.TUI.NewPrompt("Force re-run of \"d8x setup provision\" anyway?", false)
+			proceed, perr := c.TUI.NewPrompt(
+				yesNoQuestion(
+					"Force a re-run of \"d8x setup provision\" anyway?",
+					"terraform runs against the live environment and may modify or recreate servers, which causes downtime",
+					"leaves the provisioned servers untouched and skips this step",
+				),
+				false,
+			)
 			if perr != nil {
 				return perr
 			}
@@ -292,18 +299,39 @@ func (c *Container) editProvisioningSummary(cfg *configs.D8XConfig) error {
 			return err
 		}
 		lc.SwarmNodeSize = v
-		b, err := c.TUI.NewPrompt("create broker server?", lc.CreateBrokerServer)
+		b, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision a broker server?",
+				"terraform creates a broker host for this environment",
+				"no broker host is created; if one already exists, the auto approved terraform apply destroys it together with its data",
+			),
+			lc.CreateBrokerServer,
+		)
 		if err != nil {
 			return err
 		}
 		lc.CreateBrokerServer = b
-		b, err = c.TUI.NewPrompt("deploy swarm?", lc.DeploySwarm)
+		b, err = c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision the swarm servers?",
+				"terraform creates the manager and worker nodes for this environment",
+				"no swarm nodes are created; if they already exist, the auto approved terraform apply destroys the manager and workers together with their data",
+			),
+			lc.DeploySwarm,
+		)
 		if err != nil {
 			return err
 		}
 		lc.DeploySwarm = b
 		useExternalDb := lc.DbId != ""
-		useExternalDb, err = c.TUI.NewPrompt("use an external Linode managed Postgres cluster?", useExternalDb)
+		useExternalDb, err = c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Attach a Linode managed Postgres cluster?",
+				"asks for an existing cluster id so terraform can allow the swarm nodes to reach it",
+				"clears the stored cluster id; the swarm then uses only the database dsn you supply during \"d8x setup swarm-deploy\"",
+			),
+			useExternalDb,
+		)
 		if err != nil {
 			return err
 		}
@@ -341,12 +369,26 @@ func (c *Container) editProvisioningSummary(cfg *configs.D8XConfig) error {
 			return err
 		}
 		ac.RDSInstanceClass = v
-		b, err := c.TUI.NewPrompt("create broker server?", ac.CreateBrokerServer)
+		b, err := c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision a broker server?",
+				"terraform creates a broker host for this environment",
+				"no broker host is created; if one already exists, the auto approved terraform apply destroys it together with its data",
+			),
+			ac.CreateBrokerServer,
+		)
 		if err != nil {
 			return err
 		}
 		ac.CreateBrokerServer = b
-		b, err = c.TUI.NewPrompt("deploy swarm?", ac.DeploySwarm)
+		b, err = c.TUI.NewPrompt(
+			yesNoQuestion(
+				"Provision the swarm servers?",
+				"terraform creates the manager and worker nodes for this environment",
+				"no swarm nodes are created; if they already exist, the auto approved terraform apply destroys the manager and workers together with their data",
+			),
+			ac.DeploySwarm,
+		)
 		if err != nil {
 			return err
 		}
