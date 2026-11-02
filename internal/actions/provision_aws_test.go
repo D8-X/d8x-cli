@@ -123,6 +123,7 @@ func TestAwsConfigurerGenerateVariables(t *testing.T) {
 		"-var", "region=region",
 		"-var", "authorized_key=the_key",
 		"-var", "db_instance_class=db.t4g.small",
+		"-var", "worker_size=t3.small",
 		"-var", "create_broker_server=true",
 		"-var", "rds_creds_filepath=" + RDS_CREDS_FILE,
 		"-var", "create_swarm=true",

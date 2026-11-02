@@ -55,6 +55,9 @@ func (c *Container) CopyLinodeTFFiles() error {
 	}
 
 	fmt.Println(styles.ItalicText.Render("Fetching Terraform configs from GitHub..."))
+	if err := clearFetchedTerraformFiles(c.ProvisioningTfDir); err != nil {
+		return fmt.Errorf("clearing stale terraform files in %s: %w", c.ProvisioningTfDir, err)
+	}
 	if err := ghFetchDir(token, "terraform/linode", c.ProvisioningTfDir); err != nil {
 		return fmt.Errorf("fetching terraform/linode from GitHub: %w", err)
 	}

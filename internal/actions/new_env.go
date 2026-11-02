@@ -127,6 +127,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 	brokerSize := "g6-dedicated-2"
 	swarmNodeSize := "g6-dedicated-2"
 	rdsInstanceClass := "db.t4g.small"
+	awsNodeSize := "t3.small"
 	useExternalDb := false
 	externalDbId := ""
 	switch provider {
@@ -173,6 +174,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			}
 		}
 	case "aws":
+		awsNodeSize = "t3.small"
 		if deploySwarm {
 			fmt.Println("RDS instance class:")
 			rdsInstanceClass, err = c.TUI.NewInput(components.TextInputOptValue("db.t4g.small"))
@@ -182,6 +184,15 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			rdsInstanceClass = strings.TrimSpace(rdsInstanceClass)
 			if rdsInstanceClass == "" {
 				rdsInstanceClass = "db.t4g.small"
+			}
+			fmt.Println("Swarm node size (also used for the broker host):")
+			awsNodeSize, err = c.TUI.NewInput(components.TextInputOptValue("t3.small"))
+			if err != nil {
+				return err
+			}
+			awsNodeSize = strings.TrimSpace(awsNodeSize)
+			if awsNodeSize == "" {
+				awsNodeSize = "t3.small"
 			}
 		}
 	}
@@ -267,6 +278,7 @@ func (c *Container) NewEnvironment(ctx *cli.Context) error {
 			Region:             region,
 			NumWorker:          numWorkers,
 			RDSInstanceClass:   rdsInstanceClass,
+			SwarmNodeSize:      awsNodeSize,
 			CreateBrokerServer: createBroker,
 			DeploySwarm:        deploySwarm,
 		}

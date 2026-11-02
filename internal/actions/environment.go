@@ -30,6 +30,11 @@ func (c *Container) ensureEnvironment(cfg *configs.D8XConfig, provisionedOnly bo
 		return "", err
 	}
 	token := os.Getenv("GITHUB_TOKEN")
+	if os.Getenv("INFRA_REPO") == "" && c.BitwardenFields != nil {
+		if repo := strings.TrimSpace(c.BitwardenFields["INFRA_REPO"]); repo != "" {
+			os.Setenv("INFRA_REPO", repo)
+		}
+	}
 
 	env := c.SelectedEnv
 	var remoteCfg *configs.D8XConfig
@@ -43,10 +48,14 @@ func (c *Container) ensureEnvironment(cfg *configs.D8XConfig, provisionedOnly bo
 			if inputErr != nil {
 				return "", inputErr
 			}
+			repo = strings.TrimSpace(repo)
 			os.Setenv("INFRA_REPO", repo)
 			allDirs, err = ghListDirs(token)
 			if err != nil {
 				return "", fmt.Errorf("cannot access repo '%s': %w", getGhRepo(), err)
+			}
+			if repo != defaultGhRepo && os.Getenv("BW_SESSION") != "" {
+				_ = saveAndReportWithConfirm(c.TUI, bwItemName, "INFRA_REPO", repo)
 			}
 		}
 
@@ -101,6 +110,9 @@ func (c *Container) ensureEnvironment(cfg *configs.D8XConfig, provisionedOnly bo
 			return "", err
 		}
 		idx := indexOf(labels, selected[0])
+		if idx < 0 {
+			return "", fmt.Errorf("could not match the selected environment %q against the list", selected[0])
+		}
 		env = environments[idx]
 		remoteCfg = &envConfigs[idx]
 	} else {
@@ -229,17 +241,21 @@ func recoverProviderFromTfvars(token, env string) *configs.D8XConfig {
 		return nil
 	}
 	_, hasBrokerSize := vars["broker_size"]
-	_, hasRDSClass := vars["rds_instance_class"]
+	dbClass, hasDbClass := vars["db_instance_class"]
+	if !hasDbClass {
+		dbClass, hasDbClass = vars["rds_instance_class"]
+	}
 	out := &configs.D8XConfig{}
 	workers, _ := strconv.Atoi(vars["num_workers"])
 	switch {
-	case hasRDSClass:
+	case hasDbClass:
 		out.ServerProvider = configs.D8XServerProviderAWS
 		out.AWSConfig = &configs.D8XAWSConfig{
 			Region:             vars["region"],
 			LabelPrefix:        vars["server_label_prefix"],
 			NumWorker:          workers,
-			RDSInstanceClass:   vars["rds_instance_class"],
+			RDSInstanceClass:   dbClass,
+			SwarmNodeSize:      vars["worker_size"],
 			CreateBrokerServer: vars["create_broker_server"] == "true",
 			DeploySwarm:        vars["create_swarm"] == "true",
 		}
@@ -250,6 +266,8 @@ func recoverProviderFromTfvars(token, env string) *configs.D8XConfig {
 			LabelPrefix:        vars["server_label_prefix"],
 			NumWorker:          workers,
 			BrokerServerSize:   vars["broker_size"],
+			SwarmNodeSize:      vars["worker_size"],
+			DbId:               positiveIntOrEmpty(vars["linode_db_cluster_id"]),
 			CreateBrokerServer: vars["create_broker_server"] == "true",
 			DeploySwarm:        vars["create_swarm"] == "true",
 		}
@@ -261,6 +279,14 @@ func recoverProviderFromTfvars(token, env string) *configs.D8XConfig {
 
 func parseTfvars(content string) map[string]string {
 	return parseEnvBytes([]byte(content))
+}
+
+func positiveIntOrEmpty(v string) string {
+	n, err := strconv.Atoi(strings.Trim(strings.TrimSpace(v), `"`))
+	if err != nil || n <= 0 {
+		return ""
+	}
+	return strconv.Itoa(n)
 }
 
 func (c *Container) RequireProvisionedHosts(cmd string, roles ...string) error {
@@ -326,13 +352,12 @@ func buildTfvars(cfg *configs.D8XConfig) string {
 		if cfg.LinodeConfig == nil {
 			return ""
 		}
-		brokerSize := "g6-dedicated-2"
-		if cfg.LinodeConfig.BrokerServerSize != "" {
-			brokerSize = cfg.LinodeConfig.BrokerServerSize
-		}
-		return fmt.Sprintf(`region               = "%s"
+		brokerSize := defaultStr(cfg.LinodeConfig.BrokerServerSize, "g6-dedicated-2")
+		workerSize := defaultStr(cfg.LinodeConfig.SwarmNodeSize, "g6-dedicated-2")
+		out := fmt.Sprintf(`region               = "%s"
 num_workers          = %d
 broker_size          = "%s"
+worker_size          = "%s"
 server_label_prefix  = "%s"
 create_broker_server = %t
 create_swarm         = %t
@@ -340,31 +365,34 @@ create_swarm         = %t
 			cfg.LinodeConfig.Region,
 			cfg.LinodeConfig.NumWorker,
 			brokerSize,
+			workerSize,
 			cfg.LinodeConfig.LabelPrefix,
 			cfg.LinodeConfig.CreateBrokerServer,
 			cfg.LinodeConfig.DeploySwarm,
 		)
+		if id, err := strconv.Atoi(strings.TrimSpace(cfg.LinodeConfig.DbId)); err == nil && id > 0 {
+			out += fmt.Sprintf("linode_db_cluster_id = %d\n", id)
+		}
+		return out
 	case configs.D8XServerProviderAWS:
 		if cfg.AWSConfig == nil {
 			return ""
-		}
-		rdsClass := "db.t4g.small"
-		if cfg.AWSConfig.RDSInstanceClass != "" {
-			rdsClass = cfg.AWSConfig.RDSInstanceClass
 		}
 		return fmt.Sprintf(`region               = "%s"
 server_label_prefix  = "%s"
 num_workers          = %d
 create_broker_server = %t
 create_swarm         = %t
-rds_instance_class   = "%s"
+db_instance_class    = "%s"
+worker_size          = "%s"
 `,
 			cfg.AWSConfig.Region,
 			cfg.AWSConfig.LabelPrefix,
 			cfg.AWSConfig.NumWorker,
 			cfg.AWSConfig.CreateBrokerServer,
 			cfg.AWSConfig.DeploySwarm,
-			rdsClass,
+			defaultStr(cfg.AWSConfig.RDSInstanceClass, "db.t4g.small"),
+			defaultStr(cfg.AWSConfig.SwarmNodeSize, "t3.small"),
 		)
 	}
 	return ""
@@ -569,5 +597,5 @@ func indexOf(list []string, item string) int {
 			return i
 		}
 	}
-	return 0
+	return -1
 }

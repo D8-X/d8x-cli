@@ -162,6 +162,7 @@ type D8XAWSConfig struct {
 	Region             string `json:"region"`
 	LabelPrefix        string `json:"label_prefix"`
 	RDSInstanceClass   string `json:"rds_instance_class"`
+	SwarmNodeSize      string `json:"swarm_node_size"`
 	CreateBrokerServer bool   `json:"create_broker_server"`
 	DeploySwarm        bool   `json:"deploy_swarm"`
 	// Number of worker servers to deploy in swarm

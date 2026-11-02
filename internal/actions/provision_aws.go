@@ -42,6 +42,9 @@ func (c *Container) CopyAWSTFFiles() error {
 	}
 
 	fmt.Println(styles.ItalicText.Render("Fetching Terraform configs from GitHub..."))
+	if err := clearFetchedTerraformFiles(c.ProvisioningTfDir); err != nil {
+		return fmt.Errorf("clearing stale terraform files in %s: %w", c.ProvisioningTfDir, err)
+	}
 	if err := ghFetchDir(token, "terraform/aws", c.ProvisioningTfDir); err != nil {
 		return fmt.Errorf("fetching terraform/aws from GitHub: %w", err)
 	}
@@ -269,6 +272,7 @@ func (a *awsConfigurer) generateVariables() []string {
 		// Do not include the quotes here
 		"-var", fmt.Sprintf(`authorized_key=%s`, a.authorizedKey),
 		"-var", fmt.Sprintf("db_instance_class=%s", a.RDSInstanceClass),
+		"-var", fmt.Sprintf("worker_size=%s", defaultStr(a.SwarmNodeSize, "t3.small")),
 		"-var", fmt.Sprintf(`create_broker_server=%t`, a.CreateBrokerServer),
 		"-var", fmt.Sprintf(`rds_creds_filepath=%s`, RDS_CREDS_FILE),
 		"-var", fmt.Sprintf(`create_swarm=%t`, a.DeploySwarm),
